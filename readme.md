@@ -6,6 +6,7 @@
 [![Version](https://img.shields.io/badge/version-v0.3.0-green)](docs/CHANGELOG.md)
 [![AgingCard](https://img.shields.io/badge/AgingCard-v1.0.0-yellow)](#agingcard)
 [![CLI](https://img.shields.io/badge/CLI-agingbench-purple)](#install)
+[![License](https://img.shields.io/badge/license-MIT-orange)](LICENSE)
 
 > **A longitudinal reliability benchmark that explores four aging mechanisms in memory-enabled AI agents.** <br>
 > 8 scenarios | 4 aging mechanisms | AgingCard v1.0.0 | Compression · Interference · Revision · Maintenance.

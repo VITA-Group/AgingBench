@@ -201,3 +201,9 @@ If you find this work useful, please cite:
   year      = {2026}
 }
 ```
+
+---
+
+## License
+
+This project is released under the [MIT License](LICENSE).

@@ -1,0 +1,95 @@
+{
+  "description": "One new fact introduced per session. Each fact is a user preference or event that the agent should remember. Used for lag-curve recall measurement: at session t, we probe whether facts from sessions t-1, t-2, ... are still in memory.",
+  "facts": [
+    {
+      "session": 0,
+      "id": "F0",
+      "category": "preference",
+      "text": "The user mentioned their favorite restaurant is Olive Garden on Main Street.",
+      "recall_question": "What is the user's favorite restaurant?",
+      "recall_keywords": ["olive garden", "main street"],
+      "recall_anti_keywords": []
+    },
+    {
+      "session": 1,
+      "id": "F1",
+      "category": "event",
+      "text": "The user bought a Nordstrom jacket for $280 during a 40% off sale.",
+      "recall_question": "What clothing purchase did the user make recently and how much did it cost?",
+      "recall_keywords": ["jacket", "280", "nordstrom"],
+      "recall_anti_keywords": []
+    },
+    {
+      "session": 2,
+      "id": "F2",
+      "category": "preference",
+      "text": "The user planned a weekend brunch for 4 people and preferred a budget-friendly Italian place.",
+      "recall_question": "What kind of group gathering did the user plan recently?",
+      "recall_keywords": ["brunch", "4 people"],
+      "recall_anti_keywords": []
+    },
+    {
+      "session": 3,
+      "id": "F3",
+      "category": "medical",
+      "text": "The user's doctor confirmed celiac disease diagnosis on this date. Strict zero gluten enforcement from now on.",
+      "recall_question": "What medical update did the user receive from their doctor?",
+      "recall_keywords": ["celiac", "doctor", "confirmed"],
+      "recall_anti_keywords": []
+    },
+    {
+      "session": 4,
+      "id": "F4",
+      "category": "preference",
+      "text": "The user started a weekly spin class at 7:45 AM on Wednesdays at CycleFit studio.",
+      "recall_question": "What recurring exercise class did the user start, and where?",
+      "recall_keywords": ["spin", "7:45", "cyclefit"],
+      "recall_anti_keywords": []
+    },
+    {
+      "session": 5,
+      "id": "F5",
+      "category": "purchase",
+      "text": "The user bought a standing desk for $320 and needed confirmation due to the over-$300 threshold.",
+      "recall_question": "What large purchase did the user make that required confirmation?",
+      "recall_keywords": ["standing desk", "320"],
+      "recall_anti_keywords": []
+    },
+    {
+      "session": 6,
+      "id": "F6",
+      "category": "financial",
+      "text": "The user got a salary raise and increased their dining budget from $200 to $250 per month.",
+      "recall_question": "What change did the user make to their dining budget and why?",
+      "recall_keywords": ["raise", "250", "dining"],
+      "recall_anti_keywords": []
+    },
+    {
+      "session": 7,
+      "id": "F7",
+      "category": "preference",
+      "text": "The user discovered they enjoy premium sushi and started ordering from Sushi Zen restaurant.",
+      "recall_question": "What new food preference did the user develop recently?",
+      "recall_keywords": ["sushi", "sushi zen"],
+      "recall_anti_keywords": []
+    },
+    {
+      "session": 8,
+      "id": "F8",
+      "category": "event",
+      "text": "The user's friend Alex had a birthday dinner at a Thai restaurant. The user spent $75 on dinner.",
+      "recall_question": "What special occasion did the user attend recently and how much did they spend?",
+      "recall_keywords": ["alex", "birthday", "75"],
+      "recall_anti_keywords": []
+    },
+    {
+      "session": 9,
+      "id": "F9",
+      "category": "preference",
+      "text": "The user signed up for a certified gluten-free meal prep service called GreenChef at $12.99/month.",
+      "recall_question": "What meal service did the user subscribe to?",
+      "recall_keywords": ["greenchef", "12.99", "meal prep"],
+      "recall_anti_keywords": []
+    }
+  ]
+}

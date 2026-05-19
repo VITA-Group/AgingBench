@@ -1,0 +1,15 @@
+sut_id: gpt41_append_only
+description: "GPT-4.1 with append-only episodic memory — naive growing store"
+
+model:
+  provider: litellm
+  model: gpt-4.1
+  max_tokens: 700
+  temperature: 0.0
+
+memory_policy:
+  type: append_only
+  retriever:
+    top_k: 5
+
+seed: 42

@@ -1,0 +1,64 @@
+{
+  "sessions": [
+    {
+      "session": 0,
+      "title": "Project Kickoff — Vendor Selection & Budget",
+      "transcript": "Meeting attendees: Sarah Chen (PM), Marcus Rivera (Tech Lead), Priya Patel (Finance). Sarah opened by confirming the Q1 budget: $340,000 allocated for the API platform rebuild. Marcus recommended selecting FastAPI as the backend framework, citing performance benchmarks showing 3x throughput vs the existing Flask setup. The team approved CloudVault as the primary cloud provider at $12,400/month. Priya confirmed the finance team approved a $45,000 contingency reserve. Decision: Phase 1 delivery target is June 15, 2026. Marcus will lead architecture design with a 3-person backend squad."
+    },
+    {
+      "session": 1,
+      "title": "Architecture Review — Database & Caching",
+      "transcript": "Meeting attendees: Marcus Rivera, Jing Wu (DBA), Tom O'Brien (DevOps). Marcus presented the architecture: PostgreSQL 16 as primary datastore with TimescaleDB extension for time-series analytics. Jing recommended a connection pool limit of 50 concurrent connections for the production tier. The team selected Redis 7.2 for caching with a 256MB memory cap. Tom confirmed deployment will use Kubernetes on CloudVault's managed service (3 nodes, 8 vCPUs each). Decision: database migration from MySQL to PostgreSQL starts March 25, 2026. Jing owns the migration script. Estimated migration window: 4 hours with rollback plan."
+    },
+    {
+      "session": 2,
+      "title": "Security Audit & Compliance",
+      "transcript": "Meeting attendees: Sarah Chen, Anika Sharma (Security), Marcus Rivera. Anika presented the security requirements: all API endpoints must use OAuth 2.0 with PKCE flow. Session tokens expire after 30 minutes of inactivity. PII data must be encrypted at rest using AES-256. The team decided to integrate Snyk for dependency vulnerability scanning in the CI pipeline. Decision: SOC 2 Type II audit is scheduled for August 2026. Anika will prepare the control documentation. All third-party libraries must be pinned to exact versions (no floating ranges)."
+    },
+    {
+      "session": 3,
+      "title": "API Design & Rate Limiting",
+      "transcript": "Meeting attendees: Marcus Rivera, Lin Zhang (API Lead), Tom O'Brien. Lin presented the API versioning strategy: URI-based versioning (v1/, v2/) with a 12-month deprecation window for old versions. Rate limiting will be enforced at 1000 requests per minute per API key for standard tier, 5000/min for premium tier. The team approved GraphQL for the analytics dashboard endpoints only — all other endpoints remain REST. Decision: API documentation will use OpenAPI 3.1 spec hosted on Swagger Hub. Lin assigned to complete the spec by April 10, 2026."
+    },
+    {
+      "session": 4,
+      "title": "Q1 Budget Review & Hiring",
+      "transcript": "Meeting attendees: Sarah Chen, Priya Patel, Marcus Rivera. Priya reported Q1 spending: $127,000 of $340,000 budget used (37%). CloudVault invoices are $800 under projection. The team approved hiring two additional frontend engineers at a combined $18,000/month salary budget. Sarah noted that the June 15 deadline is at risk due to the database migration delay — revised estimate is June 28, 2026. Decision: Phase 1 target moved to June 28. Contingency reserve reduced from $45,000 to $38,000 after unexpected licensing costs for the monitoring tool ($7,000)."
+    },
+    {
+      "session": 5,
+      "title": "Frontend Framework & Design System",
+      "transcript": "Meeting attendees: Marcus Rivera, Emily Nakamura (Frontend Lead), David Kim (Designer). Emily recommended Next.js 14 with App Router for the dashboard frontend. The team selected Tailwind CSS 3.4 for styling with a custom design token system. David presented the design system: 8px grid, Inter font family, 5 color themes. Component library will be built on Radix UI primitives. Decision: design system handoff to engineering by April 20, 2026. Emily owns the component library. Target: 40 reusable components covering 90% of UI patterns."
+    },
+    {
+      "session": 6,
+      "title": "Testing Strategy & CI/CD",
+      "transcript": "Meeting attendees: Marcus Rivera, Tom O'Brien, Jing Wu. Tom presented the CI/CD pipeline: GitHub Actions with 3 stages (lint, test, deploy). Unit test coverage target is 85% minimum. Integration tests run against a dedicated staging database (separate PostgreSQL instance). The team decided on Playwright for end-to-end testing with 50 critical user journey tests. Decision: staging environment deploys automatically on PR merge to main. Production deploys require manual approval from Marcus or Sarah. Deployment rollback SLA: under 5 minutes."
+    },
+    {
+      "session": 7,
+      "title": "Performance Benchmarking & SLAs",
+      "transcript": "Meeting attendees: Sarah Chen, Marcus Rivera, Lin Zhang. Lin reported initial benchmark results: API p95 latency is 145ms (target: under 200ms). Throughput: 2,800 requests/sec on the 3-node cluster. The team set the production SLA: 99.9% uptime (43.8 min/month max downtime). Error budget: 0.1% of requests may return 5xx. Decision: alert threshold set at p99 latency > 500ms. PagerDuty integration for on-call rotation. Marcus and Tom are primary on-call; Lin is secondary."
+    },
+    {
+      "session": 8,
+      "title": "Third-party Integration & Vendor Review",
+      "transcript": "Meeting attendees: Sarah Chen, Marcus Rivera, Anika Sharma. The team reviewed third-party integrations: Stripe for payment processing (2.9% + $0.30 per transaction), SendGrid for transactional email (50,000 emails/month plan at $14.95/month), Datadog for monitoring at $23/host/month (3 hosts = $69/month). Anika flagged that Stripe's PCI compliance requires quarterly security scans. Decision: all vendor contracts are annual with 60-day termination notice. Total third-party cost: $12,483.95/month including CloudVault."
+    },
+    {
+      "session": 9,
+      "title": "Data Pipeline & Analytics",
+      "transcript": "Meeting attendees: Marcus Rivera, Jing Wu, Priya Patel. Jing presented the analytics pipeline: raw events flow to a Kafka topic (retention: 7 days), then processed by a Flink job into the TimescaleDB hypertable. Dashboard refresh interval: 5 minutes. The team approved a data retention policy: raw logs kept 90 days, aggregated metrics kept 2 years. Priya confirmed analytics infrastructure adds $3,200/month to operational costs. Decision: Jing will implement the pipeline by May 15, 2026. Real-time alerting on business metrics launches with Phase 1."
+    },
+    {
+      "session": 10,
+      "title": "Mid-project Retrospective & Scope Change",
+      "transcript": "Meeting attendees: Sarah Chen, Marcus Rivera, Emily Nakamura, Priya Patel. Sarah announced a scope change from leadership: mobile-responsive dashboard is now required for Phase 1 (previously Phase 2). Emily estimated 3 additional weeks for responsive layouts. Priya reported total budget spend: $215,000 of $340,000 (63%). Remaining budget: $125,000 with 8 weeks to Phase 1. Decision: Phase 1 deadline extended to July 18, 2026. Two contractors hired for mobile responsiveness at $9,500/month combined. Marcus approved reducing the component target from 40 to 32 reusable components."
+    },
+    {
+      "session": 11,
+      "title": "Pre-launch Review & Go/No-Go",
+      "transcript": "Meeting attendees: Sarah Chen, Marcus Rivera, Tom O'Brien, Anika Sharma, Priya Patel. Tom reported: all 50 Playwright e2e tests passing, unit coverage at 87% (above 85% target). API p95 latency: 138ms. Uptime in staging: 99.95% over 30 days. Anika confirmed SOC 2 readiness: 18/20 controls documented, remaining 2 in review. Priya reported final budget: $298,000 spent of $340,000, $42,000 remaining. Decision: Phase 1 go-live approved for July 18, 2026. Launch sequence: Tom deploys to production at 2 AM ET, Marcus monitors for 4 hours, Sarah sends stakeholder announcement at 9 AM."
+    }
+  ]
+}

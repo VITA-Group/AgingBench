@@ -1,0 +1,44 @@
+# Code-assistant deployment profile — Claude Code, Cursor, Aider,
+# Codex CLI, OpenHands, etc. Tailored for software-engineering aging.
+
+deployment_type: code_assistant
+
+outcome_rules:
+  # Native trace events likely emitted by code-assistant tooling.
+  pr_merged:                    success
+  pr_closed_unmerged:           user_rejected
+  ci_pass:                      success
+  ci_fail:                      fail
+  commit_made:                  success
+  commit_reverted:              revision_fail
+  completion_accepted:          success
+  completion_rejected:          user_rejected
+  abort:                        abandoned
+
+subject_linkage:
+  # In a code workflow, the natural "subject" is the file or function.
+  primary: file_path
+  secondary: [function_name, class_name, pr_id]
+
+mechanism_weights:
+  # In code-assistant deployments revision matters more (consistency
+  # across edits to the same file); pure-compression matters less since
+  # the file system absorbs state.
+  compression:   0.8
+  interference:  1.0
+  revision:      1.5
+  maintenance:   1.0
+
+session_detection:
+  primary: explicit_session_id    # Claude Code, OpenHands provide this
+  fallback_idle_gap_minutes: 60   # coding sessions can have long pauses
+
+privacy_patterns:
+  # Code-assistant traces often include credentials in pasted code.
+  # These supplement the package defaults.
+  - pattern: 'AWS_SECRET_ACCESS_KEY\s*=\s*\S+'
+    replacement: '[AWS_SECRET]'
+  - pattern: 'AKIA[0-9A-Z]{16}'
+    replacement: '[AWS_ACCESS_KEY]'
+  - pattern: 'github_pat_[A-Za-z0-9_]{20,}'
+    replacement: '[GITHUB_PAT]'

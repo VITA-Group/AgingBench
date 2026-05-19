@@ -1,0 +1,11 @@
+sut_id: gpt5_mini_medium_compress_4k
+description: "GPT-5-mini with summarize-store using the medium (compact_medium.txt) compaction prompt, 4000-token budget. Despite the legacy 'careful' filename it uses compact_medium.txt — not compact_careful.txt — so naming is aligned to the actual prompt."
+model:
+  provider: litellm
+  model: gpt-5-mini
+  max_tokens: 4000
+  temperature: 1.0
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_medium.txt
+seed: 42

@@ -1,0 +1,14 @@
+sut_id: claude_sonnet46_lossy_compress
+description: "Claude Sonnet 4.6 with lossy compaction — aggressive decay condition"
+
+model:
+  provider: litellm
+  model: claude-sonnet-4-6
+  max_tokens: 300
+  temperature: 0.0
+
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+
+seed: 42

@@ -1,0 +1,12 @@
+sut_id: gemma2_27b_append_only_local
+description: "Gemma-2-27B-IT (local) with append-only episodic memory (top-k cosine retrieval)"
+model:
+  provider: local_hf
+  model_id: google/gemma-2-27b-it
+  max_new_tokens: 700
+  torch_dtype: bfloat16
+memory_policy:
+  type: append_only
+  retriever:
+    top_k: 5
+seed: 42

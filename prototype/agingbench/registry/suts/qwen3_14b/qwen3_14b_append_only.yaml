@@ -1,0 +1,11 @@
+sut_id: qwen3_14b_append_only
+description: "Qwen3-14B, append-only episodic store with cosine retrieval."
+model:
+  provider: local_hf
+  model_id: Qwen/Qwen3-14B
+  max_new_tokens: 2000
+memory_policy:
+  type: append_only
+  # Qwen3-14B context = 32K. Reserve ~7K for system + task + 2K output.
+  max_input_tokens: 25000
+seed: 42

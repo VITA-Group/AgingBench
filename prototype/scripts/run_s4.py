@@ -1,0 +1,63 @@
+#!/usr/bin/env python3
+"""
+Run S4 scenario — Software Engineering Agent.
+
+Usage:
+    python scripts/run_s4.py --sut agingbench/registry/suts/llama3/lossy_compress.yaml
+    python scripts/run_s4.py --sut agingbench/registry/suts/llama3/lossy_compress.yaml --sessions 4
+"""
+
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).parent.parent
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Run S4 scenario")
+    parser.add_argument("--sut", required=True, help="Path to SUT YAML config")
+    parser.add_argument("--sessions", type=int, default=8)
+    parser.add_argument("--output", default="")
+    parser.add_argument("--oracle", action="store_true")
+    parser.add_argument("--generated", action="store_true",
+                        help="Use programmatic generator instead of curated data")
+    args = parser.parse_args()
+
+    import yaml
+    with open(args.sut) as f:
+        sut_cfg = yaml.safe_load(f)
+
+    sut_id = sut_cfg["sut_id"]
+    output_dir = Path(args.output) if args.output else (
+        PROJECT_ROOT / "experiments" / "results" / "s4_software_engineering" / sut_id
+    )
+
+    scenario_cfg = {"n_cycles": args.sessions}
+
+    sys.path.insert(0, str(PROJECT_ROOT))
+    from agingbench.cli import _run_s4
+
+    print(f"{'='*60}")
+    print(f"S4 — Software Engineering Agent")
+    print(f"SUT: {sut_id}  Sessions: {args.sessions}  Oracle: {args.oracle}  Generated: {args.generated}")
+    print(f"Output: {output_dir}")
+    print(f"{'='*60}")
+
+    stats = _run_s4(sut_cfg, scenario_cfg, output_dir, args.sessions, args.oracle,
+                     generated=args.generated, gen_sessions=args.sessions)
+
+    print(f"\n{'='*60}")
+    print(f"RESULTS: m0={stats['m0']:.3f}  m_final={stats['m_final']:.3f}  "
+          f"slope={stats['decay_slope']:.5f}")
+    if stats.get("life_event"):
+        le = stats["life_event"]
+        print(f"Life event @ session {le['session']}: "
+              f"shock={le['shock_delta_m']:.3f}  recovery={le['recovery_sessions']} sessions")
+    print(f"Output: {output_dir}")
+
+
+if __name__ == "__main__":
+    main()

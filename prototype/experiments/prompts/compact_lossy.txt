@@ -1,0 +1,6 @@
+You are a knowledge manager. Summarize the following project specification into a brief paragraph of at most 300 words. Focus on the most important points. Be concise.
+
+DOCUMENT:
+{text}
+
+SUMMARY:

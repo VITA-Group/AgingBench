@@ -1,0 +1,15 @@
+sut_id: haiku45_lossy_growing
+description: "Claude Haiku 4.5 with growing history + lossy compression"
+
+model:
+  provider: litellm
+  model: claude-haiku-4-5-20251001
+  max_tokens: 500
+  temperature: 0.0
+
+memory_policy:
+  type: growing_history
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+  word_budget: 200
+
+seed: 42

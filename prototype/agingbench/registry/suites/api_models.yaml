@@ -1,0 +1,32 @@
+suite_id: api_models
+description: "API model evaluation suite — Claude and GPT models via LiteLLM"
+version: "1.0.0"
+
+scenarios:
+  - scenario_id: s2_lifestyle_assistant
+    metric_group: G2
+    exposure_axis: t_writes
+    n_cycles: 10
+    runner_class: agingbench.runner.s2_runner.S2Runner
+
+default_suts:
+  # Claude 3.7 Sonnet
+  - agingbench/registry/suts/claude37_no_memory.yaml
+  - agingbench/registry/suts/claude37_summarize_store.yaml
+  - agingbench/registry/suts/claude37_lossy_compress.yaml
+  - agingbench/registry/suts/claude37_append_only.yaml
+  # GPT-4o
+  - agingbench/registry/suts/gpt4o_no_memory.yaml
+  - agingbench/registry/suts/gpt4o_summarize_store.yaml
+  - agingbench/registry/suts/gpt4o_lossy_compress.yaml
+  - agingbench/registry/suts/gpt4o_append_only.yaml
+  # Claude Sonnet 4.6
+  - agingbench/registry/suts/claude_sonnet46_no_memory.yaml
+  - agingbench/registry/suts/claude_sonnet46_summarize_store.yaml
+  - agingbench/registry/suts/claude_sonnet46_lossy_compress.yaml
+  - agingbench/registry/suts/claude_sonnet46_append_only.yaml
+  # GPT-4.1
+  - agingbench/registry/suts/gpt41_no_memory.yaml
+  - agingbench/registry/suts/gpt41_summarize_store.yaml
+  - agingbench/registry/suts/gpt41_lossy_compress.yaml
+  - agingbench/registry/suts/gpt41_append_only.yaml

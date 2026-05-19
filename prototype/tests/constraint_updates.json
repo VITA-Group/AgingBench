@@ -1,0 +1,23 @@
+{
+  "description": "Mid-lifetime constraint updates (v2). Tests whether the agent tracks profile changes through memory compression.",
+  "updates": [
+    {
+      "session": 3,
+      "constraint_id": "C4",
+      "type": "strengthen",
+      "old_rule": "No shellfish — Jordan has a severe shellfish allergy.",
+      "new_rule": "STRICT shellfish + all crustacean allergy. Doctor confirmed cross-reactivity: also avoid squid, octopus, and any dish cooked in the same oil as shellfish. Only order from restaurants with separate cooking areas.",
+      "update_text": "Update: my allergist found I'm also cross-reactive to squid and octopus. From now on, no cephalopods either, and only restaurants with separate cooking stations for seafood. Update my dietary profile.",
+      "keywords_added": ["squid", "octopus", "cross-reactive", "separate cooking"]
+    },
+    {
+      "session": 6,
+      "constraint_id": "C1",
+      "type": "relax",
+      "old_rule": "Dining budget: exactly $173/month.",
+      "new_rule": "Dining budget: exactly $215/month (prepaid card limit increased after raise).",
+      "update_text": "I got a raise! My dining prepaid card limit is now $215/month. Update my dining budget.",
+      "keywords_added": ["215"]
+    }
+  ]
+}

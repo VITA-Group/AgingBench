@@ -1,0 +1,12 @@
+sut_id: gpt_oss_120b_lossy
+description: "gpt-oss-120B (OpenAI open-weights, MXFP4) with lossy summarize_store."
+model:
+  provider: local_hf
+  model_id: openai/gpt-oss-120b
+  max_new_tokens: 5000
+  temperature: 0.0
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+  word_budget: 300
+seed: 42

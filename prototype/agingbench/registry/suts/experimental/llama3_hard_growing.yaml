@@ -1,0 +1,14 @@
+sut_id: llama3_hard_growing
+description: "Llama-3-8B-Instruct with growing history compaction (150-word budget) on S2-hard"
+
+model:
+  provider: local_hf
+  model_id: meta-llama/Meta-Llama-3-8B-Instruct
+  max_new_tokens: 500
+
+memory_policy:
+  type: growing_history
+  compaction_prompt: experiments/prompts/compact_shrinking.txt
+  word_budget: 150
+
+seed: 42

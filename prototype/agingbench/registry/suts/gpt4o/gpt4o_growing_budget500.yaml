@@ -1,0 +1,12 @@
+sut_id: gpt4o_growing_budget500
+description: "GPT-4o growing history, word_budget=500"
+model:
+  provider: litellm
+  model: gpt-4o
+  max_tokens: 500
+  temperature: 0.0
+memory_policy:
+  type: growing_history
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+  word_budget: 500
+seed: 42

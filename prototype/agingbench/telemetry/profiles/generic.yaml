@@ -1,0 +1,31 @@
+# Generic deployment profile — no domain assumptions.
+# Use when no domain-specific profile fits. All inference uses universal
+# defaults; outcome events must come from a separately-supplied
+# OutcomeEvent JSONL because the profile cannot extract them natively.
+
+deployment_type: generic
+
+outcome_rules:
+  # Map from native trace event types → OutcomeEvent.outcome value.
+  # Only used if the trace itself emits these event types.
+  outcome:           passthrough          # use the field as-is
+  task_completed:    success
+  task_failed:       fail
+  user_thumbs_up:    success
+  user_thumbs_down:  fail
+
+subject_linkage:
+  # Default: no cross-session subject linkage.
+  primary: null
+
+mechanism_weights:
+  compression:   1.0
+  interference:  1.0
+  revision:      1.0
+  maintenance:   1.0
+
+session_detection:
+  primary: explicit_session_id
+  fallback_idle_gap_minutes: 30
+
+privacy_patterns: []   # use the package defaults only

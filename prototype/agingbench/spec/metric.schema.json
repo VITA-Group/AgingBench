@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agingbench/spec/metric.schema.json",
+  "title": "AgingBench Metric Output Schema",
+  "description": "Schema for metrics.json produced at the end of each run (PDF §5.3).",
+  "type": "object",
+  "required": ["scenario", "sut_id", "m0", "m_final", "half_life", "decay_slope", "checkpoints"],
+  "properties": {
+    "scenario": { "type": "string" },
+    "sut_id": { "type": "string" },
+    "m0": {
+      "type": ["number", "null"],
+      "description": "Initial performance m(0) — PDF §5.3 item 1"
+    },
+    "m_final": {
+      "type": ["number", "null"],
+      "description": "Performance at final checkpoint"
+    },
+    "half_life": {
+      "type": "number",
+      "description": "First t where m(t) ≤ 0.5·m(0); inf if never crossed — PDF §5.3 item 3"
+    },
+    "decay_slope": {
+      "type": "number",
+      "description": "OLS slope of m on t (negative = degradation) — PDF §5.3 item 2"
+    },
+    "n_checkpoints": { "type": "integer" },
+    "checkpoints": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "prefixItems": [
+          { "type": "integer", "description": "Exposure t" },
+          { "type": "number", "description": "m(t)" }
+        ],
+        "minItems": 2,
+        "maxItems": 2
+      },
+      "description": "Full (t, m(t)) time series"
+    },
+    "shock": {
+      "type": ["number", "null"],
+      "description": "Δm(ℓ) = m(t+) − m(t−) at a life event — PDF §5.4"
+    },
+    "recovery": {
+      "type": ["number", "null"],
+      "description": "Steps until m(t) ≥ α·m(t−) after a life event — PDF §5.4"
+    }
+  }
+}

@@ -1,0 +1,43 @@
+scenario_id: s8_swe_bench
+display_name: "S8 SWE-bench-Aging (django ORM, load-bearing)"
+tier: 2
+metric_group: G1
+exposure_axis: t_steps
+default_sessions: 8
+
+runner:
+  module: agingbench.runner.s8_runner
+  class: S8SweBenchRunner
+
+description: >
+  Tier-2 longitudinal evaluation of a long-running developer agent on
+  a real OSS repository. Default chain: 8 SWE-bench-Verified PRs all
+  touching `django/db/models/sql/query.py` (v3.0 → v4.2). Each
+  session = one real PR; per-session SWE-bench-pre-built Docker
+  container at the issue's pre-resolution commit; workspace persists
+  across sessions via the mounted /agentmemory volume; the agent's
+  `.aging/notes.md` is its self-planned memory. Verification mixes
+  the upstream repo's actual tests (Django runtests.py) with
+  synthetic LOAD-BEARING consistency tests injected at later sessions
+  that check the agent's memory of cross-session design conventions
+  established by earlier sessions or by `state_changes` announcements
+  in ISSUE.md.
+
+  This design — real anchor + load-bearing synthetic tests — closes
+  the gap that earlier S8 chains (sphinx, pytest) left: memory of
+  cross-session conventions now directly drives task pass-rate, so
+  predictive validity (memory state → capability) is meaningful.
+
+data:
+  issue_chains_dir: issue_chains
+  default_chain: django_orm_query
+  seed_manifests_dir: seed_manifests
+  # Docker image template — populated by SWE-bench's pre-built images.
+  docker_image_pattern: "sweb.eval.x86_64.{instance_id}:latest"
+
+# Lifecycle events the runner can inject (driven by PressureConfig dials
+# and chain manifest pinned events):
+#   - dep_bump:          upgrade a dependency in /testbed (revision)
+#   - dep_pin:           force-install pkg==version (chain baseline pin)
+#   - workspace_flush:   clear /agentmemory/.aging/ (maintenance shock)
+lifecycle_events: []

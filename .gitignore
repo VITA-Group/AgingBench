@@ -1,0 +1,39 @@
+__pycache__/
+*.pyc
+*.egg-info/
+*.egg
+.python-version
+main.py
+.env
+
+# Auto-generated READMEs inside experiment results / agent workspaces.
+# We keep source READMEs (top-level, scenario dirs, examples) but drop
+# the noise from runs.
+prototype/experiments/**/README.md
+
+# pytest cache — auto-generated; safe to delete, regenerates on next run.
+.pytest_cache/
+**/.pytest_cache/
+
+# Local build artifacts (wheels/sdist; PyPI publishes happen out-of-tree)
+dist/
+build/
+*.whl
+*.tar.gz
+
+# Per-session agent workspace clones (testbed git repos, conda envs, etc.).
+# These are reproducible from the SWE-bench Docker images + chain manifest;
+# committing them would balloon the repo (one v0_2_verify run = ~9 GB of
+# packed git objects). Keep eval outputs (metrics/aging_card/trace), drop
+# the workspace tree.
+prototype/experiments/results/**/workspace/
+
+# Same pattern for fig1 queue logs (S7+ paper Figure 1 reproduction):
+# the agent's workspace / snapshots / egg-info from past runs are
+# regenerable; ~140 MB of bloat that isn't actual eval data.
+prototype/experiments/**/workspace/
+prototype/experiments/**/workspace_archive/
+prototype/experiments/**/snapshots/
+prototype/experiments/**/*.egg-info/
+prototype/experiments/**/.openhands_persist/
+prototype/experiments/**/.pytest_cache/

@@ -1,0 +1,67 @@
+{
+  "decisions": [
+    {"id": "D01", "session": 0, "category": "budget", "fact": "Q1 budget is $340,000", "keywords": ["340000", "340,000"], "person": "Priya Patel"},
+    {"id": "D02", "session": 0, "category": "tech", "fact": "FastAPI selected as backend framework", "keywords": ["FastAPI"], "person": "Marcus Rivera"},
+    {"id": "D03", "session": 0, "category": "vendor", "fact": "CloudVault is the cloud provider at $12,400/month", "keywords": ["CloudVault", "12400", "12,400"], "person": "Sarah Chen"},
+    {"id": "D04", "session": 0, "category": "budget", "fact": "Contingency reserve is $45,000", "keywords": ["45000", "45,000", "contingency"], "person": "Priya Patel"},
+    {"id": "D05", "session": 0, "category": "timeline", "fact": "Phase 1 delivery target is June 15, 2026", "keywords": ["June 15"], "person": "Sarah Chen"},
+
+    {"id": "D06", "session": 1, "category": "tech", "fact": "PostgreSQL 16 with TimescaleDB extension as primary datastore", "keywords": ["PostgreSQL", "TimescaleDB"], "person": "Marcus Rivera"},
+    {"id": "D07", "session": 1, "category": "tech", "fact": "Connection pool limit set to 50 concurrent connections", "keywords": ["50", "connection"], "person": "Jing Wu"},
+    {"id": "D08", "session": 1, "category": "tech", "fact": "Redis 7.2 for caching with 256MB memory cap", "keywords": ["Redis", "256"], "person": "Marcus Rivera"},
+    {"id": "D09", "session": 1, "category": "infra", "fact": "Kubernetes deployment on 3 nodes, 8 vCPUs each", "keywords": ["3 nodes", "8 vCPU"], "person": "Tom O'Brien"},
+    {"id": "D10", "session": 1, "category": "timeline", "fact": "Database migration from MySQL to PostgreSQL starts March 25, 2026", "keywords": ["March 25", "migration"], "person": "Jing Wu"},
+
+    {"id": "D11", "session": 2, "category": "security", "fact": "OAuth 2.0 with PKCE flow required for all API endpoints", "keywords": ["OAuth", "PKCE"], "person": "Anika Sharma"},
+    {"id": "D12", "session": 2, "category": "security", "fact": "Session tokens expire after 30 minutes of inactivity", "keywords": ["30 minutes", "expire"], "person": "Anika Sharma"},
+    {"id": "D13", "session": 2, "category": "security", "fact": "PII encrypted at rest using AES-256", "keywords": ["AES-256", "encrypt"], "person": "Anika Sharma"},
+    {"id": "D14", "session": 2, "category": "timeline", "fact": "SOC 2 Type II audit scheduled for August 2026", "keywords": ["SOC 2", "August"], "person": "Anika Sharma"},
+
+    {"id": "D15", "session": 3, "category": "tech", "fact": "Rate limiting: 1000 req/min standard, 5000 req/min premium", "keywords": ["1000", "5000"], "person": "Lin Zhang"},
+    {"id": "D16", "session": 3, "category": "tech", "fact": "GraphQL for analytics dashboard only, REST for everything else", "keywords": ["GraphQL", "analytics"], "person": "Lin Zhang"},
+    {"id": "D17", "session": 3, "category": "tech", "fact": "API versioning: URI-based with 12-month deprecation window", "keywords": ["12-month", "deprecation"], "person": "Lin Zhang"},
+    {"id": "D18", "session": 3, "category": "timeline", "fact": "OpenAPI 3.1 spec due by April 10, 2026", "keywords": ["April 10", "OpenAPI"], "person": "Lin Zhang"},
+
+    {"id": "D19", "session": 4, "category": "budget", "fact": "Q1 spending: $127,000 of $340,000 used (37%)", "keywords": ["127,000", "127000", "37%"], "person": "Priya Patel"},
+    {"id": "D20", "session": 4, "category": "timeline", "fact": "Phase 1 target moved from June 15 to June 28, 2026", "keywords": ["June 28"], "person": "Sarah Chen"},
+    {"id": "D21", "session": 4, "category": "budget", "fact": "Contingency reduced from $45,000 to $38,000 after $7,000 licensing cost", "keywords": ["38,000", "38000", "7,000"], "person": "Priya Patel"},
+    {"id": "D22", "session": 4, "category": "hiring", "fact": "Two frontend engineers hired at $18,000/month combined", "keywords": ["18,000", "18000", "frontend"], "person": "Sarah Chen"},
+
+    {"id": "D23", "session": 5, "category": "tech", "fact": "Next.js 14 with App Router for dashboard frontend", "keywords": ["Next.js", "App Router"], "person": "Emily Nakamura"},
+    {"id": "D24", "session": 5, "category": "tech", "fact": "Tailwind CSS 3.4 with custom design tokens", "keywords": ["Tailwind", "3.4"], "person": "Emily Nakamura"},
+    {"id": "D25", "session": 5, "category": "design", "fact": "Design system: 8px grid, Inter font, 5 color themes", "keywords": ["8px", "Inter"], "person": "David Kim"},
+    {"id": "D26", "session": 5, "category": "timeline", "fact": "Design system handoff by April 20, 2026. Target: 40 reusable components", "keywords": ["April 20", "40"], "person": "Emily Nakamura"},
+
+    {"id": "D27", "session": 6, "category": "testing", "fact": "Unit test coverage target: 85% minimum", "keywords": ["85%"], "person": "Tom O'Brien"},
+    {"id": "D28", "session": 6, "category": "testing", "fact": "50 Playwright end-to-end tests for critical user journeys", "keywords": ["50", "Playwright"], "person": "Tom O'Brien"},
+    {"id": "D29", "session": 6, "category": "infra", "fact": "Production deploys require manual approval from Marcus or Sarah", "keywords": ["manual approval", "Marcus", "Sarah"], "person": "Tom O'Brien"},
+    {"id": "D30", "session": 6, "category": "infra", "fact": "Deployment rollback SLA: under 5 minutes", "keywords": ["5 minutes", "rollback"], "person": "Tom O'Brien"},
+
+    {"id": "D31", "session": 7, "category": "performance", "fact": "API p95 latency: 145ms, target under 200ms", "keywords": ["145", "p95"], "person": "Lin Zhang"},
+    {"id": "D32", "session": 7, "category": "performance", "fact": "Throughput: 2,800 requests/sec on 3-node cluster", "keywords": ["2,800", "2800"], "person": "Lin Zhang"},
+    {"id": "D33", "session": 7, "category": "sla", "fact": "Production SLA: 99.9% uptime (43.8 min/month max downtime)", "keywords": ["99.9%", "43.8"], "person": "Sarah Chen"},
+    {"id": "D34", "session": 7, "category": "sla", "fact": "Alert threshold: p99 latency > 500ms triggers PagerDuty", "keywords": ["500ms", "PagerDuty"], "person": "Marcus Rivera"},
+
+    {"id": "D35", "session": 8, "category": "vendor", "fact": "Stripe for payments: 2.9% + $0.30 per transaction", "keywords": ["Stripe", "2.9%", "0.30"], "person": "Sarah Chen"},
+    {"id": "D36", "session": 8, "category": "vendor", "fact": "SendGrid for email: 50,000 emails/month at $14.95/month", "keywords": ["SendGrid", "14.95"], "person": "Sarah Chen"},
+    {"id": "D37", "session": 8, "category": "vendor", "fact": "Datadog monitoring: $23/host/month, 3 hosts = $69/month", "keywords": ["Datadog", "23", "69"], "person": "Marcus Rivera"},
+    {"id": "D38", "session": 8, "category": "vendor", "fact": "Total third-party cost: $12,483.95/month", "keywords": ["12,483", "12483"], "person": "Priya Patel"},
+
+    {"id": "D39", "session": 9, "category": "tech", "fact": "Kafka for event streaming with 7-day retention", "keywords": ["Kafka", "7-day", "7 day"], "person": "Jing Wu"},
+    {"id": "D40", "session": 9, "category": "tech", "fact": "Flink job processes events into TimescaleDB hypertable", "keywords": ["Flink"], "person": "Jing Wu"},
+    {"id": "D41", "session": 9, "category": "policy", "fact": "Data retention: raw logs 90 days, aggregated metrics 2 years", "keywords": ["90 days", "2 years"], "person": "Priya Patel"},
+    {"id": "D42", "session": 9, "category": "timeline", "fact": "Analytics pipeline due by May 15, 2026", "keywords": ["May 15"], "person": "Jing Wu"},
+
+    {"id": "D43", "session": 10, "category": "scope", "fact": "Mobile-responsive dashboard added to Phase 1 scope (was Phase 2)", "keywords": ["mobile", "responsive"], "person": "Sarah Chen"},
+    {"id": "D44", "session": 10, "category": "budget", "fact": "Total spend: $215,000 of $340,000 (63%), remaining $125,000", "keywords": ["215,000", "215000", "125,000"], "person": "Priya Patel"},
+    {"id": "D45", "session": 10, "category": "timeline", "fact": "Phase 1 deadline extended to July 18, 2026", "keywords": ["July 18"], "person": "Sarah Chen"},
+    {"id": "D46", "session": 10, "category": "hiring", "fact": "Two contractors for mobile responsiveness at $9,500/month combined", "keywords": ["9,500", "9500", "contractor"], "person": "Marcus Rivera"},
+    {"id": "D47", "session": 10, "category": "design", "fact": "Component target reduced from 40 to 32 reusable components", "keywords": ["32"], "person": "Marcus Rivera"},
+
+    {"id": "D48", "session": 11, "category": "testing", "fact": "All 50 Playwright e2e tests passing, unit coverage at 87%", "keywords": ["87%", "50"], "person": "Tom O'Brien"},
+    {"id": "D49", "session": 11, "category": "performance", "fact": "API p95 latency improved to 138ms", "keywords": ["138"], "person": "Tom O'Brien"},
+    {"id": "D50", "session": 11, "category": "budget", "fact": "Final budget: $298,000 spent, $42,000 remaining", "keywords": ["298,000", "298000", "42,000"], "person": "Priya Patel"},
+    {"id": "D51", "session": 11, "category": "timeline", "fact": "Phase 1 go-live approved for July 18, 2026 at 2 AM ET", "keywords": ["July 18", "2 AM"], "person": "Sarah Chen"},
+    {"id": "D52", "session": 11, "category": "security", "fact": "SOC 2 readiness: 18/20 controls documented", "keywords": ["18", "20", "SOC"], "person": "Anika Sharma"}
+  ]
+}

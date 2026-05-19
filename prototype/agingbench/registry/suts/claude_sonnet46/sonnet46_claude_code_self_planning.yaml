@@ -1,0 +1,9 @@
+sut_id: sonnet46_claude_code_self_planning
+description: "Claude Code (Sonnet 4.6 foundation) with true self-planning"
+
+adapter:
+  type: claude_code
+  model: claude-sonnet-4-6
+  max_turns: 20
+
+seed: 42

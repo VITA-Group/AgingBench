@@ -1,0 +1,9 @@
+torch>=2.0
+transformers>=4.40
+accelerate
+pyyaml
+numpy
+scipy
+matplotlib
+sentence-transformers>=2.6.0
+litellm

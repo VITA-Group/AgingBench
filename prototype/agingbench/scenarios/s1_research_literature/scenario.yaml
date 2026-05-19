@@ -1,0 +1,16 @@
+scenario_id: s1_research_literature
+aliases:
+  - s1_research_literature
+display_name: "Research Literature Agent"
+metric_group: G1
+exposure_axis: t_writes
+default_sessions: 8
+
+runner:
+  module: agingbench.runner.s1_runner
+  class: S1Runner
+
+data:
+  source_doc: source_doc.json
+  probes: probes.json
+  tasks: tasks.jsonl        # optional

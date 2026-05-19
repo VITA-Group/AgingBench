@@ -1,0 +1,163 @@
+{
+  "card_type": "agingbench.AgingCard",
+  "checkpoints": [
+    [
+      0,
+      0.93
+    ],
+    [
+      1,
+      0.8722
+    ],
+    [
+      2,
+      0.8144
+    ],
+    [
+      3,
+      0.7567
+    ],
+    [
+      4,
+      0.6989
+    ],
+    [
+      5,
+      0.6411
+    ],
+    [
+      6,
+      0.5833
+    ],
+    [
+      7,
+      0.5256
+    ],
+    [
+      8,
+      0.4678
+    ],
+    [
+      9,
+      0.41
+    ]
+  ],
+  "cost_and_efficiency": {
+    "latency_ms_p50": null,
+    "latency_ms_p95": null,
+    "tokens_per_session_mean": null,
+    "total_calls": null,
+    "total_cost_usd": null,
+    "total_input_tokens": null,
+    "total_output_tokens": null,
+    "total_response_tokens": null
+  },
+  "generated_at": "2026-05-11T19:55:04+00:00",
+  "headline": {
+    "aging_detected": true,
+    "decay_slope": -0.057,
+    "half_life": 6.1,
+    "hazard_proxy": 0.171,
+    "m0": 0.93,
+    "m_final": 0.41,
+    "metric_name": "constraint_precision"
+  },
+  "links": {
+    "dependency_metrics_json": "dependency_metrics.json",
+    "metrics_json": "metrics.json",
+    "trace_jsonl": "trace.jsonl"
+  },
+  "mechanism_metrics": {
+    "compression": {
+      "score": 0.41,
+      "trajectory": [
+        [
+          0,
+          0.93
+        ],
+        [
+          1,
+          0.8722
+        ],
+        [
+          2,
+          0.8144
+        ],
+        [
+          3,
+          0.7567
+        ],
+        [
+          4,
+          0.6989
+        ],
+        [
+          5,
+          0.6411
+        ],
+        [
+          6,
+          0.5833
+        ],
+        [
+          7,
+          0.5256
+        ],
+        [
+          8,
+          0.4678
+        ],
+        [
+          9,
+          0.41
+        ]
+      ]
+    },
+    "interference": {
+      "n_probes": 12,
+      "resistance": 0.62
+    },
+    "maintenance": {
+      "delta": null,
+      "post_shock": null,
+      "pre_shock": null,
+      "shock_sessions": []
+    },
+    "revision": {
+      "accumulator_abs_error": 0.24,
+      "compounding_detected": false,
+      "forget_accuracy": null,
+      "version_accuracy": 0.55
+    }
+  },
+  "n_sessions": 10,
+  "pressure": {
+    "dependency_density": 0.5,
+    "forget_rate": 0.1,
+    "max_chain_depth": 3,
+    "n_confusable_pairs": 3,
+    "preset": "medium",
+    "tokens_per_session": 2000,
+    "update_rate": 0.2
+  },
+  "provenance": {
+    "agingbench_version": "0.1.0",
+    "compute_environment": "local",
+    "git_sha": "7dcbbd77f4cc89edfda75d6b4e3088f609166184"
+  },
+  "run_id": "fixture-s2_lifestyle_assistant-seed42",
+  "scenario": "s2_lifestyle_assistant",
+  "scenario_version": "1.0",
+  "schema_version": "1.0.0",
+  "seed": 42,
+  "suite_id": "full",
+  "sut": {
+    "config_hash_sha256": null,
+    "config_yaml_path": null,
+    "memory_policy_type": "growing_history",
+    "model_id": "claude-haiku-4-5-20251001",
+    "model_provider": "litellm",
+    "sut_id": "haiku45_lossy_compress"
+  },
+  "warnings": []
+}

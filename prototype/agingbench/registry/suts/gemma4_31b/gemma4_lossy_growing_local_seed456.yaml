@@ -1,0 +1,15 @@
+sut_id: gemma4_lossy_growing_local_seed456
+description: "Gemma-4-31B-IT with growing history + lossy compaction (200-word budget). Seed 456."
+
+model:
+  provider: local_hf
+  model_id: google/gemma-4-31b-it
+  max_new_tokens: 3000
+  torch_dtype: bfloat16
+
+memory_policy:
+  type: growing_history
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+  word_budget: 200
+
+seed: 456

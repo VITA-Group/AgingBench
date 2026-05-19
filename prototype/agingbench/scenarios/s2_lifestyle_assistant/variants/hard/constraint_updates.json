@@ -1,0 +1,59 @@
+{
+  "description": "6 mid-lifetime constraint updates for S2-hard. Includes strengthening, relaxation, reversals, and cross-constraint cascades.",
+  "updates": [
+    {
+      "session": 2,
+      "constraint_id": "C5",
+      "type": "strengthen",
+      "old_rule": "Sodium under 550mg per serving. If sodium is between 550-700mg, flag it but allow if I confirm. Over 700mg is always rejected.",
+      "new_rule": "Sodium under 450mg per serving. 450-600mg requires confirmation. Over 600mg always rejected. Doctor said my blood pressure is borderline.",
+      "update_text": "My doctor said my blood pressure is borderline high. Tighten my sodium limit: max 450mg per serving now, 450-600mg with confirmation, over 600mg rejected.",
+      "keywords_added": ["450", "600", "blood pressure"]
+    },
+    {
+      "session": 4,
+      "constraint_id": "C13",
+      "type": "modify",
+      "old_rule": "Maximum 6 active subscriptions at any time. Current count: Spotify ($10.99), iCloud ($2.99), NYT ($4.25), gym ($45). That's 4, so 2 slots remain.",
+      "new_rule": "Maximum 6 active subscriptions. Current count: Spotify ($10.99), iCloud ($2.99), NYT ($4.25), gym ($45), Duolingo ($7.99). That's 5, so 1 slot remains.",
+      "update_text": "I just subscribed to Duolingo Plus for $7.99/month. Update my subscription count — I should have 1 slot remaining now.",
+      "keywords_added": ["Duolingo", "7.99", "5", "1 slot"]
+    },
+    {
+      "session": 6,
+      "constraint_id": "C1",
+      "type": "relax",
+      "old_rule": "Dining budget: $185/month maximum. Track cumulative spend.",
+      "new_rule": "Dining budget: $220/month maximum. Track cumulative spend.",
+      "update_text": "I got a raise! Increase my dining budget to $220/month.",
+      "keywords_added": ["220"]
+    },
+    {
+      "session": 8,
+      "constraint_id": "C18",
+      "type": "modify",
+      "old_rule": "Gym sessions: Monday/Wednesday/Friday before 7:15 AM only. Weekend sessions allowed until 9:00 AM.",
+      "new_rule": "Gym sessions: Tuesday/Thursday/Saturday before 6:45 AM only. My work schedule changed.",
+      "update_text": "My work schedule changed. Move my gym days to Tuesday/Thursday/Saturday, and I need to be there earlier — before 6:45 AM.",
+      "keywords_added": ["Tuesday", "Thursday", "Saturday", "6:45"]
+    },
+    {
+      "session": 10,
+      "constraint_id": "C28",
+      "type": "modify",
+      "old_rule": "Credit card usage: Amex Blue for dining (3% back), Chase Sapphire for travel (5x points), Citi Double for everything else (2% back).",
+      "new_rule": "Credit card usage: Amex Gold for dining (4x points), Chase Sapphire for travel (5x points), Citi Double for everything else (2% back). Switched from Amex Blue to Amex Gold.",
+      "update_text": "I upgraded from Amex Blue to Amex Gold — now I get 4x points on dining instead of 3% cash back. Update my card preferences.",
+      "keywords_added": ["Amex Gold", "4x"]
+    },
+    {
+      "session": 12,
+      "constraint_id": "C1",
+      "type": "reverse",
+      "old_rule": "Dining budget: $220/month maximum. Track cumulative spend.",
+      "new_rule": "Dining budget: $175/month maximum. Track cumulative spend. Tightening up for holiday savings.",
+      "update_text": "Actually, I need to save for the holidays. Cut my dining budget back to $175/month.",
+      "keywords_added": ["175", "holiday savings"]
+    }
+  ]
+}

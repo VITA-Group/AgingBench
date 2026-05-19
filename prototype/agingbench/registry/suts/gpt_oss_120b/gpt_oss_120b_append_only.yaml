@@ -1,0 +1,11 @@
+sut_id: gpt_oss_120b_append_only
+description: "gpt-oss-120B with append_only memory (no compression; policy-contrast baseline)."
+model:
+  provider: local_hf
+  model_id: openai/gpt-oss-120b
+  max_new_tokens: 1000
+memory_policy:
+  type: append_only
+  top_k: 5
+  max_input_tokens: 120000
+seed: 42

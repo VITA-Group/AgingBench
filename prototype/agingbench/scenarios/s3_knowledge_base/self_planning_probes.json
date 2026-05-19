@@ -1,0 +1,119 @@
+{
+  "description": "Self-planning agent probes for S3. Retrieval competition is the PRIMARY aging mechanism for self-planning agents with growing knowledge bases.",
+
+  "retrieval_competition": [
+    {
+      "id": "rc_s3_1",
+      "available_after_session": 4,
+      "question": "What is the current Phase 1 delivery date?",
+      "target": {"fact": "Phase 1 target moved to June 28, 2026", "keywords": ["June 28"]},
+      "competitors": [
+        {"fact": "Original Phase 1 target was June 15, 2026", "keywords": ["June 15"]}
+      ]
+    },
+    {
+      "id": "rc_s3_2",
+      "available_after_session": 10,
+      "question": "What is the current Phase 1 delivery date?",
+      "target": {"fact": "Phase 1 deadline extended to July 18, 2026", "keywords": ["July 18"]},
+      "competitors": [
+        {"fact": "Phase 1 target was June 28, 2026", "keywords": ["June 28"]},
+        {"fact": "Original Phase 1 target was June 15, 2026", "keywords": ["June 15"]}
+      ]
+    },
+    {
+      "id": "rc_s3_3",
+      "available_after_session": 11,
+      "question": "What is the total project budget spend to date?",
+      "target": {"fact": "Final budget: $298,000 spent of $340,000", "keywords": ["298,000", "298000"]},
+      "competitors": [
+        {"fact": "Q1 spending: $127,000 of $340,000 used", "keywords": ["127,000", "127000"]},
+        {"fact": "Total spend: $215,000 of $340,000", "keywords": ["215,000", "215000"]}
+      ]
+    },
+    {
+      "id": "rc_s3_4",
+      "available_after_session": 7,
+      "question": "What is the API p95 latency?",
+      "target": {"fact": "API p95 latency is 145ms, target under 200ms", "keywords": ["145"]},
+      "competitors": [
+        {"fact": "API p95 latency improved to 138ms in pre-launch", "keywords": ["138"]}
+      ]
+    },
+    {
+      "id": "rc_s3_5",
+      "available_after_session": 10,
+      "question": "How many reusable components is the frontend team targeting?",
+      "target": {"fact": "Component target reduced from 40 to 32", "keywords": ["32"]},
+      "competitors": [
+        {"fact": "Target: 40 reusable components covering 90% of UI patterns", "keywords": ["40"]}
+      ]
+    }
+  ],
+
+  "update_propagation": [
+    {
+      "id": "up_s3_1",
+      "update_session": 4,
+      "description": "Phase 1 deadline moved from June 15 to June 28",
+      "old_value": "June 15",
+      "new_value": "June 28",
+      "probe_question": "When is Phase 1 due?",
+      "keywords": ["June 28"]
+    },
+    {
+      "id": "up_s3_2",
+      "update_session": 4,
+      "description": "Contingency reduced from $45,000 to $38,000",
+      "old_value": "45,000",
+      "new_value": "38,000",
+      "probe_question": "What is the contingency reserve?",
+      "keywords": ["38,000", "38000"]
+    },
+    {
+      "id": "up_s3_3",
+      "update_session": 10,
+      "description": "Phase 1 deadline extended to July 18",
+      "old_value": "June 28",
+      "new_value": "July 18",
+      "probe_question": "When is the current Phase 1 launch date?",
+      "keywords": ["July 18"]
+    },
+    {
+      "id": "up_s3_4",
+      "update_session": 10,
+      "description": "Component target reduced from 40 to 32",
+      "old_value": "40",
+      "new_value": "32",
+      "probe_question": "How many reusable UI components are targeted?",
+      "keywords": ["32"]
+    }
+  ],
+
+  "rationale_probes": [
+    {
+      "id": "rp_s3_1",
+      "available_after_session": 5,
+      "question": "Why were two additional frontend engineers hired?",
+      "gold_rationale": "June 15 deadline was at risk due to database migration delay, needed to accelerate frontend work",
+      "rationale_keywords": ["delay", "migration", "deadline", "risk"],
+      "decision_keywords": ["frontend", "hired", "18,000"]
+    },
+    {
+      "id": "rp_s3_2",
+      "available_after_session": 10,
+      "question": "Why was the component target reduced from 40 to 32?",
+      "gold_rationale": "Mobile-responsive dashboard was added to Phase 1 scope (moved from Phase 2), Emily estimated 3 additional weeks",
+      "rationale_keywords": ["mobile", "responsive", "Phase 2", "Emily", "3 weeks"],
+      "decision_keywords": ["32", "reduced", "40"]
+    },
+    {
+      "id": "rp_s3_3",
+      "available_after_session": 8,
+      "question": "Why does the project use annual vendor contracts with 60-day termination notice?",
+      "gold_rationale": "Anika flagged PCI compliance requires quarterly security scans, annual contracts provide stability for compliance auditing",
+      "rationale_keywords": ["PCI", "compliance", "quarterly", "Anika"],
+      "decision_keywords": ["annual", "60-day", "vendor"]
+    }
+  ]
+}

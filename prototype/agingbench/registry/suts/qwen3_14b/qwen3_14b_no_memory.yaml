@@ -1,0 +1,11 @@
+sut_id: qwen3_14b_no_memory
+description: "Qwen3-14B with no_memory policy"
+model:
+  provider: local_hf
+  model_id: Qwen/Qwen3-14B
+  max_new_tokens: 2000
+memory_policy:
+  type: no_memory
+
+
+seed: 42

@@ -1,0 +1,18 @@
+sut_id: qwen3_8b_react_flush
+description: "Qwen3-8B with ReactFileAdapter + workspace_flush at block 5 (maintenance aging)"
+
+model:
+  provider: local_hf
+  model_id: Qwen/Qwen3-8B
+  max_new_tokens: 500
+
+adapter:
+  type: react
+  max_turns: 8
+
+maintenance:
+  shocks:
+    - type: workspace_flush
+      session: 5
+
+seed: 42

@@ -1,0 +1,22 @@
+sut_id: openhands_gpt5mini_s7
+description: "OpenHands (Wang et al., 2024) backed by gpt-5-mini (reasoning model) for S7 self-planning."
+
+model:
+  provider: litellm
+  model: gpt-5-mini
+  max_tokens: 1024
+
+adapter:
+  type: openhands
+  model: gpt-5-mini
+  max_turns: 8                  # hard cap: reasoning models spiral inside per-turn loops otherwise
+  # bridge_python: <override only if your openhands env is in a non-standard location>
+  api_key_env: OPENAI_API_KEY
+  subprocess_timeout: 1800      # 30-min per-turn wall clock (reasoning tax)
+  # Reasoning-model hooks (auto-detected from model name, but set explicitly
+  # here for clarity). Preset "gpt5" switches to ApplyPatchTool + gpt-5
+  # condenser; reasoning_effort trades thinking depth for latency/cost.
+  preset: gpt5
+  reasoning_effort: low
+
+seed: 42

@@ -1,0 +1,16 @@
+sut_id: claude_code_sonnet46_s8
+scenario_default: s8_swe_bench
+seed: 42
+
+chain_id: django_orm_query
+
+agent:
+  adapter: claude_code
+  model: claude-sonnet-4-6
+  max_tokens: 8192
+  max_turns: 30
+  temperature: 0.0
+
+memory_policy:
+  type: workspace
+  workspace_root: ${OUTPUT_DIR}/workspace

@@ -1,0 +1,99 @@
+{
+  "description": "Self-planning agent probes for S4. Design rationale recall is the PRIMARY differentiator — can the agent explain WHY decisions were made, not just read WHAT exists in code?",
+
+  "rationale_probes": [
+    {
+      "id": "rp_s4_1",
+      "available_after_session": 1,
+      "question": "Why does the User model use hashlib for password hashing instead of bcrypt or argon2?",
+      "gold_rationale": "Sprint 1 chose hashlib because it is part of Python stdlib, avoiding external dependencies. The hash format is salt:hash using SHA-256.",
+      "rationale_keywords": ["stdlib", "external", "dependency", "SHA-256", "salt"],
+      "decision_keywords": ["hashlib", "password"]
+    },
+    {
+      "id": "rp_s4_2",
+      "available_after_session": 2,
+      "question": "Why does the database layer use sqlite3 directly instead of an ORM like SQLAlchemy?",
+      "gold_rationale": "Sprint 2 implemented raw sqlite3 for simplicity and zero-dependency deployment. Connection pooling is managed manually via get_connection/close_connection.",
+      "rationale_keywords": ["simplicity", "zero-dependency", "manual", "connection"],
+      "decision_keywords": ["sqlite3", "connection"]
+    },
+    {
+      "id": "rp_s4_3",
+      "available_after_session": 3,
+      "question": "Why does the auth module return error dicts instead of raising exceptions?",
+      "gold_rationale": "Sprint 3 designed auth.register() and auth.login() to return {'error': message} dicts for API-friendly error handling, avoiding exception-based control flow in the HTTP layer.",
+      "rationale_keywords": ["API-friendly", "dict", "exception", "control flow"],
+      "decision_keywords": ["error", "register", "login"]
+    },
+    {
+      "id": "rp_s4_4",
+      "available_after_session": 4,
+      "question": "Why does the rate limiter use an in-memory dict instead of Redis?",
+      "gold_rationale": "Sprint 4 chose in-memory tracking for single-process simplicity. The rate limiter uses timestamps per IP in a defaultdict, which doesn't persist across restarts but avoids Redis dependency.",
+      "rationale_keywords": ["single-process", "simplicity", "timestamps", "defaultdict", "persist"],
+      "decision_keywords": ["in-memory", "rate", "limiter"]
+    },
+    {
+      "id": "rp_s4_5",
+      "available_after_session": 6,
+      "question": "Why does config/settings.py require SECRET_KEY with no default, but other settings have defaults?",
+      "gold_rationale": "Sprint 6 made SECRET_KEY required to prevent accidentally running with an empty key in production. Other settings like DATABASE_URL have safe defaults for development.",
+      "rationale_keywords": ["production", "accidentally", "empty", "safe defaults", "development"],
+      "decision_keywords": ["SECRET_KEY", "required", "default"]
+    },
+    {
+      "id": "rp_s4_6",
+      "available_after_session": 7,
+      "question": "Why does api/sessions.py use secrets.token_urlsafe instead of UUID4 for session tokens?",
+      "gold_rationale": "Sprint 7 chose token_urlsafe for cryptographic randomness and URL-safe encoding. UUID4 has less entropy and requires additional encoding for use in HTTP headers.",
+      "rationale_keywords": ["cryptographic", "randomness", "URL-safe", "entropy", "headers"],
+      "decision_keywords": ["token_urlsafe", "session", "token"]
+    }
+  ],
+
+  "cross_cutting_probes": [
+    {
+      "id": "cc_s4_1",
+      "available_after_session": 6,
+      "question": "If I change the database from SQLite to PostgreSQL, which modules would need updating and why?",
+      "gold_impact": ["db/connection.py", "config/settings.py", "db/user_repo.py", "tests/test_db.py", "tests/test_auth.py"],
+      "rationale": "connection.py uses sqlite3 directly (sprint 2), settings.py parses sqlite:/// URLs (sprint 6), user_repo uses sqlite3.Row (sprint 2-3), tests mock _DB_PATH (sprint 2+)",
+      "keywords": ["connection.py", "settings", "user_repo", "sqlite3", "Row"]
+    },
+    {
+      "id": "cc_s4_2",
+      "available_after_session": 7,
+      "question": "If the rate limit is changed from per-IP to per-user, which modules need changes and what are the dependencies?",
+      "gold_impact": ["middleware/rate_limiter.py", "api/auth.py", "api/sessions.py", "config/settings.py"],
+      "rationale": "rate_limiter needs user_id instead of IP (sprint 4), auth must pass user context (sprint 3/5), sessions provide user_id mapping (sprint 7), config may need per-user limits (sprint 6)",
+      "keywords": ["rate_limiter", "user_id", "auth", "sessions", "per-user"]
+    },
+    {
+      "id": "cc_s4_3",
+      "available_after_session": 5,
+      "question": "What happens to logging if the auth module is refactored? Which sprint added logging and what format does it use?",
+      "gold_answer": "Sprint 5 added logging to auth.py and rate_limiter.py using utils.logger.get_logger(). Format: timestamp level name message. Logger uses StreamHandler to stdout.",
+      "keywords": ["sprint 5", "get_logger", "StreamHandler", "timestamp"]
+    }
+  ],
+
+  "update_propagation": [
+    {
+      "id": "up_s4_1",
+      "update_session": 1,
+      "description": "User model now has password_hash field and email validation",
+      "probe_at_session": 3,
+      "probe_question": "What fields does the User model have and what validation is applied?",
+      "keywords": ["password_hash", "email", "regex", "ValueError", "age"]
+    },
+    {
+      "id": "up_s4_2",
+      "update_session": 4,
+      "description": "Rate limiter uses hardcoded 100 req/min",
+      "probe_at_session": 6,
+      "probe_question": "Before adding config, what was the default rate limit and where was it hardcoded?",
+      "keywords": ["100", "hardcoded", "RateLimiter", "__init__"]
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+scenario_id: s3_knowledge_base
+metric_group: G3
+exposure_axis: t_writes
+default_sessions: 12
+
+runner:
+  module: agingbench.runner.s3_runner
+  class: S3Runner
+
+data:
+  transcripts: transcripts.json
+  gold_timeline: gold_timeline.json
+  queries: queries.json

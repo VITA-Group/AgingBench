@@ -1,0 +1,12 @@
+scenario_id: s4_software_engineering
+metric_group: G4
+exposure_axis: t_steps
+default_sessions: 8
+
+runner:
+  module: agingbench.runner.s4_runner
+  class: S4Runner
+
+data:
+  tasks: tasks.json
+  snapshots_dir: snapshots/

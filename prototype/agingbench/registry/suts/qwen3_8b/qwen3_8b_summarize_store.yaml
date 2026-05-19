@@ -1,0 +1,11 @@
+sut_id: qwen3_8b_summarize_store
+description: "Qwen3-8B with careful summarize_store (preserves names/numbers)"
+model:
+  provider: local_hf
+  model_id: Qwen/Qwen3-8B
+  max_new_tokens: 5000
+  temperature: 0.0
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_medium.txt
+seed: 42

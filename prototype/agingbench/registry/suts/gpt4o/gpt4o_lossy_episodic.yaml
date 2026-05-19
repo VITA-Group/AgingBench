@@ -1,0 +1,11 @@
+sut_id: gpt4o_lossy_episodic
+description: "GPT-4o with lossy_episodic: lossy W + full R (pure R-lesion baseline)"
+model:
+  provider: litellm
+  model: gpt-4o
+  max_tokens: 700
+  temperature: 0.0
+memory_policy:
+  type: lossy_episodic
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+seed: 42

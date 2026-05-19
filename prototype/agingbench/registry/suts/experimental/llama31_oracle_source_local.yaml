@@ -1,0 +1,16 @@
+sut_id: llama31_oracle_source_local
+description: "Llama-3.1-8B (local) — oracle-source upper bound. Replicates the behavior that S1's no_memory variant produced before the 2026-04-16 semantic fix: eval_text is the full accumulated source every cycle, so keyword_m cannot decay. Use this as the flat-curve control against which lossy/careful are compared."
+
+model:
+  provider: local_hf
+  model_id: meta-llama/Llama-3.1-8B-Instruct
+  max_new_tokens: 500
+
+# Triggers oracle_mode at runner level: eval_text = full accumulated source.
+# Any policy works; no_memory is used because no writes are persisted.
+oracle_mode: true
+
+memory_policy:
+  type: no_memory
+
+seed: 42

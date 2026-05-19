@@ -1,0 +1,12 @@
+sut_id: gpt4o_lossy_growing
+description: "GPT-4o with growing history + lossy compression (200 words)"
+model:
+  provider: litellm
+  model: gpt-4o
+  max_tokens: 500
+  temperature: 0.0
+memory_policy:
+  type: growing_history
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+  word_budget: 200
+seed: 42

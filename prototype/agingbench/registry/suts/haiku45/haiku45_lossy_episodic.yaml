@@ -1,0 +1,11 @@
+sut_id: haiku45_lossy_episodic
+description: "Claude Haiku 4.5 with lossy_episodic: lossy W + full R (pure R-lesion baseline)"
+model:
+  provider: litellm
+  model: claude-haiku-4-5-20251001
+  max_tokens: 700
+  temperature: 0.0
+memory_policy:
+  type: lossy_episodic
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+seed: 42

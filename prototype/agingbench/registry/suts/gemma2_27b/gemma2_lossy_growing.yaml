@@ -1,0 +1,14 @@
+sut_id: gemma2_lossy_growing
+description: "Gemma-2-27B-IT with growing history + lossy compaction (200-word budget). Re-compresses ALL raw history each session, creating naturally increasing compression pressure."
+
+model:
+  provider: local_hf
+  model_id: google/gemma-2-27b-it
+  max_new_tokens: 500
+
+memory_policy:
+  type: growing_history
+  compaction_prompt: experiments/prompts/compact_shrinking.txt
+  word_budget: 200
+
+seed: 42

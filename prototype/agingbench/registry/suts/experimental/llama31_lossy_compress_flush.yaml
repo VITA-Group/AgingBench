@@ -1,0 +1,20 @@
+sut_id: llama31_lossy_compress_flush
+description: "Llama-3.1-8B-Instruct with summarize_store + lossy compaction (300-word budget) + flush_history shock at session 4."
+
+model:
+  provider: local_hf
+  model_id: meta-llama/Llama-3.1-8B-Instruct
+  max_new_tokens: 5000
+  temperature: 0.0
+
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+  word_budget: 300
+
+maintenance:
+  shocks:
+    - type: flush_history
+      session: 4
+
+seed: 42

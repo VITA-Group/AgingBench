@@ -1,0 +1,20 @@
+scenario_id: s6_naturalistic
+display_name: "Naturalistic Multi-Domain Aging"
+tier: 1
+metric_group: G3
+exposure_axis: t_writes
+default_sessions: 15
+
+description: >
+  Tier-1 multi-domain recall benchmark using WebArena-derived workflows
+  (travel, shopping, calendar, email). Memory carryover is rational —
+  later sessions reference facts from earlier ones. Aging signal is
+  measured via a recall matrix R[t][s] = recall of session-s facts when
+  probed at session t.
+
+runner:
+  module: agingbench.runner.s6_runner
+  class: S6Runner
+
+data:
+  session_tasks: session_tasks.json

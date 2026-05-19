@@ -1,0 +1,13 @@
+{
+  "description": "Per-cycle facts introduced into memory. Each cycle adds one new fact. At cycle t, probe facts from cycles 0..t-1 to measure lag-based recall.",
+  "facts": [
+    {"cycle": 0, "fact_id": "F0", "text": "Sprint review showed Module A passed 147 out of 150 integration tests with 98% coverage.", "keywords": ["147", "150", "98%"]},
+    {"cycle": 1, "fact_id": "F1", "text": "Performance benchmark: API endpoint /v2/analytics achieves p99 latency of 142ms under 500 concurrent users.", "keywords": ["142ms", "500", "analytics"]},
+    {"cycle": 2, "fact_id": "F2", "text": "Security audit by Sofia Delacroix identified 3 critical vulnerabilities in the OAuth token refresh flow, all patched by March 5th.", "keywords": ["3 critical", "OAuth", "March 5"]},
+    {"cycle": 3, "fact_id": "F3", "text": "Budget reallocation approved: $2,300 moved from contingency to Module B after vendor pricing increase from Acme Corp.", "keywords": ["2,300", "Acme Corp", "contingency"]},
+    {"cycle": 4, "fact_id": "F4", "text": "Dr. Elena Vasquez approved exception: temporary use of SQLite for offline sync feature, must migrate to PostgreSQL by milestone 4.", "keywords": ["SQLite", "offline sync", "milestone 4"]},
+    {"cycle": 5, "fact_id": "F5", "text": "Load test results: system sustained 12,400 requests per second with mean response time of 23ms on the 4-node cluster.", "keywords": ["12,400", "23ms", "4-node"]},
+    {"cycle": 6, "fact_id": "F6", "text": "Ravi Krishnaswamy configured blue-green deployment with automatic rollback if error rate exceeds 0.5% in the first 10 minutes.", "keywords": ["blue-green", "0.5%", "10 minutes"]},
+    {"cycle": 7, "fact_id": "F7", "text": "Final compliance review confirmed 17 out of 19 regulatory controls are fully implemented; remaining 2 need documentation updates by July 1st.", "keywords": ["17", "19", "July 1"]}
+  ]
+}

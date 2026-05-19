@@ -1,0 +1,77 @@
+{
+  "description": "Compounding probes that require the agent to synthesize information from multiple prior sessions. Each probe depends on facts from 2-4 prior sessions. Correct answers require ALL dependencies to be remembered. A single missing fact causes failure, making the aging curve monotonically worse as more facts are lost.",
+  "probes": [
+    {
+      "id": "comp_3",
+      "available_from_session": 3,
+      "text": "I want to go back to my favorite restaurant for dinner this week. Can you recommend what I should order there, given all my dietary needs?",
+      "dependencies": ["F0", "F3"],
+      "dependency_description": "Must remember: (1) favorite restaurant is Olive Garden [F0], (2) celiac diagnosis requires strict gluten-free [F3]",
+      "scoring": {
+        "required_keywords": [["olive garden"], ["gluten", "celiac", "gluten-free"]],
+        "fail_if_missing_any": true
+      },
+      "gold_answer": "Should mention Olive Garden (F0) AND flag gluten/celiac concerns (F3) — need to check gluten-free options at Olive Garden."
+    },
+    {
+      "id": "comp_5",
+      "available_from_session": 5,
+      "text": "I'm thinking about my monthly budget. How much have I spent on big purchases recently, and am I still within my shopping limits?",
+      "dependencies": ["F1", "F5"],
+      "dependency_description": "Must remember: (1) Nordstrom jacket $280 [F1], (2) standing desk $320 [F5], plus the $500/month shopping limit [C2]",
+      "scoring": {
+        "required_keywords": [["jacket", "280"], ["desk", "320"], ["500", "budget", "limit"]],
+        "fail_if_missing_any": true
+      },
+      "gold_answer": "Should recall both purchases ($280 jacket + $320 desk = $600) and flag that this exceeds the $500/month shopping budget."
+    },
+    {
+      "id": "comp_6",
+      "available_from_session": 6,
+      "text": "Plan a dinner celebration for my salary raise. Where should we go, what can I eat, and what's my new budget limit?",
+      "dependencies": ["F0", "F3", "F6"],
+      "dependency_description": "Must remember: (1) favorite restaurant Olive Garden [F0], (2) celiac/gluten-free [F3], (3) new dining budget $250 [F6]",
+      "scoring": {
+        "required_keywords": [["olive garden"], ["gluten", "celiac", "gluten-free"], ["250"]],
+        "fail_if_missing_any": true
+      },
+      "gold_answer": "Should suggest Olive Garden (or ask about it), mention gluten-free requirements, and reference the new $250 dining budget."
+    },
+    {
+      "id": "comp_7",
+      "available_from_session": 7,
+      "text": "I want to adjust my exercise schedule. Remind me what class I'm currently doing, when it is, and suggest adding a second weekly session that fits my schedule rules.",
+      "dependencies": ["F4"],
+      "dependency_description": "Must remember: (1) spin class at 7:45 AM Wednesdays at CycleFit [F4], (2) exercise must be before 8 AM [C7]",
+      "scoring": {
+        "required_keywords": [["spin", "cyclefit", "7:45"], ["before 8", "8:00", "8 am"]],
+        "fail_if_missing_any": true
+      },
+      "gold_answer": "Should recall the CycleFit spin class at 7:45 AM on Wednesdays and suggest another slot before 8 AM."
+    },
+    {
+      "id": "comp_8",
+      "available_from_session": 8,
+      "text": "I need to plan my friend Alex's thank-you gift for the birthday dinner. What happened at that dinner, and find a gift that fits within my budget rules.",
+      "dependencies": ["F8", "F1"],
+      "dependency_description": "Must remember: (1) Alex's birthday at Thai restaurant, spent $75 [F8], (2) shopping budget $500/month, no single item over $300 without confirmation [C2]",
+      "scoring": {
+        "required_keywords": [["alex", "birthday", "thai"], ["300", "confirm", "budget"]],
+        "fail_if_missing_any": true
+      },
+      "gold_answer": "Should recall Alex's birthday dinner at the Thai restaurant and recommend a gift within budget constraints (under $300 or ask for confirmation)."
+    },
+    {
+      "id": "comp_9",
+      "available_from_session": 9,
+      "text": "Give me a summary of all my food-related subscriptions and dining preferences. What services am I using, what are my dietary restrictions, and what's my dining budget?",
+      "dependencies": ["F3", "F6", "F9"],
+      "dependency_description": "Must remember: (1) celiac diagnosis [F3], (2) dining budget $250 [F6], (3) GreenChef subscription $12.99 [F9]",
+      "scoring": {
+        "required_keywords": [["celiac", "gluten"], ["250", "dining"], ["greenchef", "12.99"]],
+        "fail_if_missing_any": true
+      },
+      "gold_answer": "Should mention celiac/gluten-free restriction, $250 dining budget, and GreenChef meal prep subscription at $12.99/month."
+    }
+  ]
+}

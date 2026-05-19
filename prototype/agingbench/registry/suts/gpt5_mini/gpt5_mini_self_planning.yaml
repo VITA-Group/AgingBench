@@ -1,0 +1,14 @@
+sut_id: gpt5_mini_self_planning
+description: "GPT-5-mini with ReactFileAdapter for S7 self-planning. Serves Fig 1(c) cross-framework row (OpenAI vendor) and validates whether reasoning helps the write-read planning-loop gap on Insight IV."
+
+model:
+  provider: litellm
+  model: gpt-5-mini
+  max_tokens: 1200
+  temperature: 1.0  # gpt-5 family rejects temperature=0; only 1.0 is accepted
+
+adapter:
+  type: react
+  max_turns: 8
+
+seed: 42

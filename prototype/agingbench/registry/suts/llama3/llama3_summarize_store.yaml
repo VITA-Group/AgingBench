@@ -1,0 +1,13 @@
+sut_id: llama3_summarize_store
+description: "Llama-3-8B-Instruct with summarize_store policy — primary compaction condition"
+
+model:
+  provider: local_hf
+  model_id: meta-llama/Meta-Llama-3-8B-Instruct
+  max_new_tokens: 700
+
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_medium.txt
+
+seed: 42

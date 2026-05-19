@@ -1,0 +1,16 @@
+sut_id: gpt5_mini_summarize_store
+description: "GPT-5-mini (OpenAI reasoning) with careful summarize_store policy. Paired with gpt5_mini_lossy_compress for policy-gap analysis on a reasoning model."
+
+model:
+  provider: litellm
+  model: gpt-5-mini
+  max_tokens: 700
+  temperature: 1.0  # gpt-5 family rejects temperature=0; only 1.0 is accepted
+
+memory_policy:
+  type: summarize_store
+  # "Careful" policy uses the medium prompt (same convention as
+  # haiku45_careful.yaml). No separate compact_careful.txt ships in v0.3.
+  compaction_prompt: experiments/prompts/compact_medium.txt
+
+seed: 42

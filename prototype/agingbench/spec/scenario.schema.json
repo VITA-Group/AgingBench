@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agingbench/spec/scenario.schema.json",
+  "title": "AgingBench Scenario Specification",
+  "description": "Schema for scenario configuration files (PDF §6.3 spec/).",
+  "type": "object",
+  "required": ["name", "family", "exposure_axis", "metrics", "validator"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Unique scenario identifier (e.g. s1_research_literature)"
+    },
+    "family": {
+      "type": "string",
+      "enum": ["A_memory_aging", "B_drift_controllability", "C_tool_reliability", "D_anchor"],
+      "description": "PDF §8.1 scenario family"
+    },
+    "description": { "type": "string" },
+    "exposure_axis": {
+      "type": "string",
+      "enum": ["t_steps", "t_tokens", "t_writes", "t_tools"],
+      "description": "Primary t-axis unit (PDF §5.2)"
+    },
+    "exposure_budget": {
+      "type": "integer",
+      "description": "Maximum exposure value (e.g. 8 cycles, 120 steps)"
+    },
+    "metrics": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "List of metric names produced (e.g. ['constraint_recall', 'paraphrase_consistency'])"
+    },
+    "validator": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["keyword_match", "rule_based", "llm_judge"],
+          "description": "Validator implementation type. keyword_match and rule_based are deterministic (§6.1.4)."
+        },
+        "path": { "type": "string", "description": "Path to validator module" }
+      }
+    },
+    "life_events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["t", "type"],
+        "properties": {
+          "t": { "type": "number", "description": "Exposure time at which to inject the event" },
+          "type": {
+            "type": "string",
+            "enum": ["tool_schema_change", "model_swap", "prompt_update", "memory_compaction", "reset_plus_restore"]
+          },
+          "payload": { "type": "object" }
+        }
+      }
+    },
+    "data_dir": { "type": "string", "description": "Path to scenario data files relative to repo root" }
+  }
+}

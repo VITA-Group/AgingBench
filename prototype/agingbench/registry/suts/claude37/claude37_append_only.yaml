@@ -1,0 +1,15 @@
+sut_id: claude37_append_only
+description: "Claude 3.7 Sonnet with append-only episodic memory — naive growing store"
+
+model:
+  provider: litellm
+  model: claude-3-7-sonnet-20250219
+  max_tokens: 700
+  temperature: 0.0
+
+memory_policy:
+  type: append_only
+  retriever:
+    top_k: 5
+
+seed: 42

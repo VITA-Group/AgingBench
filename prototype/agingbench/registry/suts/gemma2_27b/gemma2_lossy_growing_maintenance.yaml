@@ -1,0 +1,24 @@
+sut_id: gemma2_lossy_growing_maintenance
+description: "Gemma-2-27B-IT with growing history + maintenance shocks for validation"
+
+model:
+  provider: local_hf
+  model_id: google/gemma-2-27b-it
+  max_new_tokens: 500
+  torch_dtype: bfloat16
+
+memory_policy:
+  type: growing_history
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+  word_budget: 200
+
+maintenance:
+  shocks:
+    - type: partial_reset
+      session: 8
+      ratio: 0.4
+    - type: reduce_budget
+      session: 12
+      new_budget: 100
+
+seed: 42

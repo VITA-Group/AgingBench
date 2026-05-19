@@ -1,0 +1,89 @@
+{
+  "sessions": [
+    {
+      "session": 0,
+      "task": "Add input validation to the User model in models/user.py. The 'email' field must be validated with a regex pattern, and 'age' must be between 0 and 150. Raise ValueError for invalid inputs.",
+      "depends_on": [],
+      "dependency_context": "",
+      "files_to_modify": ["models/user.py"],
+      "impact_set": ["models/user.py", "tests/test_user.py"],
+      "test_commands": ["python -m pytest tests/test_user.py -v"],
+      "n_files": 5
+    },
+    {
+      "session": 1,
+      "task": "Add password hashing in utils/security.py using hashlib with salt. In sprint 0 you added email validation to the User model using a regex pattern. Now extend models/user.py: if a password argument is provided to User.__init__, hash it using the new hash_password function. Make sure you don't break the existing email/age validation from sprint 0.",
+      "depends_on": [0],
+      "dependency_context": "Sprint 0 added email regex validation and age 0-150 check to User.__init__. Must preserve these.",
+      "files_to_modify": ["utils/security.py", "models/user.py"],
+      "impact_set": ["utils/security.py", "models/user.py", "tests/test_user.py", "tests/test_security.py"],
+      "test_commands": ["python -m pytest tests/ -v"],
+      "n_files": 8
+    },
+    {
+      "session": 2,
+      "task": "Add a database layer. In sprint 0-1 you created a User model with email validation and password hashing. Now add db/connection.py (sqlite3 connection to 'app.db') and db/user_repo.py with UserRepository.save(user) and .find_by_email(email). The repository must store the User's password_hash field (added in sprint 1) in the database.",
+      "depends_on": [0, 1],
+      "dependency_context": "Sprint 0: User has email regex + age validation. Sprint 1: User has password_hash field, hash_password uses hashlib+salt format 'salt:hash'.",
+      "files_to_modify": ["db/connection.py", "db/user_repo.py"],
+      "impact_set": ["db/connection.py", "db/user_repo.py", "tests/test_db.py"],
+      "test_commands": ["python -m pytest tests/test_db.py -v"],
+      "n_files": 11
+    },
+    {
+      "session": 3,
+      "task": "Add auth module in api/auth.py with register(name, email, password) and login(email, password). This MUST use: (1) UserRepository from sprint 2 for persistence, (2) hash_password/verify_password from sprint 1 for credentials, (3) rely on User model validation from sprint 0 for email format checking. Return {'error': 'Email already registered'} for duplicates.",
+      "depends_on": [0, 1, 2],
+      "dependency_context": "Sprint 0: User validates email with regex. Sprint 1: security.py has hash_password(pwd)->str and verify_password(pwd,hashed)->bool with salt:hash format. Sprint 2: UserRepository has save(user) and find_by_email(email), stores password_hash.",
+      "files_to_modify": ["api/auth.py"],
+      "impact_set": ["api/auth.py", "db/user_repo.py", "utils/security.py", "models/user.py", "tests/test_auth.py"],
+      "test_commands": ["python -m pytest tests/ -v"],
+      "n_files": 13
+    },
+    {
+      "session": 4,
+      "task": "Add rate limiting in middleware/rate_limiter.py. This is independent of the auth system (sprints 0-3) but will later be integrated. Implement RateLimiter class with per-IP tracking using timestamps, limit 100 requests/minute. Methods: check_rate_limit(ip)->bool, reset_limits(), get_remaining(ip)->int.",
+      "depends_on": [],
+      "dependency_context": "",
+      "files_to_modify": ["middleware/rate_limiter.py"],
+      "impact_set": ["middleware/rate_limiter.py", "tests/test_rate_limiter.py"],
+      "test_commands": ["python -m pytest tests/test_rate_limiter.py -v"],
+      "n_files": 15
+    },
+    {
+      "session": 5,
+      "task": "Add logging to existing modules. Create utils/logger.py with get_logger(name). Then update: (1) api/auth.py from sprint 3 — log every login attempt, registration, and error, (2) middleware/rate_limiter.py from sprint 4 — log rate limit hits. You must import from utils.logger and add _log = get_logger('auth') etc. Don't change the function signatures from sprints 3/4.",
+      "depends_on": [3, 4],
+      "dependency_context": "Sprint 3: api/auth.py has register() and login() using UserRepository and security module. Sprint 4: middleware/rate_limiter.py has RateLimiter class with check_rate_limit/reset_limits/get_remaining.",
+      "files_to_modify": ["utils/logger.py", "api/auth.py", "middleware/rate_limiter.py"],
+      "impact_set": ["utils/logger.py", "api/auth.py", "middleware/rate_limiter.py", "tests/test_auth.py"],
+      "test_commands": ["python -m pytest tests/ -v"],
+      "n_files": 17
+    },
+    {
+      "session": 6,
+      "task": "Add centralized config. Create config/settings.py reading from env vars: DATABASE_URL (default 'sqlite:///app.db'), RATE_LIMIT_PER_MINUTE (default 100), LOG_LEVEL (default 'INFO'), SECRET_KEY (required). Then update: (1) db/connection.py from sprint 2 — use settings.get_db_path() instead of hardcoded 'app.db', (2) middleware/rate_limiter.py from sprint 4 — use settings.RATE_LIMIT_PER_MINUTE instead of hardcoded 100. Don't break existing tests.",
+      "depends_on": [2, 4],
+      "dependency_context": "Sprint 2: db/connection.py has _DB_PATH='app.db', get_connection() and close_connection(). Sprint 4: RateLimiter.__init__ takes max_requests=100 as default.",
+      "files_to_modify": ["config/settings.py", "db/connection.py", "middleware/rate_limiter.py"],
+      "impact_set": ["config/settings.py", "db/connection.py", "middleware/rate_limiter.py", "api/auth.py", "tests/test_config.py", "tests/test_db.py"],
+      "test_commands": ["python -m pytest tests/ -v"],
+      "n_files": 19
+    },
+    {
+      "session": 7,
+      "task": "Add session management. Create api/sessions.py with create_session(user_id)->token, validate_session(token)->Optional[user_id], expire_session(token). Sessions expire after 30 minutes. Then update api/auth.py from sprint 3 (which was updated with logging in sprint 5): login() must now return a session token on success by calling create_session(). The token generation should use secrets.token_urlsafe from sprint 1's security patterns. Existing register() must not change.",
+      "depends_on": [1, 3, 5],
+      "dependency_context": "Sprint 1: security.py uses secrets module for salt generation. Sprint 3: auth.py has login() returning {'success': True, 'user': user.to_dict()}. Sprint 5: auth.py now has logging via get_logger('auth'). Login must still log and return user dict but also include 'token' key.",
+      "files_to_modify": ["api/sessions.py", "api/auth.py"],
+      "impact_set": ["api/sessions.py", "api/auth.py", "utils/security.py", "config/settings.py", "tests/test_sessions.py", "tests/test_auth.py"],
+      "test_commands": ["python -m pytest tests/ -v"],
+      "n_files": 21
+    }
+  ],
+  "life_event": {
+    "session": 4,
+    "type": "memory_compaction",
+    "description": "Force compress agent memory from accumulated design notes to 500 chars"
+  }
+}

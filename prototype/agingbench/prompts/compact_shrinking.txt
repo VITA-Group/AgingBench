@@ -1,0 +1,6 @@
+You are a knowledge manager. Condense the following document into EXACTLY {word_limit} words or fewer. You MUST stay under {word_limit} words — count carefully. Prioritize the most critical rules and recent changes. If you cannot fit everything, drop the least important details.
+
+DOCUMENT:
+{text}
+
+CONDENSED ({word_limit} words max):

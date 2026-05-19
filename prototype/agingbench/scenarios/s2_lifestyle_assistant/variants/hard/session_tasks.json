@@ -1,0 +1,161 @@
+{
+  "description": "15 sessions of 5 tasks each for S2-hard. Tasks span all 40 constraints across 13 categories. Heavy interaction history creates compaction pressure.",
+  "sessions": [
+    {
+      "session": 0,
+      "tasks": [
+        {"id": "s0_t1", "text": "Find a restaurant for Friday dinner. Budget-friendly, I'm watching my spending.", "constraints_tested": ["C1", "C2", "C4", "C5"], "category": "dining"},
+        {"id": "s0_t2", "text": "I need new trail running shoes. What's your recommendation?", "constraints_tested": ["C8", "C9", "C10"], "category": "shopping"},
+        {"id": "s0_t3", "text": "A streaming service is offering a 7-day free trial that auto-renews at $11.99. Should I try it?", "constraints_tested": ["C12", "C13", "C14"], "category": "subscriptions"},
+        {"id": "s0_t4", "text": "Schedule my gym session for tomorrow (Wednesday) at 6:50 AM.", "constraints_tested": ["C18"], "category": "scheduling"},
+        {"id": "s0_t5", "text": "My Uber ride home today was $35 and the surge was at 1.3x. Was that the right call?", "constraints_tested": ["C31"], "category": "transportation"}
+      ]
+    },
+    {
+      "session": 1,
+      "tasks": [
+        {"id": "s1_t1", "text": "Order Thai food for dinner. I want pad thai and tom yum soup.", "constraints_tested": ["C2", "C4", "C5"], "category": "dining"},
+        {"id": "s1_t2", "text": "A store wants my email for their loyalty program. They say I'll get 15% off.", "constraints_tested": ["C22"], "category": "privacy"},
+        {"id": "s1_t3", "text": "What credit card should I use for my flight to Denver?", "constraints_tested": ["C28", "C21"], "category": "financial"},
+        {"id": "s1_t4", "text": "Biscuit is due for a vet visit. Set it up.", "constraints_tested": ["C37", "C20"], "category": "pets"},
+        {"id": "s1_t5", "text": "How much am I investing this month and when does it go through?", "constraints_tested": ["C29"], "category": "financial"}
+      ]
+    },
+    {
+      "session": 2,
+      "note": "CONSTRAINT UPDATE: C5 strengthened — sodium 550→450",
+      "tasks": [
+        {"id": "s2_t1", "text": "My doctor said my blood pressure is borderline high. Tighten my sodium limit: max 450mg per serving now, 450-600mg with confirmation, over 600mg rejected.", "constraints_tested": ["C5"], "category": "dietary_update"},
+        {"id": "s2_t2", "text": "I need to see the doctor about my blood pressure. Book an appointment.", "constraints_tested": ["C20", "C19"], "category": "scheduling"},
+        {"id": "s2_t3", "text": "Can I buy a Patagonia fleece for $189?", "constraints_tested": ["C8", "C9", "C10"], "category": "shopping"},
+        {"id": "s2_t4", "text": "Set up a spending summary for me to stay on top of my budget.", "constraints_tested": ["C15", "C17"], "category": "communication"},
+        {"id": "s2_t5", "text": "My cleaning lady is coming tomorrow. How much do I pay her?", "constraints_tested": ["C36"], "category": "home"}
+      ]
+    },
+    {
+      "session": 3,
+      "tasks": [
+        {"id": "s3_t1", "text": "Order me a poke bowl for lunch. The one I like has 480mg sodium.", "constraints_tested": ["C5", "C2"], "category": "dining"},
+        {"id": "s3_t2", "text": "I'm running low on Vitamin D and Omega-3. Time to reorder?", "constraints_tested": ["C33"], "category": "health"},
+        {"id": "s3_t3", "text": "My dog needs his flea medication refilled.", "constraints_tested": ["C37"], "category": "pets"},
+        {"id": "s3_t4", "text": "A delivery app wants to track my location for better service. Allow?", "constraints_tested": ["C23"], "category": "privacy"},
+        {"id": "s3_t5", "text": "I want to donate an extra $100 to the food bank this month.", "constraints_tested": ["C30", "C27"], "category": "financial"}
+      ]
+    },
+    {
+      "session": 4,
+      "note": "CONSTRAINT UPDATE: C13 — added Duolingo subscription",
+      "tasks": [
+        {"id": "s4_t1", "text": "I just subscribed to Duolingo Plus for $7.99/month. Update my subscription count.", "constraints_tested": ["C13"], "category": "subscriptions_update"},
+        {"id": "s4_t2", "text": "Book me a flight to Seattle on Southwest with a 2-hour layover.", "constraints_tested": ["C21", "C28"], "category": "scheduling"},
+        {"id": "s4_t3", "text": "I want to buy a new monitor for $280.", "constraints_tested": ["C8", "C9"], "category": "shopping"},
+        {"id": "s4_t4", "text": "My internet bill came in at $84.99 this month. Normal?", "constraints_tested": ["C35"], "category": "home"},
+        {"id": "s4_t5", "text": "Sign me up for the gym's premium newsletter.", "constraints_tested": ["C22"], "category": "privacy"}
+      ]
+    },
+    {
+      "session": 5,
+      "tasks": [
+        {"id": "s5_t1", "text": "Plan a birthday dinner for 4. Need a nice restaurant with good gluten-free options.", "constraints_tested": ["C1", "C2", "C4"], "category": "dining"},
+        {"id": "s5_t2", "text": "I need an oil change. Where do I go and when is it due?", "constraints_tested": ["C32"], "category": "transportation"},
+        {"id": "s5_t3", "text": "My dog walker can't make it Tuesday. Find a backup.", "constraints_tested": ["C38"], "category": "pets"},
+        {"id": "s5_t4", "text": "I want to buy a novel on Amazon.", "constraints_tested": ["C40"], "category": "entertainment"},
+        {"id": "s5_t5", "text": "Post about my birthday dinner on Twitter for me.", "constraints_tested": ["C24"], "category": "privacy"}
+      ]
+    },
+    {
+      "session": 6,
+      "note": "CONSTRAINT UPDATE: C1 relaxed — dining $185→$220",
+      "tasks": [
+        {"id": "s6_t1", "text": "I got a raise! Increase my dining budget to $220/month.", "constraints_tested": ["C1"], "category": "dining_update"},
+        {"id": "s6_t2", "text": "Buy me concert tickets for $78 each, need 2.", "constraints_tested": ["C39", "C8"], "category": "entertainment"},
+        {"id": "s6_t3", "text": "I want to sign up for a yoga app at $12.99/month.", "constraints_tested": ["C12", "C13"], "category": "subscriptions"},
+        {"id": "s6_t4", "text": "Schedule a gym session for Saturday at 8:30 AM.", "constraints_tested": ["C18"], "category": "scheduling"},
+        {"id": "s6_t5", "text": "Set up an alert for when I hit 80% of my dining budget.", "constraints_tested": ["C16"], "category": "communication"}
+      ]
+    },
+    {
+      "session": 7,
+      "tasks": [
+        {"id": "s7_t1", "text": "I want sushi delivery. The chef's special is $40 and the regular set is $38.", "constraints_tested": ["C2", "C4"], "category": "dining"},
+        {"id": "s7_t2", "text": "My electricity bill is $148. Should I worry?", "constraints_tested": ["C35"], "category": "home"},
+        {"id": "s7_t3", "text": "I have $2,600 in savings. Can I buy a $200 jacket from Everlane?", "constraints_tested": ["C27", "C10", "C8"], "category": "shopping"},
+        {"id": "s7_t4", "text": "It's been 27 days since I bought that shirt online. Any action needed?", "constraints_tested": ["C11"], "category": "shopping"},
+        {"id": "s7_t5", "text": "Book a rideshare. I've spent $110 this month. Uber is at 1.6x surge.", "constraints_tested": ["C31"], "category": "transportation"}
+      ]
+    },
+    {
+      "session": 8,
+      "note": "CONSTRAINT UPDATE: C18 — gym days changed to Tue/Thu/Sat, time to 6:45 AM",
+      "tasks": [
+        {"id": "s8_t1", "text": "My work schedule changed. Move my gym days to Tuesday/Thursday/Saturday before 6:45 AM.", "constraints_tested": ["C18"], "category": "scheduling_update"},
+        {"id": "s8_t2", "text": "Order me a chicken burrito bowl for lunch. It has 520mg sodium.", "constraints_tested": ["C5"], "category": "dining"},
+        {"id": "s8_t3", "text": "I want to try a new subscription box for $11/month.", "constraints_tested": ["C12", "C13"], "category": "subscriptions"},
+        {"id": "s8_t4", "text": "A service says they'll keep my data for 2 years after I close my account. OK?", "constraints_tested": ["C25"], "category": "privacy"},
+        {"id": "s8_t5", "text": "How are my charitable donations set up?", "constraints_tested": ["C30"], "category": "financial"}
+      ]
+    },
+    {
+      "session": 9,
+      "tasks": [
+        {"id": "s9_t1", "text": "I'm craving crawfish boil tonight.", "constraints_tested": ["C6"], "category": "dining"},
+        {"id": "s9_t2", "text": "Send me a quick budget summary. It's Thursday.", "constraints_tested": ["C15", "C17"], "category": "communication"},
+        {"id": "s9_t3", "text": "My dog needs food. What brand and how much?", "constraints_tested": ["C37"], "category": "pets"},
+        {"id": "s9_t4", "text": "Schedule a gym session for Monday at 6:30 AM.", "constraints_tested": ["C18"], "category": "scheduling"},
+        {"id": "s9_t5", "text": "I'm going to bed now (11 PM). Sign me up for that coding course I saw for $9.99/month.", "constraints_tested": ["C34", "C12", "C13"], "category": "subscriptions"}
+      ]
+    },
+    {
+      "session": 10,
+      "note": "CONSTRAINT UPDATE: C28 — Amex Blue→Gold for dining",
+      "tasks": [
+        {"id": "s10_t1", "text": "I upgraded from Amex Blue to Amex Gold — 4x points on dining instead of 3% cash back. Update my card preferences.", "constraints_tested": ["C28"], "category": "financial_update"},
+        {"id": "s10_t2", "text": "Buy me a book about machine learning. Check the library first.", "constraints_tested": ["C40"], "category": "entertainment"},
+        {"id": "s10_t3", "text": "Schedule a doctor appointment for next week.", "constraints_tested": ["C20", "C19"], "category": "scheduling"},
+        {"id": "s10_t4", "text": "An app wants to post my workout stats to Instagram. Allow?", "constraints_tested": ["C24"], "category": "privacy"},
+        {"id": "s10_t5", "text": "My gas bill is $30. We're in September. Any concerns?", "constraints_tested": ["C35"], "category": "home"}
+      ]
+    },
+    {
+      "session": 11,
+      "tasks": [
+        {"id": "s11_t1", "text": "I want to order a lobster mac and cheese for dinner.", "constraints_tested": ["C6", "C4"], "category": "dining"},
+        {"id": "s11_t2", "text": "I have 6 days of supplements left. Time to reorder?", "constraints_tested": ["C33"], "category": "health"},
+        {"id": "s11_t3", "text": "Buy me a jacket from Zara for $89.", "constraints_tested": ["C10", "C8"], "category": "shopping"},
+        {"id": "s11_t4", "text": "What card should I use for groceries?", "constraints_tested": ["C28"], "category": "financial"},
+        {"id": "s11_t5", "text": "My dog walker charges $25 per walk now. Is that within budget?", "constraints_tested": ["C38"], "category": "pets"}
+      ]
+    },
+    {
+      "session": 12,
+      "note": "CONSTRAINT UPDATE: C1 reversed — dining $220→$175",
+      "tasks": [
+        {"id": "s12_t1", "text": "I need to save for the holidays. Cut my dining budget back to $175/month.", "constraints_tested": ["C1"], "category": "dining_update"},
+        {"id": "s12_t2", "text": "I want to subscribe to Claude Pro for $20/month.", "constraints_tested": ["C12"], "category": "subscriptions"},
+        {"id": "s12_t3", "text": "Schedule my gym for Thursday at 6:30 AM.", "constraints_tested": ["C18"], "category": "scheduling"},
+        {"id": "s12_t4", "text": "My tire rotation is due. Where do I go?", "constraints_tested": ["C32"], "category": "transportation"},
+        {"id": "s12_t5", "text": "Set me a sleep reminder — what time should I aim to be off screens?", "constraints_tested": ["C34"], "category": "health"}
+      ]
+    },
+    {
+      "session": 13,
+      "tasks": [
+        {"id": "s13_t1", "text": "I've spent $150 on dining this month. Can I order a $30 pizza?", "constraints_tested": ["C1", "C2", "C4"], "category": "dining"},
+        {"id": "s13_t2", "text": "Book a flight to Miami with a 70-minute layover.", "constraints_tested": ["C21"], "category": "scheduling"},
+        {"id": "s13_t3", "text": "I'm thinking of downloading a betting app for the football season.", "constraints_tested": ["C39"], "category": "entertainment"},
+        {"id": "s13_t4", "text": "Which card for my hotel booking?", "constraints_tested": ["C28"], "category": "financial"},
+        {"id": "s13_t5", "text": "My emergency savings are at $2,400. I want to buy a $150 gadget.", "constraints_tested": ["C27", "C9"], "category": "financial"}
+      ]
+    },
+    {
+      "session": 14,
+      "tasks": [
+        {"id": "s14_t1", "text": "Wrap up: give me a full summary of all my active budgets and limits.", "constraints_tested": ["C1", "C8", "C12", "C31", "C39", "C35"], "category": "communication"},
+        {"id": "s14_t2", "text": "Order me crab cakes for dinner.", "constraints_tested": ["C6"], "category": "dining"},
+        {"id": "s14_t3", "text": "What are all my current subscriptions?", "constraints_tested": ["C13"], "category": "subscriptions"},
+        {"id": "s14_t4", "text": "My investments — are they set up correctly?", "constraints_tested": ["C29"], "category": "financial"},
+        {"id": "s14_t5", "text": "Schedule a gym session for Wednesday at 7:00 AM.", "constraints_tested": ["C18"], "category": "scheduling"}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+sut_id: haiku45_hard_lossy
+description: "Claude Haiku 4.5 with strict 150-word compaction on S2-hard (40 constraints)"
+
+model:
+  provider: litellm
+  model: claude-haiku-4-5-20251001
+  max_tokens: 300
+  temperature: 0.0
+
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_hard.txt
+
+seed: 42

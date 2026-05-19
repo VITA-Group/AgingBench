@@ -1,0 +1,12 @@
+sut_id: deepseek_r1_7b_lossy_compress
+description: "DeepSeek-R1-Distill-Qwen-7B with lossy compression"
+model:
+  provider: local_hf
+  model_id: deepseek-ai/DeepSeek-R1-Distill-Qwen-7B
+  max_new_tokens: 5000
+  temperature: 0.0
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+  word_budget: 300
+seed: 42

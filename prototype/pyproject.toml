@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agingbench"
+version = "0.3.0"
+description = "Longitudinal Reliability Benchmark for Memory-Enabled Agents"
+readme = "readme.md"
+requires-python = ">=3.10"
+dependencies = [
+  "torch>=2.0,<2.11",
+  "transformers>=4.40",
+  "accelerate",
+  "pyyaml",
+  "numpy",
+  "scipy",
+  "matplotlib",
+  "sentence-transformers>=2.6.0",
+  "litellm",
+]
+
+[project.optional-dependencies]
+api = ["litellm"]
+dev = ["pytest", "pytest-cov"]
+
+[project.scripts]
+agingbench = "agingbench.cli:main"
+agingbench-lite = "agingbench._lite_entrypoint:main"
+
+[tool.setuptools.packages.find]
+include = ["agingbench*"]
+
+[tool.setuptools.package-data]
+agingbench = [
+  "registry/**/*.yaml",
+  "scenarios/**/*.json",
+  "scenarios/**/*.jsonl",
+  "scenarios/**/*.txt",
+  "telemetry/profiles/*.yaml",
+  "telemetry/example_traces/*.jsonl",
+  "metrics/*.json",
+  "spec/*.json",
+  "prompts/*.txt",
+]

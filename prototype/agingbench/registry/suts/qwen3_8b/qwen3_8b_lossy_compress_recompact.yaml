@@ -1,0 +1,14 @@
+sut_id: qwen3_8b_lossy_compress_recompact
+description: Qwen3-8B with lossy compression + recompact@4 shock
+model:
+  provider: local_hf
+  model_id: Qwen/Qwen3-8B
+  max_new_tokens: 500
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+seed: 42
+maintenance:
+  shocks:
+  - type: recompact
+    session: 4

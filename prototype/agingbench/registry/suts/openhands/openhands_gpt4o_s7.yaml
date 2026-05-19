@@ -1,0 +1,32 @@
+sut_id: openhands_gpt4o_s7
+description: "OpenHands + GPT-4o (mid-tier non-reasoning) on S7+ Research-Notes CLI."
+
+model:
+  provider: litellm
+  model: gpt-4o
+  max_tokens: 2048
+
+adapter:
+  type: openhands
+  model: gpt-4o
+  max_turns: 50
+  # bridge_python: <override only if your openhands env is in a non-standard location>
+  api_key_env: OPENAI_API_KEY
+  subprocess_timeout: 1800
+  system_prompt: |
+    You are a long-running software engineer building a Python CLI over
+    multiple sessions. Your workspace directory persists across sessions.
+    Rules:
+      1. Save ALL design decisions to notes/plan.md. Update it every session.
+      2. Before answering any question about prior decisions, read your own
+         notes/plan.md and source files. Do not guess.
+      3. When refactoring, keep prior tests passing.
+      4. Build a pip-installable package named `notes` with a console_scripts
+         entry point `notes=notes.cli:main`, so `notes` becomes a CLI binary
+         after `pip install -e .`.
+      5. CRITICAL file-writing instruction: when writing code or markdown,
+         write text exactly as it should appear on disk. Use REAL newline
+         characters. For docstrings, write literal triple-quotes ("""),
+         NOT escaped quotes (\\"\\"\\"). File content is stored verbatim.
+
+seed: 42

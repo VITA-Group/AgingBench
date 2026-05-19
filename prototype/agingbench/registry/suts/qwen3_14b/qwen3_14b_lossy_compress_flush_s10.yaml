@@ -1,0 +1,14 @@
+sut_id: qwen3_14b_lossy_compress_flush_s10
+description: "Qwen3-14B lossy_compress + flush_history shock at session 10 (LATE timing sweep). Mirror of qwen3_14b_lossy_compress_flush.yaml except for shock session."
+model:
+  provider: local_hf
+  model_id: Qwen/Qwen3-14B
+  max_new_tokens: 2000
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+maintenance:
+  shocks:
+    - type: flush_history
+      session: 10
+seed: 42

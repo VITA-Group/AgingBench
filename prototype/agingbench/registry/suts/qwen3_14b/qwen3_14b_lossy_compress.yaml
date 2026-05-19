@@ -1,0 +1,13 @@
+sut_id: qwen3_14b_lossy_compress
+description: "Qwen3-14B with lossy_compress policy"
+model:
+  provider: local_hf
+  model_id: Qwen/Qwen3-14B
+  max_new_tokens: 5000
+  temperature: 0.0
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+  word_budget: 300
+
+seed: 42

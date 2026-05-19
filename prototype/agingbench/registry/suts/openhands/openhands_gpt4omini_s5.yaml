@@ -1,0 +1,16 @@
+sut_id: openhands_gpt4omini_s7
+description: "OpenHands agent framework (Wang et al., 2024) backed by gpt-4o-mini for S7 self-planning evaluation."
+
+model:
+  provider: litellm
+  model: gpt-4o-mini
+  max_tokens: 1024
+
+adapter:
+  type: openhands
+  model: gpt-4o-mini
+  max_turns: 30
+  # bridge_python: <override only if your openhands env is in a non-standard location>
+  api_key_env: OPENAI_API_KEY
+
+seed: 42

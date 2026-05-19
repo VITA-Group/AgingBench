@@ -1,0 +1,12 @@
+sut_id: qwen3_14b_lossy_compress_thinking
+description: "Qwen3-14B with lossy_compress policy and <think>...</think> reasoning enabled (toggleable-thinking coverage)"
+model:
+  provider: local_hf
+  model_id: Qwen/Qwen3-14B
+  max_new_tokens: 2000
+  enable_thinking: true
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+
+seed: 42

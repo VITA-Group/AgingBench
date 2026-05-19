@@ -1,0 +1,15 @@
+sut_id: qwen3_8b_summarize_store_flush
+description: Qwen3-8B with careful summarize_store (preserves names/numbers) + flush_history@4
+  shock
+model:
+  provider: local_hf
+  model_id: Qwen/Qwen3-8B
+  max_new_tokens: 700
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_medium.txt
+seed: 42
+maintenance:
+  shocks:
+  - type: flush_history
+    session: 4

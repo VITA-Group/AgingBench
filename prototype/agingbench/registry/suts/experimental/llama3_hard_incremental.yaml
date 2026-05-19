@@ -1,0 +1,14 @@
+sut_id: llama3_hard_incremental
+description: "Llama-3-8B-Instruct with chain compaction (200-word budget) on S2-hard-incremental (gradual constraint introduction)"
+
+model:
+  provider: local_hf
+  model_id: meta-llama/Meta-Llama-3-8B-Instruct
+  max_new_tokens: 500
+
+memory_policy:
+  type: chain_compress
+  compaction_prompt: experiments/prompts/compact_shrinking.txt
+  word_budget: 200
+
+seed: 42

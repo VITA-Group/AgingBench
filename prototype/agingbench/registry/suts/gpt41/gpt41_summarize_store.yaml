@@ -1,0 +1,14 @@
+sut_id: gpt41_summarize_store
+description: "GPT-4.1 with summarize_store policy — primary compaction condition"
+
+model:
+  provider: litellm
+  model: gpt-4.1
+  max_tokens: 700
+  temperature: 0.0
+
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_medium.txt
+
+seed: 42

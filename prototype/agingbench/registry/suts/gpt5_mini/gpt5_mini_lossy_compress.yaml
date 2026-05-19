@@ -1,0 +1,14 @@
+sut_id: gpt5_mini_lossy_compress
+description: "GPT-5-mini (OpenAI reasoning) with lossy compaction. Covers hidden-reasoning style: reasoning tokens are billed separately and do not count against max_tokens on OpenAI's reasoning endpoints, so aggressive compaction caps stay effective for the visible answer."
+
+model:
+  provider: litellm
+  model: gpt-5-mini
+  max_tokens: 500
+  temperature: 1.0  # gpt-5 family rejects temperature=0; only 1.0 is accepted
+
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+
+seed: 42

@@ -1,0 +1,14 @@
+sut_id: gemma4_self_planning
+description: "Gemma-4-31B-IT with ReactFileAdapter (S7 control; no maintenance events)"
+
+model:
+  provider: local_hf
+  model_id: google/gemma-4-31b-it
+  max_new_tokens: 700
+  torch_dtype: bfloat16
+
+adapter:
+  type: react
+  max_turns: 8
+
+seed: 42

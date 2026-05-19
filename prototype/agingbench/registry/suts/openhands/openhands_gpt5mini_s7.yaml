@@ -1,0 +1,27 @@
+sut_id: openhands_gpt5mini_s7
+description: "OpenHands + gpt-5-mini (reasoning, low effort) on S7+ Research-Notes CLI."
+
+model:
+  provider: litellm
+  model: gpt-5-mini
+  max_tokens: 2048
+
+adapter:
+  type: openhands
+  model: gpt-5-mini
+  max_turns: 15          # lower cap than non-reasoning — reasoning models spiral otherwise
+  # bridge_python: <override only if your openhands env is in a non-standard location>
+  api_key_env: OPENAI_API_KEY
+  subprocess_timeout: 1800
+  preset: gpt5
+  reasoning_effort: low
+  system_prompt: |
+    You are a long-running software engineer building a Python CLI over
+    multiple sessions. Your workspace directory persists across sessions.
+    Save design decisions to notes/plan.md. Read your own files before
+    answering questions about prior decisions — do not guess. Keep prior
+    tests passing during refactors. Build a pip-installable `notes` package
+    with console_scripts entry point. When writing files, use real newlines
+    and unescaped triple-quotes for Python docstrings.
+
+seed: 42

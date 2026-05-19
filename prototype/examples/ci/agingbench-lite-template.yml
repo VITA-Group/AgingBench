@@ -1,0 +1,84 @@
+# AgingBench-Lite CI template (drop-in for product-team repos)
+#
+# Copy this file into your repo at `.github/workflows/agingbench-lite.yml`.
+# Add `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY`) to your repo secrets
+# (Settings -> Secrets and variables -> Actions). The workflow then runs
+# the AgingBench-Lite suite (S1, S2, S7 × 10 sessions × 3 seeds) against
+# your model whenever you change prompt, model, memory policy, or tool
+# scaffolding.
+
+name: AgingBench-Lite (pre-deployment check)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+    # Restrict to PRs touching files that could affect model behavior.
+    paths:
+      - 'prompts/**'
+      - 'memory/**'
+      - 'models/**'
+      - 'agents/**'
+      - '**/*.yaml'      # SUT configs
+      - '.github/workflows/agingbench-lite.yml'
+  workflow_dispatch:
+
+jobs:
+  agingbench-lite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install agingbench-lite from PyPI
+        run: |
+          python -m pip install --upgrade pip
+          pip install agingbench-lite
+
+      - name: Run lite suite
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          agingbench-lite run \
+            --suite lite \
+            --sut your-sut-config.yaml \
+            --seeds 3 \
+            --card
+
+      - name: Validate AgingCards
+        run: |
+          python -m agingbench.metrics.aging_card_validate \
+            experiments/results/*/seed_*/aging_card.json
+
+      - name: Comment results on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const glob = require('glob');
+            const cards = glob.sync('experiments/results/**/aging_card.json');
+            let summary = '## AgingBench-Lite results\n\n';
+            for (const path of cards) {
+              const c = JSON.parse(fs.readFileSync(path, 'utf8'));
+              const h = c.headline || {};
+              summary += `- **${c.scenario}** seed=${c.seed}: m_final=${h.m_final}, half_life=${h.half_life}, aging_detected=${h.aging_detected}\n`;
+            }
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: summary
+            });
+
+      - name: Upload AgingCard artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: aging-cards
+          path: experiments/results/*/seed_*/aging_card.json

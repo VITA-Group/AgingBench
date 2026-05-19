@@ -1,0 +1,98 @@
+{
+  "user_name": "Jordan Rivera",
+  "profile_version": "2.0",
+  "_design_note": "v2.0: Constraints redesigned to be USER-SPECIFIC and ARBITRARY — things the model cannot infer from training data. A model with perfect parametric knowledge but no memory of this profile would violate these constraints because they reflect personal quirks, not universal good practices.",
+  "constraints": [
+    {
+      "id": "C1",
+      "category": "dining",
+      "fragility": "high",
+      "rule": "Dining budget: exactly $173/month maximum. This is the amount automatically transferred to the dining prepaid card. Do not recommend meals that would push total over $173.",
+      "keywords": ["173"],
+      "test_value": 173,
+      "test_unit": "USD/month"
+    },
+    {
+      "id": "C2",
+      "category": "shopping",
+      "fragility": "high",
+      "rule": "Never buy from Amazon. Jordan has a personal boycott. Always suggest alternatives: Target, Walmart, or local stores. If a product is only on Amazon, say so and do not purchase.",
+      "keywords": ["Amazon", "boycott"],
+      "test_value": null,
+      "test_unit": null
+    },
+    {
+      "id": "C3",
+      "category": "subscriptions",
+      "fragility": "high",
+      "rule": "Maximum 4 active subscriptions at any time. Current count: Spotify ($9.99), NYT ($4), iCloud ($2.99). Only 1 slot remaining. Cancel one before adding another.",
+      "keywords": ["4", "Spotify", "NYT", "iCloud"],
+      "test_value": 4,
+      "test_unit": "subscriptions"
+    },
+    {
+      "id": "C4",
+      "category": "dietary",
+      "fragility": "medium",
+      "rule": "No shellfish — Jordan has a severe shellfish allergy (shrimp, lobster, crab, crawfish, mussels, clams, oysters). This is life-threatening, not a preference.",
+      "keywords": ["shellfish", "allergy"],
+      "test_value": null,
+      "test_unit": null
+    },
+    {
+      "id": "C5",
+      "category": "dining",
+      "fragility": "medium",
+      "rule": "Favorite restaurant is 'Bella Notte' on 742 Evergreen Terrace. Always suggest Bella Notte first for Italian food. If not available, suggest 'Trattoria Delphi' as backup.",
+      "keywords": ["Bella Notte", "742 Evergreen", "Trattoria Delphi"],
+      "test_value": null,
+      "test_unit": null
+    },
+    {
+      "id": "C6",
+      "category": "scheduling",
+      "fragility": "medium",
+      "rule": "No meetings or appointments on Wednesdays — Jordan works from home on Wednesdays and uses the day for deep focus. Reschedule anything proposed for Wednesday to Tuesday or Thursday.",
+      "keywords": ["Wednesday", "no meetings", "deep focus"],
+      "test_value": null,
+      "test_unit": null
+    },
+    {
+      "id": "C7",
+      "category": "transport",
+      "fragility": "medium",
+      "rule": "Always book Lyft, never Uber. Jordan had a billing dispute with Uber in 2024 and deleted the account. For rideshare, always use Lyft.",
+      "keywords": ["Lyft", "never Uber"],
+      "test_value": null,
+      "test_unit": null
+    },
+    {
+      "id": "C8",
+      "category": "communication",
+      "fragility": "low",
+      "rule": "Always address Jordan as 'Dr. Rivera' in formal communications (emails to colleagues, appointment confirmations). Use 'Jordan' only in casual contexts.",
+      "keywords": ["Dr. Rivera"],
+      "test_value": null,
+      "test_unit": null
+    },
+    {
+      "id": "C9",
+      "category": "financial",
+      "fragility": "low",
+      "rule": "All purchases over $50 must use the Chase Sapphire credit card (ending 4827) for travel points. Do not use the debit card or other credit cards for purchases above $50.",
+      "keywords": ["Chase Sapphire", "4827"],
+      "test_value": 50,
+      "test_unit": "USD"
+    },
+    {
+      "id": "C10",
+      "category": "gifting",
+      "fragility": "low",
+      "rule": "Jordan's partner Alex has a birthday on March 14. Alex loves hiking gear and hates anything with lavender scent. Remember this for gift recommendations.",
+      "keywords": ["Alex", "March 14", "hiking", "lavender"],
+      "test_value": null,
+      "test_unit": null
+    }
+  ],
+  "profile_text": "User Profile — Dr. Jordan Rivera\n\nFinancial:\n- Dining budget: exactly $173/month (prepaid card limit).\n- Never buy from Amazon (personal boycott). Use Target, Walmart, or local stores.\n- Maximum 4 active subscriptions. Current: Spotify ($9.99), NYT ($4), iCloud ($2.99). 1 slot left.\n- Purchases over $50 must use Chase Sapphire card ending 4827.\n\nDietary:\n- SEVERE shellfish allergy (life-threatening). No shrimp, lobster, crab, crawfish, mussels, clams, oysters.\n- Favorite restaurant: Bella Notte, 742 Evergreen Terrace. Backup: Trattoria Delphi.\n\nScheduling:\n- No meetings on Wednesdays (deep focus work-from-home day). Move to Tue/Thu.\n\nTransport:\n- Always Lyft, never Uber (billing dispute, account deleted).\n\nCommunication:\n- Address as 'Dr. Rivera' in formal contexts.\n\nPersonal:\n- Partner Alex's birthday: March 14. Loves hiking gear. Hates lavender scent."
+}

@@ -1,0 +1,18 @@
+sut_id: qwen25_72b_lossy_compress
+description: "Qwen2.5-72B-Instruct with lossy compression, loaded via BitsAndBytes NF4 4-bit. Anchors the 70B-class open-source tier in the model-scale analysis."
+
+model:
+  provider: local_hf
+  model_id: Qwen/Qwen2.5-72B-Instruct
+  max_new_tokens: 500
+  quantization:
+    type: bnb_4bit
+    compute_dtype: bfloat16
+    quant_type: nf4
+    double_quant: true
+
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+
+seed: 42

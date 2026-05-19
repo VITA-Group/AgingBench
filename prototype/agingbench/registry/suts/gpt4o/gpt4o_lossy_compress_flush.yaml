@@ -1,0 +1,20 @@
+sut_id: gpt4o_lossy_compress_flush
+description: "GPT-4o with summarize_store + lossy compaction (300-word budget) + flush_history shock at session 4."
+
+model:
+  provider: litellm
+  model: gpt-4o
+  max_tokens: 5000
+  temperature: 0.0
+
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+  word_budget: 300
+
+maintenance:
+  shocks:
+    - type: flush_history
+      session: 4
+
+seed: 42

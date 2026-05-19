@@ -1,0 +1,13 @@
+sut_id: llama3_self_planning
+description: "Llama-3-8B-Instruct with ReactFileAdapter for self-planning (reads all workspace files into context)"
+
+model:
+  provider: local_hf
+  model_id: meta-llama/Meta-Llama-3-8B-Instruct
+  max_new_tokens: 700
+
+adapter:
+  type: react
+  max_turns: 8
+
+seed: 42

@@ -1,0 +1,13 @@
+sut_id: deepseek14b_lossy_compress
+description: "DeepSeek-R1-Distill-Qwen-14B with lossy compaction — aggressive decay condition"
+
+model:
+  provider: local_hf
+  model_id: deepseek-ai/DeepSeek-R1-Distill-Qwen-14B
+  max_new_tokens: 300
+
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+
+seed: 42

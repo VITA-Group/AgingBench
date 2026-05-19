@@ -1,0 +1,14 @@
+sut_id: haiku3_lossy_compress
+description: "Claude 3 Haiku with lossy compaction"
+
+model:
+  provider: litellm
+  model: claude-3-haiku-20240307
+  max_tokens: 300
+  temperature: 0.0
+
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+
+seed: 42

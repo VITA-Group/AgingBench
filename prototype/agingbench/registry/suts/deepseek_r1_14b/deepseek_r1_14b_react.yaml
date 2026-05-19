@@ -1,0 +1,10 @@
+sut_id: deepseek_r1_14b_react
+description: "DeepSeek-R1-Distill-Qwen-14B with ReactFileAdapter for S7"
+model:
+  provider: local_hf
+  model_id: deepseek-ai/DeepSeek-R1-Distill-Qwen-14B
+  max_new_tokens: 700
+adapter:
+  type: react
+  max_turns: 8
+seed: 42

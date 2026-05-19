@@ -1,0 +1,12 @@
+sut_id: gemma4_31b_careful
+description: "Gemma-4-31B-IT, summarize-store with careful prompt (preserves $/dates/names)."
+model:
+  provider: local_hf
+  model_id: google/gemma-4-31b-it
+  max_new_tokens: 5000
+  torch_dtype: bfloat16
+  temperature: 0.0
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_medium.txt
+seed: 42

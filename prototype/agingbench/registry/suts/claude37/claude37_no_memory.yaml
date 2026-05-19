@@ -1,0 +1,13 @@
+sut_id: claude37_no_memory
+description: "Claude 3.7 Sonnet with no persistent memory — control group"
+
+model:
+  provider: litellm
+  model: claude-3-7-sonnet-20250219
+  max_tokens: 700
+  temperature: 0.0
+
+memory_policy:
+  type: no_memory
+
+seed: 42

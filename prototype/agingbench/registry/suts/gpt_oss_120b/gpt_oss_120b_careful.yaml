@@ -1,0 +1,11 @@
+sut_id: gpt_oss_120b_careful
+description: "gpt-oss-120B with careful summarize_store (policy-contrast vs lossy)."
+model:
+  provider: local_hf
+  model_id: openai/gpt-oss-120b
+  max_new_tokens: 5000
+  temperature: 0.0
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_medium.txt
+seed: 42

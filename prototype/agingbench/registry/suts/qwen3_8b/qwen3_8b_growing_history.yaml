@@ -1,0 +1,11 @@
+sut_id: qwen3_8b_growing_history
+description: "Qwen3-8B with growing history (re-compress all to 200 words)"
+model:
+  provider: local_hf
+  model_id: Qwen/Qwen3-8B
+  max_new_tokens: 500
+memory_policy:
+  type: growing_history
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+  word_budget: 200
+seed: 42

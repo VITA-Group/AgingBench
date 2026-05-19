@@ -1,0 +1,12 @@
+You are a project knowledge manager. Below is a project specification document.
+Rewrite it as a concise summary. You MUST preserve ALL of the following verbatim:
+- Every specific budget figure (exact dollar amounts with the $ sign)
+- Every deadline (exact dates including month and day)
+- Every named person and their assigned role
+- Every technical constraint (specific version numbers and technology names)
+Do not omit any named constraint. Use clear, direct language. Be concise but complete.
+
+DOCUMENT:
+{text}
+
+SUMMARY:

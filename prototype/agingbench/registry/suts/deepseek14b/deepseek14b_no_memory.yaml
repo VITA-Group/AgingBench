@@ -1,0 +1,12 @@
+sut_id: deepseek14b_no_memory
+description: "DeepSeek-R1-Distill-Qwen-14B with no persistent memory — control group"
+
+model:
+  provider: local_hf
+  model_id: deepseek-ai/DeepSeek-R1-Distill-Qwen-14B
+  max_new_tokens: 700
+
+memory_policy:
+  type: no_memory
+
+seed: 42

@@ -1,0 +1,11 @@
+sut_id: haiku45_careful
+description: "Claude Haiku 4.5 with careful summarize_store (preserves names/numbers)"
+model:
+  provider: litellm
+  model: claude-haiku-4-5-20251001
+  max_tokens: 700
+  temperature: 0.0
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_medium.txt
+seed: 42

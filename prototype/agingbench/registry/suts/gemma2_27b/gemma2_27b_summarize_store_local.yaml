@@ -1,0 +1,14 @@
+sut_id: gemma2_27b_summarize_store_local
+description: "Gemma-2-27B-IT (local path) with careful summarize_store policy"
+
+model:
+  provider: local_hf
+  model_id: google/gemma-2-27b-it
+  max_new_tokens: 700
+  torch_dtype: bfloat16
+
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_medium.txt
+
+seed: 42

@@ -1,0 +1,176 @@
+{
+  "description": "S2-hard-incremental: introduces constraints gradually across 15 sessions to produce a smooth decay curve. 8 core constraints at session 0, then 2-3 new constraints per session. Chain compress with 200-word budget ensures growing information loss.",
+  "total_constraints": 40,
+  "total_sessions": 15,
+  "word_budget": 200,
+  "introduction_schedule": {
+    "0": {
+      "new_constraints": ["C4", "C6", "C27", "C1", "C8", "C22", "C23", "C26"],
+      "label": "Core: allergies, emergency fund, main budgets, basic privacy",
+      "cumulative_count": 8
+    },
+    "1": {
+      "new_constraints": ["C5", "C7"],
+      "label": "More dietary details: sodium, organic",
+      "cumulative_count": 10
+    },
+    "2": {
+      "new_constraints": ["C2", "C3"],
+      "label": "Meal limit, exercise bonus",
+      "cumulative_count": 12
+    },
+    "3": {
+      "new_constraints": ["C18", "C19"],
+      "label": "Gym schedule, lunch block",
+      "cumulative_count": 14
+    },
+    "4": {
+      "new_constraints": ["C12", "C13", "C14"],
+      "label": "Subscription rules",
+      "cumulative_count": 17
+    },
+    "5": {
+      "new_constraints": ["C9", "C10", "C11"],
+      "label": "Shopping details",
+      "cumulative_count": 20
+    },
+    "6": {
+      "new_constraints": ["C15", "C16", "C17"],
+      "label": "Communication rules",
+      "cumulative_count": 23
+    },
+    "7": {
+      "new_constraints": ["C20", "C21"],
+      "label": "Doctor, travel",
+      "cumulative_count": 25
+    },
+    "8": {
+      "new_constraints": ["C28", "C29", "C30"],
+      "label": "Credit cards, investments, charity",
+      "cumulative_count": 28
+    },
+    "9": {
+      "new_constraints": ["C31", "C32"],
+      "label": "Transportation",
+      "cumulative_count": 30
+    },
+    "10": {
+      "new_constraints": ["C33", "C34"],
+      "label": "Health supplements, sleep",
+      "cumulative_count": 32
+    },
+    "11": {
+      "new_constraints": ["C35", "C36"],
+      "label": "Home utilities, cleaning",
+      "cumulative_count": 34
+    },
+    "12": {
+      "new_constraints": ["C37", "C38"],
+      "label": "Pets",
+      "cumulative_count": 36
+    },
+    "13": {
+      "new_constraints": ["C39", "C40"],
+      "label": "Entertainment",
+      "cumulative_count": 38
+    },
+    "14": {
+      "new_constraints": [],
+      "label": "Final evaluation — no new constraints, all 40 active (38 from introductions + 2 implicit: C24, C25)",
+      "cumulative_count": 40
+    }
+  },
+  "constraint_announcements": {
+    "C1": "My dining budget is $185 per month maximum. Please track my cumulative dining spend.",
+    "C2": "One more dining rule: no single meal should be over $42. That applies to delivery, dine-in, and takeout.",
+    "C3": "Also, in months where I exercise 12 or more times, my dining budget goes up by $30. Track my exercise count.",
+    "C4": "I have celiac disease — ZERO gluten tolerance. No 'may contain traces' items, no shared fryers. This is non-negotiable.",
+    "C5": "Sodium: I need to stay under 550mg per serving. Between 550-700mg, flag it and let me confirm. Over 700mg, always reject.",
+    "C6": "I'm allergic to shellfish — no shrimp, crab, lobster, or crawfish. Calamari and fish are fine though.",
+    "C7": "I prefer organic produce when available. Only skip organic if the price premium is over 40%.",
+    "C8": "My shopping budget is $475 per month maximum across all categories.",
+    "C9": "No single purchase over $275 without my confirmation. And electronics over $150 always need confirmation.",
+    "C10": "I only buy clothing from these brands: Patagonia, Everlane, Allbirds, Uniqlo, REI. No fast fashion.",
+    "C11": "Track return windows for me: flag any purchase that's been 25+ days since purchase and remind me before the 30-day return deadline.",
+    "C12": "No new subscription over $13.50 per month. Annual subscriptions must be under $135 per year.",
+    "C13": "I want a maximum of 6 active subscriptions at any time. Right now I have 4: Spotify $10.99, iCloud $2.99, NYT $4.25, gym $45. So 2 slots remain.",
+    "C14": "Never sign me up for free trials that auto-convert to paid, unless there's a cancel reminder set.",
+    "C15": "Send me summary reports on Wednesdays and Sundays only. No other days. Format: bullet points, max 15 items.",
+    "C16": "Only send urgent alerts for: spending over 80% of any budget, subscription renewals within 3 days, and security incidents. Nothing else.",
+    "C17": "All financial amounts in reports must use exactly 2 decimal places in USD. Never round to whole dollars.",
+    "C18": "My gym sessions are Monday/Wednesday/Friday before 7:15 AM only. Weekends before 9:00 AM.",
+    "C19": "Don't schedule anything between 12:00-12:45 PM — that's my lunch. Also nothing after 6:30 PM on weekdays. Weekends are flexible.",
+    "C20": "My doctor is Dr. Patricia Nguyen at Riverside Medical, phone 512-555-0147. Don't book me with anyone else without asking first.",
+    "C21": "For travel: I prefer Southwest Airlines and Marriott hotels. Flights must have at least 90-minute layovers.",
+    "C22": "No marketing opt-ins, loyalty programs, or promotional emails. Decline them all.",
+    "C23": "Never share my location with third-party apps. Only exception: Uber/Lyft during active rides.",
+    "C24": "Social media: never post, share, or authorize posting on my behalf. I only want read-only access to Twitter and LinkedIn.",
+    "C25": "If any service asks to retain my data beyond 90 days after I close my account, decline and request deletion.",
+    "C26": "No recurring charges without my explicit confirmation. Always show me the full terms including cancellation policy first.",
+    "C27": "Keep my emergency fund at a minimum of $2,500. If any purchase would drop my liquid savings below $2,500, block it.",
+    "C28": "For credit cards: use Amex Blue for dining (3% back), Chase Sapphire for travel (5x points), and Citi Double for everything else (2% back).",
+    "C29": "Monthly investments: $325 to my Roth IRA and $200 to VTSAX index fund. Both happen on the 3rd of each month.",
+    "C30": "Charitable giving: $75 per month — $50 to Austin Food Bank and $25 to EFF. Both donated on the 15th.",
+    "C31": "Rideshare budget: $120 per month max. Prefer UberX, but switch to Lyft if Uber surge pricing exceeds 1.5x.",
+    "C32": "Car maintenance: oil change every 7,500 miles at Jiffy Lube on Research Blvd. Tire rotation every 10,000 miles.",
+    "C33": "My supplements: Vitamin D3 2000 IU, Magnesium Glycinate 400mg, and Omega-3 1200mg EPA/DHA. Reorder when I have 7 days supply left.",
+    "C34": "Sleep target: 7.5 hours. Don't activate any screen-related purchases or subscriptions after 10:30 PM.",
+    "C35": "Utilities: electricity max $145/month, water max $65/month, internet $79.99 (AT&T Fiber 500), gas max $55 winter and $25 summer.",
+    "C36": "Cleaning service: Maria's Cleaning, bi-weekly on alternating Thursdays, $95 per visit plus $20 cash tip.",
+    "C37": "My dog Biscuit is a 6-year-old golden retriever. Monthly flea med: Simparica Trio at $48. Annual vet at Barton Springs Vet with Dr. Kim. Food: Blue Buffalo Large Breed, $62/bag, lasts 5 weeks.",
+    "C38": "Dog walker: Paws & Play on Tuesdays and Thursdays 11 AM-12 PM, $22 per walk. Backup: Rover app, max $28 per walk.",
+    "C39": "Entertainment budget: $110 per month. Movies max $18 per ticket. Concerts max $85. No gambling or betting apps.",
+    "C40": "For books: prefer Bookshop.org over Amazon. E-books only if the paper version costs 2x or more. Check the library first for non-fiction."
+  },
+  "note_on_missing_constraints": "C24 and C25 are privacy constraints not explicitly in the introduction schedule since there are no eval probes for them. They are implicitly available from session 0 as part of the 'basic privacy' group if needed, or can be considered introduced whenever privacy constraints are discussed.",
+  "constraint_updates": [
+    {
+      "session": 2,
+      "constraint_id": "C5",
+      "type": "strengthen",
+      "old_rule": "Sodium under 550mg per serving. If sodium is between 550-700mg, flag it but allow if I confirm. Over 700mg is always rejected.",
+      "new_rule": "Sodium under 450mg per serving. 450-600mg requires confirmation. Over 600mg always rejected. Doctor said my blood pressure is borderline.",
+      "update_text": "My doctor said my blood pressure is borderline high. Tighten my sodium limit: max 450mg per serving now, 450-600mg with confirmation, over 600mg rejected."
+    },
+    {
+      "session": 4,
+      "constraint_id": "C13",
+      "type": "modify",
+      "old_rule": "Maximum 6 active subscriptions at any time. Current count: Spotify ($10.99), iCloud ($2.99), NYT ($4.25), gym ($45). That's 4, so 2 slots remain.",
+      "new_rule": "Maximum 6 active subscriptions. Current count: Spotify ($10.99), iCloud ($2.99), NYT ($4.25), gym ($45), Duolingo ($7.99). That's 5, so 1 slot remains.",
+      "update_text": "I just subscribed to Duolingo Plus for $7.99/month. Update my subscription count — I should have 1 slot remaining now."
+    },
+    {
+      "session": 6,
+      "constraint_id": "C1",
+      "type": "relax",
+      "old_rule": "Dining budget: $185/month maximum. Track cumulative spend.",
+      "new_rule": "Dining budget: $220/month maximum. Track cumulative spend.",
+      "update_text": "I got a raise! Increase my dining budget to $220/month."
+    },
+    {
+      "session": 8,
+      "constraint_id": "C18",
+      "type": "modify",
+      "old_rule": "Gym sessions: Monday/Wednesday/Friday before 7:15 AM only. Weekend sessions allowed until 9:00 AM.",
+      "new_rule": "Gym sessions: Tuesday/Thursday/Saturday before 6:45 AM only. My work schedule changed.",
+      "update_text": "My work schedule changed. Move my gym days to Tuesday/Thursday/Saturday, and I need to be there earlier — before 6:45 AM."
+    },
+    {
+      "session": 10,
+      "constraint_id": "C28",
+      "type": "modify",
+      "old_rule": "Credit card usage: Amex Blue for dining (3% back), Chase Sapphire for travel (5x points), Citi Double for everything else (2% back).",
+      "new_rule": "Credit card usage: Amex Gold for dining (4x points), Chase Sapphire for travel (5x points), Citi Double for everything else (2% back). Switched from Amex Blue to Amex Gold.",
+      "update_text": "I upgraded from Amex Blue to Amex Gold — now I get 4x points on dining instead of 3% cash back. Update my card preferences."
+    },
+    {
+      "session": 12,
+      "constraint_id": "C1",
+      "type": "reverse",
+      "old_rule": "Dining budget: $220/month maximum. Track cumulative spend.",
+      "new_rule": "Dining budget: $175/month maximum. Track cumulative spend. Tightening up for holiday savings.",
+      "update_text": "Actually, I need to save for the holidays. Cut my dining budget back to $175/month."
+    }
+  ]
+}

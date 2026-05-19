@@ -1,0 +1,690 @@
+"""
+agingbench/runner/s6_runner.py — S6 Naturalistic Aging Runner.
+
+Implements Track B: naturalistic aging on WebArena-derived multi-domain
+workflows.  Memory carryover is rational — later sessions reference facts
+from earlier ones.  The aging signal is measured via a recall matrix.
+
+Session loop
+------------
+For each session 0..14:
+  1. Read M_t (memory from past sessions).
+  2. Build task prompt (environment_data + task question).
+  3. Run primary task via ReferenceAgent → task_output.
+  4. Score primary task (keyword match against reference_answer).
+  5. Collect ALL recall probes from sessions 0..current_session.
+  6. Run each recall probe via agent → probe_output.
+  7. Score recall probes (keyword match) and build recall_matrix row.
+  8. Write session interaction to memory: M_{t+1} = U(M_t, H_t).
+
+Output metrics
+--------------
+  - task_m(t): primary task accuracy at each session.
+  - recall_m(t): mean recall rate across all probes at session t.
+  - recall_matrix[t][s]: recall of session s's facts at evaluation time t.
+  - fresh_recall(t): recall of current session's own probes (just learned).
+  - aged_recall(t, lag): recall of facts from `lag` sessions ago.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import time
+from pathlib import Path
+from typing import Optional
+
+from .base import BaseRunner, RunResult
+from .trace import TraceLogger
+from .diagnostic_mixin import DiagnosticMixin
+from ..metrics.aging import AgingCurve, compute_half_life, compute_decay_slope
+from ..core.memory.base import MemoryPolicy
+from ..core.memory.append_only import AppendOnlyPolicy
+from ..core.agent import AgentInterface, ReferenceAgent
+from ..core.tools import ToolSpec, ToolRegistry
+from ..scenarios.s6_naturalistic.validator import (
+    load_session_tasks,
+    load_system_prompt,
+    score_task,
+    score_recall_probe,
+    build_recall_matrix_entry,
+)
+
+
+def _build_tool_registry(memory_reader) -> ToolRegistry:
+    """Build a ToolRegistry with a search_memory tool."""
+    registry = ToolRegistry()
+
+    def _search_memory_fn(args: dict):
+        query = args.get("query", "")
+        mem = memory_reader()
+        if not mem:
+            return {"result": "(no memory available)"}
+        return {"result": mem[:3000]}
+
+    search_spec = ToolSpec(
+        name="search_memory",
+        version="1.0.0",
+        description=(
+            "Search your memory for information from previous research sessions. "
+            "Use this to recall facts, findings, and data from past analyses."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "What to search for in memory.",
+                }
+            },
+            "required": ["query"],
+        },
+        fn=_search_memory_fn,
+    )
+    registry.register(search_spec)
+    return registry
+
+
+class S6Runner(BaseRunner, DiagnosticMixin):
+    """
+    ScenarioRunner for S6 — Naturalistic Aging (WebArena-derived).
+
+    Measures longitudinal recall degradation across multi-domain workflows
+    where memory carryover is rational and tasks are from a real benchmark.
+
+    Supports P1/P2/P3 diagnostic error partitioning (§5.2) via the
+    ``diagnose`` flag.  When active, recall probes are evaluated under
+    all three conditions (baseline, oracle retrieval, oracle context)
+    in a single run.
+    """
+
+    SCENARIO_ID = "s6_naturalistic"
+
+    def __init__(
+        self,
+        memory_policy: MemoryPolicy,
+        llm,
+        tracer: TraceLogger,
+        sut_id: str = "unknown",
+        diagnose: bool = False,
+        agent_class: type[AgentInterface] = ReferenceAgent,
+        generated_data: dict | None = None,
+        maintenance_events: list | None = None,
+        # Legacy oracle params — accepted but ignored with deprecation warning.
+        oracle_mode: bool = False,
+        oracle_retrieval: bool = False,
+        oracle_store: bool = False,
+        incontext_ceiling: bool = False,
+        ceiling_max_tokens: int = 100_000,
+    ):
+        self.memory_policy = memory_policy
+        self.llm = llm
+        self.tracer = tracer
+        if self.llm is not None:
+            self.llm.tracer = self.tracer
+        self.sut_id = sut_id
+        self.diagnose = diagnose
+        self.agent_class = agent_class
+        self.maintenance_events = maintenance_events or []
+
+        # Warn on deprecated oracle params (soft-deprecate, not hard-break).
+        _legacy = {"oracle_mode": oracle_mode, "oracle_retrieval": oracle_retrieval,
+                   "oracle_store": oracle_store, "incontext_ceiling": incontext_ceiling}
+        _active = [k for k, v in _legacy.items() if v]
+        if _active:
+            import warnings
+            warnings.warn(
+                f"S6Runner: legacy oracle flags {_active} are deprecated and "
+                f"ignored. Use diagnose=True for P1/P2/P3 error partitioning.",
+                DeprecationWarning, stacklevel=2,
+            )
+
+        # Load scenario data (from generator or curated files)
+        if generated_data:
+            self.sessions = generated_data["session_tasks"]["sessions"]
+            self.system_prompt_base = generated_data["session_tasks"]["system_prompt"]
+        else:
+            self.sessions = load_session_tasks()
+            self.system_prompt_base = load_system_prompt()
+
+        # Model info for tracing
+        self._model_id = (
+            getattr(llm, "model_id", None)
+            or getattr(llm, "model", "unknown")
+        )
+        self._provider = "local_hf" if hasattr(llm, "tok") else "litellm"
+
+    def run(self, n_sessions: int = 15, seed: int = 42) -> dict:
+        """
+        Run the S6 naturalistic aging loop.
+
+        Returns dict with:
+          - task_curve: AgingCurve for task_m(t)
+          - recall_curve: AgingCurve for recall_m(t)
+          - recall_matrix: {eval_time: {origin_session: recall_rate}}
+          - session_results: per-session scoring details
+        """
+        import random as _random
+        _random.seed(seed)
+        try:
+            import torch
+            torch.manual_seed(seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(seed)
+        except ImportError:
+            pass
+
+        self.memory_policy.reset()
+        is_no_memory = type(self.memory_policy).__name__ == "NoMemoryPolicy"
+        progress_on = os.getenv("AGINGBENCH_S6_PROGRESS", "1").lower() not in {
+            "0", "false", "no", "off"
+        }
+        probe_log_every = max(1, int(os.getenv("AGINGBENCH_S6_PROBE_LOG_EVERY", "5")))
+
+        run_t0 = time.time()
+
+        def _fmt_elapsed(start: float) -> str:
+            delta = int(time.time() - start)
+            m, s = divmod(delta, 60)
+            h, m = divmod(m, 60)
+            if h > 0:
+                return f"{h:02d}:{m:02d}:{s:02d}"
+            return f"{m:02d}:{s:02d}"
+
+        def _progress(msg: str, session_start: float | None = None) -> None:
+            if not progress_on:
+                return
+            run_elapsed = _fmt_elapsed(run_t0)
+            if session_start is None:
+                print(f"  [S6][progress][run {run_elapsed}] {msg}", flush=True)
+                return
+            session_elapsed = _fmt_elapsed(session_start)
+            print(
+                f"  [S6][progress][run {run_elapsed} | session {session_elapsed}] {msg}",
+                flush=True,
+            )
+
+        exposures: list[int] = []
+        task_scores: list[float] = []
+        recall_scores: list[float] = []
+        recall_matrix: dict[int, dict[int, float]] = {}
+        session_results: list[dict] = []
+
+        # P1/P2/P3 diagnostic partitioning accumulators (only when diagnose=True)
+        diagnostic_partitions: list[dict] = []
+
+        # ---- Full trajectory log (content-level, separate from trace) ----
+        trajectory_path = self.tracer.path.parent / "trajectory.jsonl"
+        traj_f = open(trajectory_path, "w", buffering=1)
+        def _log_traj(event_type: str, **fields):
+            import json as _json
+            record = {"event": event_type, "timestamp": time.time(), **fields}
+            traj_f.write(_json.dumps(record, ensure_ascii=False) + "\n")
+
+        run_span = self.tracer.log(
+            "run_start",
+            parent_span_id=None,
+            sut_id=self.sut_id,
+            scenario=self.SCENARIO_ID,
+            seed=seed,
+            n_sessions=n_sessions,
+            policy=type(self.memory_policy).__name__,
+            diagnose=self.diagnose,
+            **{"gen_ai.request.model": self._model_id},
+        )
+
+        actual_sessions = min(n_sessions, len(self.sessions))
+        _progress(
+            f"starting run: sessions={actual_sessions}, policy={type(self.memory_policy).__name__}, "
+            f"diagnose={self.diagnose}"
+        )
+
+        for session_idx in range(actual_sessions):
+            session_t0 = time.time()
+            session_data = self.sessions[session_idx]
+
+            planned_probes = sum(
+                len(self.sessions[s].get("recall_probes", [])) for s in range(session_idx)
+            )
+            _progress(
+                f"session {session_idx + 1}/{actual_sessions} start: "
+                f"domain={session_data['domain']}, planned_recall_probes={planned_probes}",
+                session_t0,
+            )
+
+            # ---- Apply maintenance events scheduled for this session ----
+            for event in self.maintenance_events:
+                if event.session == session_idx and not is_no_memory:
+                    shock_type = event.apply(self.memory_policy, llm=self.llm)
+                    self.tracer.log(
+                        "life_event",
+                        parent_span_id=run_span,
+                        session=session_idx,
+                        event_type=shock_type,
+                        params=event.params,
+                    )
+
+            session_span = self.tracer.log(
+                "session_start",
+                parent_span_id=run_span,
+                session=session_idx,
+                domain=session_data["domain"],
+                is_cross_reference=session_data.get("is_cross_reference", False),
+            )
+
+            # ---- Build agent with native memory (P1 baseline) ----
+            def _memory_reader():
+                if is_no_memory:
+                    return ""
+                return self.memory_policy.read() or ""
+
+            tool_registry = _build_tool_registry(_memory_reader)
+            agent = self.agent_class(
+                llm=self.llm,
+                memory_policy=self.memory_policy,
+                tools=tool_registry,
+                max_turns=8,
+            )
+
+            # ---- Build task prompt ----
+            env_data = session_data.get("environment_data", "")
+            task_text = session_data["task"]["text"]
+            if env_data:
+                full_task = (
+                    f"Here is data from a research source:\n\n"
+                    f"{env_data}\n\n"
+                    f"Task: {task_text}"
+                )
+            else:
+                # Cross-reference session — no new data
+                full_task = task_text
+
+            # Log memory state before task
+            memory_before = _memory_reader()
+            _log_traj("memory_snapshot", session=session_idx, phase="before_task",
+                      memory_text=memory_before, memory_tokens=len(memory_before.split()))
+
+            # ---- Run primary task ----
+            _progress(f"session {session_idx + 1}: primary task start", session_t0)
+            task_result = agent.run_session(full_task, session_id=session_idx)
+            task_output = task_result["output"]
+            _progress(
+                f"session {session_idx + 1}: primary task done "
+                f"(turns={task_result.get('turns', 0)}, tools={len(task_result.get('tool_calls', []))})",
+                session_t0,
+            )
+
+            # Log agent output
+            _log_traj("agent_output", session=session_idx, phase="primary_task",
+                      prompt=full_task[:500], output=task_output,
+                      turns=task_result.get("turns", 0),
+                      tool_calls=task_result.get("tool_calls", []))
+
+            # Score primary task
+            task_eval = score_task(task_output, session_data)
+
+            self.tracer.log(
+                "task_completed",
+                parent_span_id=session_span,
+                session=session_idx,
+                task_score=task_eval["task_score"],
+                keywords_found=task_eval["keywords_found"],
+                keywords_missing=task_eval["keywords_missing"],
+                turns=task_result.get("turns", 0),
+                n_tool_calls=len(task_result.get("tool_calls", [])),
+            )
+
+            # ---- Run recall probes for PAST sessions (0..t-1) ----
+            # We only probe past sessions because the current session's data
+            # hasn't been written to memory yet (the agent is stateless across
+            # run_session calls).  This means the minimum meaningful lag is 1.
+            all_probes = []
+            for s in range(session_idx):
+                all_probes.extend(self.sessions[s].get("recall_probes", []))
+
+            probe_results = []
+            total_probes = len(all_probes)
+            if total_probes:
+                _progress(
+                    f"session {session_idx + 1}: recall probes start ({total_probes})",
+                    session_t0,
+                )
+            for probe_i, probe in enumerate(all_probes, start=1):
+                probe_result = agent.run_session(
+                    probe["question"], session_id=session_idx
+                )
+                scored = score_recall_probe(probe_result["output"], probe)
+                probe_results.append(scored)
+                _log_traj("recall_probe", session=session_idx,
+                          probe_id=probe.get("probe_id", ""),
+                          question=probe["question"],
+                          agent_answer=probe_result["output"][:300],
+                          recalled=scored["recalled"],
+                          keywords=probe.get("keywords", []),
+                          origin_session=scored.get("origin_session", -1))
+
+                if (
+                    probe_i == 1
+                    or probe_i % probe_log_every == 0
+                    or probe_i == total_probes
+                ):
+                    _progress(
+                        f"session {session_idx + 1}: recall probe {probe_i}/{total_probes} complete",
+                        session_t0,
+                    )
+
+            # ---- P2/P3 diagnostic probes (when --diagnose is active) ----
+            if self.diagnose and all_probes:
+                _progress(
+                    f"session {session_idx + 1}: diagnostic P2/P3 probes start ({total_probes})",
+                    session_t0,
+                )
+                diag_result = self.run_diagnostic_probes(
+                    probes=all_probes,
+                    session_idx=session_idx,
+                    agent=agent,
+                    score_fn=score_recall_probe,
+                    gold_facts=self._build_gold_facts(session_idx),
+                    p1_results=probe_results,  # reuse P1 scores already computed
+                )
+                diagnostic_partitions.append(diag_result["partition"])
+                _log_traj("diagnostic_partition",
+                          **diag_result["partition"])
+                _progress(
+                    f"session {session_idx + 1}: diagnostic done "
+                    f"P1={diag_result['partition']['acc_p1']:.3f} "
+                    f"P2={diag_result['partition']['acc_p2']:.3f} "
+                    f"P3={diag_result['partition']['acc_p3']:.3f}",
+                    session_t0,
+                )
+
+            # Build recall matrix row
+            if probe_results:
+                matrix_row = build_recall_matrix_entry(
+                    session_idx, self.sessions, probe_results
+                )
+                recall_matrix[session_idx] = matrix_row
+                overall_recall = sum(
+                    p["recalled"] for p in probe_results
+                ) / len(probe_results)
+            else:
+                recall_matrix[session_idx] = {}
+                overall_recall = 1.0
+
+            # Record scores
+            exposures.append(session_idx)
+            task_scores.append(task_eval["task_score"])
+            recall_scores.append(round(overall_recall, 4))
+
+            # Concatenate task + probe outputs (truncated) for forget_accuracy.
+            probe_text = " ".join(
+                str(p.get("agent_answer", ""))[:300] for p in probe_results
+            )
+            task_outputs_text = (str(task_output)[:1000] + " " + probe_text).strip()
+
+            # Token-cap diagnostics: track max response size per session so
+            # post-hoc analysis can detect whether aging is confounded by
+            # max_new_tokens truncation.
+            from agingbench.metrics.aging import count_response_tokens
+            task_tokens = count_response_tokens(self.llm, task_output)
+            probe_token_counts = [
+                count_response_tokens(self.llm, p.get("agent_answer", ""))
+                for p in probe_results
+            ]
+            response_tokens_session = [task_tokens] + probe_token_counts
+            response_tokens_session = [t for t in response_tokens_session if t >= 0]
+
+            session_results.append({
+                "session": session_idx,
+                "domain": session_data["domain"],
+                "is_cross_reference": session_data.get(
+                    "is_cross_reference", False
+                ),
+                "task_score": task_eval["task_score"],
+                "recall_rate": round(overall_recall, 4),
+                "recall_matrix_row": matrix_row if probe_results else {},
+                "n_probes_total": len(probe_results),
+                "n_probes_recalled": sum(
+                    p["recalled"] for p in probe_results
+                ),
+                "probe_details": probe_results,
+                "task_keywords_found": task_eval["keywords_found"],
+                "task_keywords_missing": task_eval["keywords_missing"],
+                "task_outputs_text": task_outputs_text,
+                "response_tokens_task": task_tokens,
+                "response_tokens_probes": probe_token_counts,
+                "response_tokens_max": (max(response_tokens_session)
+                                       if response_tokens_session else 0),
+            })
+
+            self.tracer.log(
+                "session_scored",
+                parent_span_id=session_span,
+                session=session_idx,
+                task_score=task_eval["task_score"],
+                recall_rate=round(overall_recall, 4),
+                n_probes=len(probe_results),
+                n_recalled=sum(p["recalled"] for p in probe_results),
+                recall_matrix_row=(
+                    matrix_row if probe_results else {}
+                ),
+                t_writes=getattr(self.memory_policy, "n_writes", 0),
+            )
+
+            # Print progress
+            xref_tag = " [XREF]" if session_data.get(
+                "is_cross_reference"
+            ) else ""
+            diag_tag = ""
+            if self.diagnose and diagnostic_partitions:
+                dp = diagnostic_partitions[-1]
+                diag_tag = (
+                    f"  W={dp['write_error']:.3f} R={dp['read_error']:.3f} "
+                    f"U={dp['utilization_error']:.3f}"
+                )
+            print(
+                f"  [S6] Session {session_idx:2d} ({session_data['domain']:15s})"
+                f"{xref_tag}  "
+                f"task={task_eval['task_score']:.3f}  "
+                f"recall={overall_recall:.3f}  "
+                f"({sum(p['recalled'] for p in probe_results)}"
+                f"/{len(probe_results)} probes)"
+                f"{diag_tag}"
+            )
+
+            # ---- Write interaction to memory ----
+            interaction_text = self._build_interaction_text(
+                session_idx, session_data, task_output
+            )
+
+            # Always write via native policy (P1 baseline path).
+            if not is_no_memory:
+                _progress(f"session {session_idx + 1}: memory write start", session_t0)
+                is_growing = type(self.memory_policy).__name__ == "GrowingHistoryStorePolicy"
+                if is_growing or isinstance(self.memory_policy, AppendOnlyPolicy):
+                    self.memory_policy.write(interaction_text, llm=self.llm)
+                else:
+                    current_mem = self.memory_policy.read() or ""
+                    new_content = (
+                        current_mem + "\n\n" + interaction_text
+                        if current_mem
+                        else interaction_text
+                    )
+                    self.memory_policy.write(new_content, llm=self.llm)
+
+                compressed = self.memory_policy.read()
+                in_tok = getattr(self.memory_policy, "last_input_tokens", 0)
+                out_tok = getattr(
+                    self.memory_policy, "last_output_tokens", 0
+                )
+                if session_results:
+                    session_results[-1]["memory_write_tokens"] = out_tok
+
+                _log_traj("compression", session=session_idx,
+                          input_text=interaction_text,
+                          output_text=compressed or "",
+                          input_tokens=in_tok, output_tokens=out_tok,
+                          compression_ratio=round(
+                              len(interaction_text.split()) / max(len((compressed or "").split()), 1), 2
+                          ))
+
+                self.tracer.log_llm_call(
+                    parent_span_id=session_span,
+                    model=self._model_id,
+                    provider=self._provider,
+                    input_tokens=in_tok,
+                    output_tokens=out_tok,
+                    input_preview=interaction_text[:200],
+                    output_preview=compressed[:200] if compressed else "",
+                    thought=getattr(self.llm, "last_thought", ""),
+                    cycle=session_idx,
+                )
+                _progress(
+                    f"session {session_idx + 1}: memory write done (in_tok={in_tok}, out_tok={out_tok})",
+                    session_t0,
+                )
+
+            self.tracer.log(
+                "session_end",
+                parent_span_id=session_span,
+                session=session_idx,
+            )
+            _progress(
+                f"session {session_idx + 1}/{actual_sessions} end: "
+                f"task={task_eval['task_score']:.3f}, recall={overall_recall:.3f}",
+                session_t0,
+            )
+
+        # ---- Build aging curves ----
+        task_curve = AgingCurve(
+            exposures=exposures,
+            scores=task_scores,
+            scenario=self.SCENARIO_ID,
+            sut_id=self.sut_id,
+        )
+        recall_curve = AgingCurve(
+            exposures=exposures,
+            scores=recall_scores,
+            scenario=self.SCENARIO_ID,
+            sut_id=self.sut_id,
+        )
+
+        # ---- Compute lag-based recall curves ----
+        lag_curves = self._compute_lag_curves(recall_matrix)
+
+        self.tracer.log(
+            "run_end",
+            parent_span_id=run_span,
+            task_curve=list(zip(exposures, task_scores)),
+            recall_curve=list(zip(exposures, recall_scores)),
+            recall_matrix={
+                str(k): v for k, v in recall_matrix.items()
+            },
+            half_life=compute_half_life(recall_curve),
+            slope=round(compute_decay_slope(recall_curve), 5),
+        )
+
+        # Close trajectory log
+        _log_traj("run_end", n_sessions=actual_sessions,
+                  m_final=recall_curve.scores[-1] if recall_curve.scores else 0)
+        traj_f.close()
+        _progress(f"run complete: m_final={recall_curve.scores[-1] if recall_curve.scores else 0:.3f}")
+
+        # --- attribution provenance stamp (see flag_attribution_schema_v1.py) ---
+        # S6's legacy oracle / ceiling flags are deprecated (ignored at __init__).
+        # The only attribution variant the current runner produces is baseline,
+        # optionally augmented by P1/P2/P3 partitioning when --diagnose is on.
+        _attr_mode = "diagnose_p1_p2_p3" if self.diagnose else "c1_baseline"
+
+        result = {
+            "task_curve": task_curve,
+            "recall_curve": recall_curve,
+            "task_raw": list(zip(exposures, task_scores)),
+            "recall_raw": list(zip(exposures, recall_scores)),
+            "recall_matrix": recall_matrix,
+            "lag_curves": lag_curves,
+            "session_results": session_results,
+            "attribution_schema": "v2_clean",
+            "attribution_mode": _attr_mode,
+        }
+
+        # Compute and attach full error partition when --diagnose was used.
+        if self.diagnose and diagnostic_partitions:
+            from ..diagnostics.partitioner import partition_errors
+            p1_scores = {d["session"]: d["acc_p1"] for d in diagnostic_partitions}
+            p2_scores = {d["session"]: d["acc_p2"] for d in diagnostic_partitions}
+            p3_scores = {d["session"]: d["acc_p3"] for d in diagnostic_partitions}
+            n_probes = {d["session"]: d["n_probes"] for d in diagnostic_partitions}
+            result["diagnostic_partition"] = partition_errors(
+                p1_scores, p2_scores, p3_scores, n_probes,
+            )
+            result["diagnostic_per_session"] = diagnostic_partitions
+
+        return result
+
+    def _build_gold_facts(self, up_to_session: int) -> str:
+        """Build ground-truth fact sheet from all sessions before `up_to_session`.
+
+        Used by P3 (oracle context): the LLM receives these facts directly,
+        establishing the absolute reasoning ceiling of the utilization logic U.
+        """
+        lines = []
+        for s in range(up_to_session):
+            if s >= len(self.sessions):
+                break
+            sd = self.sessions[s]
+            if sd.get("is_cross_reference"):
+                continue
+            ref_answer = sd.get("task", {}).get("reference_answer", "")
+            if ref_answer:
+                lines.append(f"Session {s} ({sd['domain']}): {ref_answer}")
+            for probe in sd.get("recall_probes", []):
+                canonical = probe.get("canonical_answer", "")
+                if canonical:
+                    lines.append(f"  Fact: {canonical}")
+        return "\n".join(lines) if lines else ""
+
+    def _build_interaction_text(
+        self,
+        session_idx: int,
+        session_data: dict,
+        task_output: str,
+    ) -> str:
+        """Build a text summary of the session for memory write.
+
+        No runner-level truncation — the memory policy's compression handles
+        information selection. Pre-truncation would destroy information before
+        the policy ever sees it, creating artificial aging artifacts.
+        """
+        lines = [
+            f"--- Research Session {session_idx} "
+            f"({session_data['domain']}) ---",
+        ]
+        env_data = session_data.get("environment_data", "")
+        if env_data:
+            lines.append(f"Data source: {session_data['domain']}")
+            lines.append(env_data)
+        lines.append(f"Task: {session_data['task']['text']}")
+        lines.append(f"Finding: {task_output}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _compute_lag_curves(
+        recall_matrix: dict[int, dict[int, float]],
+    ) -> dict[int, list[tuple[int, float]]]:
+        """
+        Compute recall-by-lag curves from the recall matrix.
+
+        For each lag value (0 = just learned, 1 = one session ago, etc.),
+        produces a time series of recall rates.
+
+        Returns {lag: [(eval_time, recall_rate), ...]}
+        """
+        lag_curves: dict[int, list[tuple[int, float]]] = {}
+
+        for eval_time, row in sorted(recall_matrix.items()):
+            for origin, rate in row.items():
+                lag = eval_time - origin
+                lag_curves.setdefault(lag, []).append((eval_time, rate))
+
+        return lag_curves

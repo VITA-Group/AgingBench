@@ -1,0 +1,69 @@
+{
+  "description": "Per-cycle paper batches for longitudinal S1. Each cycle introduces 2-3 new findings that must be integrated with prior knowledge. Keywords are unique per cycle so decay can be measured per-cohort.",
+  "batches": [
+    {
+      "cycle": 0,
+      "title": "Baseline Architecture & Budget",
+      "content": "Project Nexus is a data platform modernization with a total budget of $847,000. Module A integration: $12,400. Module B development: $23,800. Infrastructure: $38,500. QA: $9,200. Contingency: $4,100. Primary database: PostgreSQL 15. Runtime: Python 3.12. CI: GitHub Actions. Caching: Redis 8.0. Lead architect: Dr. Elena Vasquez. QA lead: Marcus Okonkwo. PM: Nadia Hoffman. DevOps: Ravi Krishnaswamy. Security: Sofia Delacroix.",
+      "keywords": ["847,000", "12,400", "23,800", "PostgreSQL 15", "Elena Vasquez"],
+      "n_keywords": 5
+    },
+    {
+      "cycle": 1,
+      "title": "Sprint 1 — Module A Integration Results",
+      "content": "Module A integration completed ahead of schedule. Test coverage reached 94.3% across 278 test cases. Performance benchmark: average API latency 67ms at p50, 142ms at p99 under 500 concurrent connections. Memory usage stable at 2.1GB per pod. Marcus Okonkwo approved the test suite with zero critical defects. Remaining budget for Module A: $3,200 (originally $12,400, spent $9,200).",
+      "keywords": ["94.3%", "278", "67ms", "142ms", "2.1GB", "3,200"],
+      "n_keywords": 6
+    },
+    {
+      "cycle": 2,
+      "title": "Sprint 2 — Security Audit & Module B Kickoff",
+      "content": "Sofia Delacroix completed the security audit. Findings: 3 critical vulnerabilities in the OAuth token refresh flow (CVE-2026-1847, CVE-2026-1848, CVE-2026-1849), all patched by March 5th. OWASP ZAP scan passed with zero high-severity issues. Module B development started with Ravi Krishnaswamy setting up the deployment pipeline. Module B will use gRPC protocol with Protocol Buffers v3.25. Estimated Module B completion: April 22nd.",
+      "keywords": ["CVE-2026-1847", "March 5", "gRPC", "Protocol Buffers", "April 22"],
+      "n_keywords": 5
+    },
+    {
+      "cycle": 3,
+      "title": "Sprint 3 — Budget Reallocation & Infrastructure",
+      "content": "Budget reallocation approved: $2,300 moved from contingency ($4,100 → $1,800) to Module B after vendor pricing increase from Acme Corp ($23,800 → $26,100). Infrastructure provisioning completed: 4-node Kubernetes cluster on AWS EKS, each node c5.2xlarge (8 vCPU, 16GB RAM). Ravi configured Terraform v1.7 for infrastructure-as-code. Total monthly infrastructure cost: $3,847/month. Dr. Vasquez approved temporary SQLite use for offline sync feature.",
+      "keywords": ["1,800", "26,100", "Acme Corp", "c5.2xlarge", "Terraform v1.7", "3,847"],
+      "n_keywords": 6
+    },
+    {
+      "cycle": 4,
+      "title": "Sprint 4 — Module B Progress & Performance Regression",
+      "content": "Module B development at 62% completion. gRPC endpoints implemented: UserService (4 methods), OrderService (6 methods), InventoryService (3 methods). Performance regression detected: API p99 latency increased from 142ms to 238ms after adding OrderService middleware. Root cause: N+1 query in order history endpoint. Fix deployed by Marcus, latency restored to 156ms. Module B test coverage: 71.4% (target 85%). Nadia Hoffman flagged: prototype milestone (March 29th) may slip to April 3rd.",
+      "keywords": ["62%", "238ms", "N+1 query", "156ms", "71.4%", "April 3"],
+      "n_keywords": 6
+    },
+    {
+      "cycle": 5,
+      "title": "Sprint 5 — Integration Testing & Compliance",
+      "content": "Integration test suite now covers 14 end-to-end scenarios across both modules. Cross-module test: UserService → OrderService flow passes in 340ms average. Redis cache hit ratio: 87.3% under production-like load. Compliance review by external auditor (PricewaterhouseCoopers): 22 out of 26 SOC 2 controls verified. Four remaining controls require encryption-at-rest documentation (AES-256-GCM). Data retention policy confirmed: 10-year minimum. Sofia signed off on Module A data handling procedures.",
+      "keywords": ["14 end-to-end", "340ms", "87.3%", "22 out of 26", "AES-256-GCM"],
+      "n_keywords": 5
+    },
+    {
+      "cycle": 6,
+      "title": "Sprint 6 — Beta Release Preparation",
+      "content": "Module B completed at 100%. Combined test suite: 847 tests, 94.1% pass rate (50 tests skipped for known beta limitations). Beta environment deployed to staging: beta.nexus.internal on port 8443. Beta user acceptance testing (UAT) group: 12 internal users from finance and operations. Load test results: system sustained 8,700 requests/second with mean response time 43ms on the 4-node cluster. Beta release approved for May 31st by Nadia Hoffman. Remaining budget: $127,400 of $847,000.",
+      "keywords": ["847 tests", "94.1%", "8443", "8,700", "43ms", "127,400"],
+      "n_keywords": 6
+    },
+    {
+      "cycle": 7,
+      "title": "Sprint 7 — Production Hardening & Final Review",
+      "content": "Final production hardening: connection pool increased from 50 to 75 concurrent connections. Redis memory cap raised from 512MB to 1024MB. Monitoring: Datadog dashboards configured with 23 custom metrics and 7 alert rules. On-call rotation: Ravi (primary), Marcus (secondary), 15-minute response SLA. Final compliance: all 26 SOC 2 controls verified. Production release target confirmed: July 8th. Final budget: $743,200 spent of $847,000, remainder $103,800. Dr. Vasquez signed final architecture review.",
+      "keywords": ["75 concurrent", "1024MB", "23 custom metrics", "743,200", "103,800"],
+      "n_keywords": 5
+    }
+  ],
+  "cross_cycle_queries": [
+    {"at_cycle": 3, "question": "What was Module A's test coverage and how much of its budget remains?", "requires_cycles": [1], "keywords": ["94.3%", "3,200"]},
+    {"at_cycle": 4, "question": "What security vulnerabilities were found and when were they patched?", "requires_cycles": [2], "keywords": ["CVE-2026-1847", "March 5"]},
+    {"at_cycle": 5, "question": "How much was reallocated from contingency and what is the new Module B budget?", "requires_cycles": [3], "keywords": ["2,300", "26,100"]},
+    {"at_cycle": 6, "question": "What caused the performance regression in sprint 4 and what latency was it restored to?", "requires_cycles": [4], "keywords": ["N+1 query", "156ms"]},
+    {"at_cycle": 7, "question": "How many SOC 2 controls were verified in sprint 5 and what encryption standard is required?", "requires_cycles": [5], "keywords": ["22 out of 26", "AES-256-GCM"]},
+    {"at_cycle": 7, "question": "What is Module A's original budget, how much was spent, and who approved the test suite?", "requires_cycles": [0, 1], "keywords": ["12,400", "9,200", "Marcus Okonkwo"]}
+  ]
+}

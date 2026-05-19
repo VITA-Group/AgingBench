@@ -1,0 +1,12 @@
+sut_id: gemma4_31b_append_only
+description: "Gemma-4-31B-IT, append-only episodic store with cosine retrieval."
+model:
+  provider: local_hf
+  model_id: google/gemma-4-31b-it
+  max_new_tokens: 3000
+  torch_dtype: bfloat16
+memory_policy:
+  type: append_only
+  # Gemma-4-31B context = 128K. Reserve ~8K for system + task + 3K output.
+  max_input_tokens: 120000
+seed: 42

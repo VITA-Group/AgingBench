@@ -1,0 +1,13 @@
+seed: 43
+n_sessions: 8
+chain_id: django_orm_query
+# Variance ordering — capstone delayed, dependencies spread.
+sessions:
+  - {session: 0, instance_id: django__django-11265}    # foundation
+  - {session: 1, instance_id: django__django-12050}    # resolve_lookup_value
+  - {session: 2, instance_id: django__django-11734}    # OuterRef
+  - {session: 3, instance_id: django__django-13590}    # named tuples (extends s1)
+  - {session: 4, instance_id: django__django-13158}    # split_exclude followup
+  - {session: 5, instance_id: django__django-15554}    # FilteredRelation
+  - {session: 6, instance_id: django__django-16032}    # as_sql (extends s2)
+  - {session: 7, instance_id: django__django-16263}    # capstone

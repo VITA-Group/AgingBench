@@ -1,0 +1,11 @@
+sut_id: llama31_append_only_capped
+description: "Llama-3.1-8B with append-only + ~20k token cap to prevent context bloat from stalling eval (paired with llama31_append_only_local for bloat sensitivity)."
+model:
+  provider: local_hf
+  model_id: meta-llama/Llama-3.1-8B-Instruct
+  max_new_tokens: 500
+memory_policy:
+  type: append_only
+  top_k: 3
+  max_input_tokens: 20000
+seed: 42

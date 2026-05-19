@@ -1,0 +1,11 @@
+sut_id: gpt4o_careful
+description: "GPT-4o with careful summarize_store (preserves names/numbers)"
+model:
+  provider: litellm
+  model: gpt-4o
+  max_tokens: 5000
+  temperature: 0.0
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_medium.txt
+seed: 42

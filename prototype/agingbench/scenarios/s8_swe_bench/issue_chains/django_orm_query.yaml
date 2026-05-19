@@ -1,0 +1,250 @@
+chain_id: django_orm_query
+description: >
+  Eight-issue chain on django/db/models/sql/query.py spanning v3.0 → v4.2.
+  All PRs touch the same module (the Django ORM query construction
+  layer); multiple PRs touch the same FUNCTIONS, creating natural
+  cross-session coupling for interference and load-bearing memory.
+
+  PR-1 (django-11265) establishes the `split_exclude` clone+rewrite
+  pattern; PR-3 (django-13158) extends it; PR-4 (django-12050)
+  establishes `resolve_lookup_value` list-vs-tuple handling; PR-5
+  (django-13590) extends that. PR-8 (django-16263) is the capstone —
+  its solution requires recall of patterns from PRs 1, 3, 4.
+
+source:
+  benchmark: SWE-bench-Verified
+  benchmark_url: https://huggingface.co/datasets/princeton-nlp/SWE-bench_Verified
+  swebench_package_version: "4.1.0"
+  upstream_repo: django/django
+  upstream_repo_url: https://github.com/django/django
+  upstream_license: BSD-3-Clause
+  vendored_via_docker: true
+  docker_image_pattern: "sweb.eval.x86_64.{instance_id}:latest"
+  docker_image_source: "docker.io/swebench/sweb.eval.x86_64.{instance_id_dotted}:latest"
+
+# All 8 issues, chronological order = chain order
+issues:
+  - instance_id: django__django-11265
+    chain_index: 0
+    base_commit: 21aa2a5e785eef1f47beb1c3760fdd7d8915ae09
+    version: "3.0"
+    n_fail_to_pass: 1
+    n_pass_to_pass: 30
+    summary: "FilteredRelation exclude — establishes split_exclude clone+rewrite pattern"
+    chain_role: foundation
+    symbols: [split_exclude, trim_start]
+    aging_relevance: |
+      Establishes the canonical handling of split_exclude: when the
+      excluded queryset has FilteredRelation, the agent introduces a
+      cloning+rewriting pattern that subsequent PRs (13158, 16263)
+      reuse. Memory of this pattern is critical for session 3 and 7.
+
+  - instance_id: django__django-11734
+    chain_index: 1
+    base_commit: 999891bd80b3d02dd916731a7a239e1036174885
+    version: "3.0"
+    n_fail_to_pass: 1
+    n_pass_to_pass: 275
+    summary: "OuterRef in exclude/~Q — uses split_exclude pattern + as_sql adjustments"
+    chain_role: same_subsystem_followup
+    symbols: [split_exclude, as_sql, RelatedLookupMixin]
+    depends_on: [django__django-11265]
+    aging_relevance: |
+      Extends split_exclude's resolution path. The agent must recall
+      session 0's clone+rewrite convention to make the fix consistent.
+      Also introduces RelatedLookupMixin which session 6 (16032) extends.
+
+  - instance_id: django__django-12050
+    chain_index: 2
+    base_commit: b93a0e34d9b9b99d41103782b7e7aeabf47517e3
+    version: "3.1"
+    n_fail_to_pass: 1
+    n_pass_to_pass: 10
+    summary: "resolve_lookup_value — list vs tuple coercion; establishes container-type preservation"
+    chain_role: new_pattern
+    symbols: [resolve_lookup_value, solve_lookup_type]
+    aging_relevance: |
+      Establishes the rule: resolve_lookup_value must preserve the
+      input container type (list stays list, tuple stays tuple).
+      Session 4 (13590) extends this to named tuples; session 7
+      (16263) reuses the rule.
+
+  - instance_id: django__django-13158
+    chain_index: 3
+    base_commit: 7af8f4127397279d19ef7c7899e93018274e2f9b
+    version: "3.2"
+    n_fail_to_pass: 1
+    n_pass_to_pass: 29
+    summary: "QuerySet.none() on combined — split_exclude + clone + set_empty"
+    chain_role: causal_followup_to_split_exclude
+    symbols: [split_exclude, clone, is_empty, set_empty]
+    depends_on: [django__django-11265, django__django-11734]
+    interference_with: [django__django-11265]
+    aging_relevance: |
+      Direct followup to split_exclude (PRs 0 and 1). Agent must
+      recall the clone+rewrite pattern AND not regress the OuterRef
+      fix from session 1.
+
+  - instance_id: django__django-13590
+    chain_index: 4
+    base_commit: 755dbf39fcdc491fe9b588358303e259c7750be4
+    version: "3.2"
+    n_fail_to_pass: 1
+    n_pass_to_pass: 145
+    summary: "Named tuples in __range — extends resolve_lookup_value container preservation"
+    chain_role: causal_followup_to_resolve_lookup_value
+    symbols: [resolve_lookup_value, solve_lookup_type]
+    depends_on: [django__django-12050]
+    aging_relevance: |
+      Direct followup to PR 2. Agent must extend the container-type
+      preservation rule from session 2 to handle named tuples.
+
+  - instance_id: django__django-15554
+    chain_index: 5
+    base_commit: 59ab3fd0e9e606d7f0f7ca26609c06ee679ece97
+    version: "4.1"
+    n_fail_to_pass: 1
+    n_pass_to_pass: 41
+    summary: "Multiple FilteredRelation — build_filter + setup_joins consistency"
+    chain_role: new_pattern
+    symbols: [build_filter, build_filtered_relation_q, setup_joins, names_to_path]
+    aging_relevance: |
+      Introduces the multi-relation handling pattern. Session 7
+      (16263) reuses build_filter — agent must recall this PR's
+      design choice.
+
+  - instance_id: django__django-16032
+    chain_index: 6
+    base_commit: 0c3981eb5094419fe200eb46c71b5376a2266166
+    version: "4.2"
+    n_fail_to_pass: 2
+    n_pass_to_pass: 77
+    summary: "QuerySet.only() + alias() RHS — clear_select_fields + as_sql"
+    chain_role: causal_followup_to_as_sql
+    symbols: [as_sql, has_select_fields, set_values, base_table]
+    depends_on: [django__django-11734]
+    interference_with: [django__django-11734]
+    aging_relevance: |
+      Extends session 1's as_sql work. Agent must recall the
+      RelatedLookupMixin pattern and not break session 1's OuterRef
+      fix.
+
+  - instance_id: django__django-16263
+    chain_index: 7
+    base_commit: 321ecb40f4da842926e1bc07e11df4aabe53ca4b
+    version: "4.2"
+    n_fail_to_pass: 3
+    n_pass_to_pass: 100
+    summary: "Strip unused annotations from count — _add_q + build_filter + resolve_lookup_value (CAPSTONE)"
+    chain_role: capstone
+    symbols: [_add_q, build_filter, get_aggregation, check_rel_lookup_compatibility, copy]
+    depends_on:
+      - django__django-11265
+      - django__django-12050
+      - django__django-15554
+    aging_relevance: |
+      Capstone — combines patterns from PRs 0, 2, 5. Memory of all
+      three is critical. Agent that forgot any one will produce a
+      fix that violates the chain's conventions.
+
+# Cross-issue dependency graph (grounded in symbol overlap from gold patches)
+dependency_edges:
+  - {from: django__django-11265,  to: django__django-13158,  kind: same_symbol_split_exclude}
+  - {from: django__django-11734,  to: django__django-13158,  kind: same_symbol_split_exclude}
+  - {from: django__django-11265,  to: django__django-16263,  kind: same_symbol_split_exclude}
+  - {from: django__django-12050,  to: django__django-13590,  kind: same_symbol_resolve_lookup_value}
+  - {from: django__django-12050,  to: django__django-16263,  kind: same_symbol_resolve_lookup_value}
+  - {from: django__django-11734,  to: django__django-16032,  kind: same_symbol_as_sql}
+  - {from: django__django-15554,  to: django__django-16263,  kind: same_symbol_build_filter}
+
+# Interference pairs — same function, different concerns
+interference_pairs:
+  - [django__django-11265, django__django-13158]      # both edit split_exclude
+  - [django__django-12050, django__django-13590]      # both edit resolve_lookup_value
+  - [django__django-11734, django__django-16032]      # both edit as_sql
+
+# Synthetic consistency tests — the LOAD-BEARING lever (Phase 17).
+# These tests are INJECTED into the f2p list at run time. They check
+# the agent's solution.diff for adherence to chain-state design
+# decisions established at earlier sessions. Each test is a single
+# pytest function written in Python, stored in `synthetic_tests/`.
+# The test name follows the pattern `test_s<idx>_<concept>` and is
+# scheduled to run alongside the PR's actual f2p tests.
+synthetic_tests:
+  - session: 3
+    test_module: synthetic_tests.test_session3_split_exclude_pattern
+    test_class: Session3SplitExcludePatternTests
+    test_function: test_split_exclude_uses_clone_pattern
+    chain_dependency: "PR 0 established split_exclude's clone+rewrite pattern"
+  - session: 4
+    test_module: synthetic_tests.test_session4_container_preservation
+    test_class: Session4ContainerPreservationTests
+    test_function: test_resolve_lookup_value_preserves_container_type
+    chain_dependency: "PR 2 established list/tuple container preservation"
+  - session: 4
+    test_module: synthetic_tests.test_session4_container_preservation
+    test_class: Session4ContainerPreservationTests
+    test_function: test_agent_notes_acknowledge_container_preservation_announcement
+    chain_dependency: "REVISION load-bearing: agent's notes must preserve session-2 announcement"
+  - session: 6
+    test_module: synthetic_tests.test_session6_as_sql_consistency
+    test_class: Session6AsSqlConsistencyTests
+    test_function: test_as_sql_preserves_outerref_pattern
+    chain_dependency: "PR 1 established OuterRef handling in as_sql"
+  - session: 7
+    test_module: synthetic_tests.test_session7_capstone_consistency
+    test_class: Session7CapstoneConsistencyTests
+    test_function: test_capstone_combines_split_exclude_and_resolve_lookup
+    chain_dependency: "PRs 0, 2, 5 — capstone must respect all"
+
+# Synthetic state-change announcements (mid-chain) — surface design
+# decisions in ISSUE.md that the agent must track in memory.
+state_changes:
+  - announce_session: 2
+    fact_id: container_preservation_rule
+    before: "value coerced to tuple"
+    after: "value preserves input container type (list stays list)"
+    notice: >-
+      DESIGN DECISION (effective this session onward): in
+      `resolve_lookup_value`, when transforming values, preserve the
+      ORIGINAL CONTAINER TYPE. A list input must produce a list
+      output; do NOT coerce to tuple. This rule applies retroactively
+      to all future fixes touching resolve_lookup_value.
+  - announce_session: 5
+    fact_id: build_filter_relation_separation
+    before: "all FilteredRelations share one alias"
+    after: "each FilteredRelation with distinct filter gets a SEPARATE alias"
+    notice: >-
+      DESIGN DECISION (effective this session onward): in
+      `build_filter` / `build_filtered_relation_q`, when multiple
+      FilteredRelations point at the same base relation but have
+      DIFFERENT filter expressions, generate a SEPARATE alias per
+      filter. Do not consolidate to a single alias.
+
+# Pinned shock schedule — same logic as S8 pytest chain
+pinned_workspace_flushes: [3, 6]
+
+# Phase 17 revision-gap fix: bump Python utility packages that Django uses
+# so the per-session env probe + drift probe have real version changes to
+# observe. sqlparse is directly relevant (Django uses it for SQL parsing
+# in management commands) — chain-thematic. asgiref is broadly used by
+# Django's request handling layer.
+pinned_dep_bumps:
+  - {session: 2, pkg: sqlparse}
+  - {session: 5, pkg: asgiref}
+
+# Chain-relevant package candidates for the rotating env probe.
+dep_bump_candidates:
+  - sqlparse
+  - asgiref
+  - pytz
+  - setuptools
+
+# Pin Django-installed packages to known-OLD versions at chain start so
+# that the dep_bumps at session 2 / 5 produce visible version changes
+# (otherwise the bump is a no-op and drift_score = 0).
+chain_baseline_pins:
+  - {session: 0, pkg: sqlparse, version: "0.4.0"}
+  - {session: 0, pkg: asgiref,  version: "3.2.10"}
+  - {session: 0, pkg: pytz,     version: "2022.7"}
+  - {session: 0, pkg: setuptools, version: "57.0.0"}

@@ -1,0 +1,9 @@
+sut_id: qwen3_8b_append_only
+description: "Qwen3-8B with append-only episodic store (top-k retrieval)"
+model:
+  provider: local_hf
+  model_id: Qwen/Qwen3-8B
+  max_new_tokens: 500
+memory_policy:
+  type: append_only
+seed: 42

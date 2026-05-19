@@ -1,0 +1,11 @@
+sut_id: qwen3_14b_summarize_store
+description: "Qwen3-14B with summarize_store policy"
+model:
+  provider: local_hf
+  model_id: Qwen/Qwen3-14B
+  max_new_tokens: 2000
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_medium.txt
+
+seed: 42

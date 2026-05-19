@@ -1,0 +1,10 @@
+sut_id: gemma2_27b_no_memory_local
+description: "Gemma-2-27B-IT (local) no memory control"
+model:
+  provider: local_hf
+  model_id: google/gemma-2-27b-it
+  max_new_tokens: 500
+  torch_dtype: bfloat16
+memory_policy:
+  type: no_memory
+seed: 42

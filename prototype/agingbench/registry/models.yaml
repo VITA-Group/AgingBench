@@ -1,0 +1,73 @@
+# AgingBench Model Registry (PDF §6.3, §4.2 Definition of Done)
+#
+# Each entry defines how to load a model via load_llm() in baselines/llm.py.
+# The provider field selects the adapter:
+#   local_hf  → LocalLLM  (open-weight, HuggingFace transformers)
+#   litellm   → LiteLLMAdapter  (any LiteLLM-supported provider)
+#
+# PDF §4.2 requires coverage of: ≥1 OpenAI, ≥1 Anthropic, ≥1 Google, ≥2 open-weight.
+
+models:
+
+  # ── Open-weight (local) ────────────────────────────────────────────────────
+
+  - id: llama3_8b
+    display_name: "Llama 3 8B Instruct"
+    provider: local_hf
+    model_id: meta-llama/Meta-Llama-3-8B-Instruct
+    max_new_tokens: 700
+    notes: "Default open-weight reference model. Cached to HF_HOME on first use."
+
+  - id: deepseek_r1_14b
+    display_name: "DeepSeek-R1-Distill-Qwen-14B"
+    provider: local_hf
+    model_id: deepseek-ai/DeepSeek-R1-Distill-Qwen-14B
+    max_new_tokens: 700
+    notes: "Cached locally. Second open-weight entry for §4.2 DoD."
+
+  # ── Closed API (via LiteLLM) ───────────────────────────────────────────────
+
+  - id: gpt4o
+    display_name: "GPT-4o"
+    provider: litellm
+    model: gpt-4o
+    max_tokens: 700
+    temperature: 0.0
+    requires_env: OPENAI_API_KEY
+    notes: "OpenAI entry required by §4.2 DoD."
+
+  - id: claude_sonnet_37
+    display_name: "Claude 3.7 Sonnet"
+    provider: litellm
+    model: claude-3-7-sonnet-20250219
+    max_tokens: 700
+    temperature: 0.0
+    requires_env: ANTHROPIC_API_KEY
+    notes: "Anthropic entry required by §4.2 DoD."
+
+  - id: gemini_15_pro
+    display_name: "Gemini 1.5 Pro"
+    provider: litellm
+    model: gemini/gemini-1.5-pro
+    max_tokens: 700
+    temperature: 0.0
+    requires_env: GEMINI_API_KEY
+    notes: "Google entry required by §4.2 DoD."
+
+  - id: claude_sonnet_46
+    display_name: "Claude Sonnet 4.6"
+    provider: litellm
+    model: claude-sonnet-4-6-20250514
+    max_tokens: 700
+    temperature: 0.0
+    requires_env: ANTHROPIC_API_KEY
+    notes: "Latest Anthropic Sonnet model."
+
+  - id: gpt41
+    display_name: "GPT-4.1"
+    provider: litellm
+    model: gpt-4.1
+    max_tokens: 700
+    temperature: 0.0
+    requires_env: OPENAI_API_KEY
+    notes: "Latest OpenAI model."

@@ -1,0 +1,19 @@
+sut_id: gemma4_self_planning_recompact
+description: "Gemma-4-31B-IT with ReactFileAdapter + workspace_recompact at block 5 (maintenance aging)"
+
+model:
+  provider: local_hf
+  model_id: google/gemma-4-31b-it
+  max_new_tokens: 700
+  torch_dtype: bfloat16
+
+adapter:
+  type: react
+  max_turns: 8
+
+maintenance:
+  shocks:
+    - type: workspace_recompact
+      session: 5
+
+seed: 42

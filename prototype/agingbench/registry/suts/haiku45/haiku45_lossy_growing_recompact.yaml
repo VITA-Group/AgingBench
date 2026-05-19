@@ -1,0 +1,20 @@
+sut_id: haiku45_lossy_growing_recompact
+description: "Claude Haiku 4.5 with growing history + lossy compression + recompact shock at session 4"
+
+model:
+  provider: litellm
+  model: claude-haiku-4-5-20251001
+  max_tokens: 500
+  temperature: 0.0
+
+memory_policy:
+  type: growing_history
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+  word_budget: 200
+
+maintenance:
+  shocks:
+    - type: recompact
+      session: 4
+
+seed: 42

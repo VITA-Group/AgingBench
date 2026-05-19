@@ -1,0 +1,69 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+# AgingBench-Lite — pip-installable subset for product-team CI checks
+# and academic reproduction. Cuts heavy ML dependencies (torch,
+# transformers, accelerate) and bundles only what the `lite` suite
+# needs: S1, S2, S7+/S5+ with an API-class model (Haiku via litellm).
+#
+# Build: `python -m build --config-setting=--metadata-file=pyproject-lite.toml`
+# OR rename to pyproject.toml in a dedicated subpackage tree (Day 4
+# finalization).
+#
+# Install (smoke): `pip install ./dist/agingbench_lite-0.1.0-py3-none-any.whl`
+# Run: `agingbench-lite run --suite lite --sut <fixture> --seeds 1`
+
+[project]
+name = "agingbench-lite"
+version = "0.1.0"
+description = "CI-friendly subset of AgingBench (S1, S2, S5+) for pre-deployment checks"
+readme = "readme.md"
+requires-python = ">=3.10"
+license = { text = "see upstream AgingBench" }
+keywords = ["llm", "agent", "memory", "aging", "evaluation", "benchmark"]
+authors = [{ name = "AgingBench contributors" }]
+
+# Pinned to ranges that the team has tested. No torch/transformers — lite
+# uses only API-class models via litellm.
+dependencies = [
+  "pyyaml>=6.0,<7",
+  "numpy>=1.24,<3",
+  "scipy>=1.10,<2",
+  "matplotlib>=3.7,<4",
+  "litellm>=1.40,<2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7,<9", "pytest-cov>=4,<7"]
+
+[project.scripts]
+agingbench-lite = "agingbench._lite_entrypoint:main"
+
+[tool.setuptools.packages.find]
+include = ["agingbench*"]
+exclude = [
+  "agingbench.runner.s3_*",
+  "agingbench.runner.s4_*",
+  "agingbench.runner.s5_*",
+  "agingbench.runner.s6_*",
+  "agingbench.runner.s8_*",
+  "agingbench.generators.s3_*",
+  "agingbench.generators.s4_*",
+  "agingbench.generators.s5_*",
+  "agingbench.generators.s6_*",
+  "agingbench.generators.s8_*",
+  "agingbench.core.adapters.openhands*",
+  "agingbench.core.adapters.codex*",
+]
+
+[tool.setuptools.package-data]
+agingbench = [
+  "registry/suites/lite.yaml",
+  "registry/suites/core.yaml",
+  "registry/suts/haiku45/*.yaml",
+  "scenarios/s1_*/**",
+  "scenarios/s2_*/**",
+  "scenarios/s7plus_*/**",
+  "metrics/aging_card_schema.json",
+]

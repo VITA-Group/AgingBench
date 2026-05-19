@@ -1,0 +1,9 @@
+sut_id: qwen3_8b_no_memory
+description: "Qwen3-8B with no memory (control)"
+model:
+  provider: local_hf
+  model_id: Qwen/Qwen3-8B
+  max_new_tokens: 500
+memory_policy:
+  type: no_memory
+seed: 42

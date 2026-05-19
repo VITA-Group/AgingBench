@@ -1,0 +1,17 @@
+sut_id: haiku45_append_only
+description: "Claude Haiku 4.5 with append-only episodic memory (top-k cosine retrieval)"
+model:
+  provider: litellm
+  model: claude-haiku-4-5-20251001
+  max_tokens: 700
+  temperature: 0.0
+memory_policy:
+  type: append_only
+  retriever:
+    top_k: 5
+  # Haiku 4.5 has a 200K context window. Cap accumulated raw content at 150K
+  # to leave ~50K headroom for system prompt, current task, tools, and probes.
+  # Head-truncation (drops oldest) preserves lossless-up-to-budget semantics
+  # for the C_A anchor on long-horizon scenarios (see Table 1).
+  max_input_tokens: 150000
+seed: 42

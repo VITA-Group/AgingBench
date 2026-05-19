@@ -1,0 +1,10 @@
+sut_id: llama31_lossy_episodic_local
+description: "Llama-3.1-8B-Instruct (local snapshot) with lossy_episodic: lossy W + full R"
+model:
+  provider: local_hf
+  model_id: meta-llama/Llama-3.1-8B-Instruct
+  max_new_tokens: 700
+memory_policy:
+  type: lossy_episodic
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+seed: 42

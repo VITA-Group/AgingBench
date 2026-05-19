@@ -1,0 +1,13 @@
+sut_id: gemma4_31b_lossy
+description: "Gemma-4-31B-IT, summarize-store with lossy compaction prompt."
+model:
+  provider: local_hf
+  model_id: google/gemma-4-31b-it
+  max_new_tokens: 5000
+  torch_dtype: bfloat16
+  temperature: 0.0
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+  word_budget: 300
+seed: 42

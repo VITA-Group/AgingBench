@@ -1,0 +1,14 @@
+sut_id: codex_mini_self_planning
+description: "OpenAI Codex CLI (codex-mini) with full-auto mode for S7 self-planning evaluation."
+
+model:
+  provider: litellm
+  model: codex-mini
+  max_tokens: 700
+
+adapter:
+  type: codex
+  model: codex-mini
+  max_turns: 25
+
+seed: 42

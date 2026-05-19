@@ -1,0 +1,13 @@
+sut_id: llama31_react_local
+description: "Llama-3.1-8B-Instruct (local path) with ReactFileAdapter for S7 self-planning validation."
+
+model:
+  provider: local_hf
+  model_id: meta-llama/Llama-3.1-8B-Instruct
+  max_new_tokens: 700
+
+adapter:
+  type: react
+  max_turns: 8
+
+seed: 42

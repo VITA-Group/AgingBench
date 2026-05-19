@@ -1,0 +1,11 @@
+sut_id: gemma2_27b_lossy_episodic_local
+description: "Gemma-2-27B-IT (local) with lossy_episodic: lossy W + full R"
+model:
+  provider: local_hf
+  model_id: google/gemma-2-27b-it
+  max_new_tokens: 700
+  torch_dtype: bfloat16
+memory_policy:
+  type: lossy_episodic
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+seed: 42

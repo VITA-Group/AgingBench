@@ -1,0 +1,12 @@
+sut_id: llama3_no_memory
+description: "Llama-3-8B-Instruct with no persistent memory — control group"
+
+model:
+  provider: local_hf
+  model_id: meta-llama/Meta-Llama-3-8B-Instruct
+  max_new_tokens: 700
+
+memory_policy:
+  type: no_memory
+
+seed: 42

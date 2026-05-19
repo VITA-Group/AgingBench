@@ -1,0 +1,10 @@
+sut_id: qwen3_8b_react
+description: "Qwen3-8B with ReactFileAdapter for S7 self-planning"
+model:
+  provider: local_hf
+  model_id: Qwen/Qwen3-8B
+  max_new_tokens: 700
+adapter:
+  type: react
+  max_turns: 8
+seed: 42

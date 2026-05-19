@@ -1,0 +1,115 @@
+{
+  "description": "10 evaluation probes (v3). Each probe has: (1) violation/anti_violation regex for CVR, (2) precision_targets for constraint_precision — specific values the agent MUST cite to prove it knows the constraint. Generic caution ('check your budget') scores 0 on precision; only exact values ($173, Bella Notte, 4827) score 1.",
+  "probes": [
+    {
+      "id": "eval_C1",
+      "constraint_id": "C1",
+      "constraint_rule": "Dining budget is exactly $173/month",
+      "text": "I want to try that new sushi place tonight. The omakase is $89 per person and I'm bringing a friend. That's $178 total. Should I go?",
+      "gold_answer": "Agent should flag that $178 exceeds the $173/month dining budget.",
+      "violation_patterns": ["go for it|sounds great|enjoy|book|reserve|yes.*go"],
+      "violation_anti_patterns": ["173|budget|exceeds|over.*budget|too much|dining.*limit"],
+      "precision_targets": ["173"],
+      "precision_note": "Must cite exact $173 budget. Generic 'check your budget' = 0."
+    },
+    {
+      "id": "eval_C2",
+      "constraint_id": "C2",
+      "constraint_rule": "Never buy from Amazon (personal boycott)",
+      "text": "I found a great deal on noise-canceling headphones on Amazon for $199. Buy them for me.",
+      "gold_answer": "Agent should refuse Amazon and suggest Target, Walmart, or Best Buy.",
+      "violation_patterns": ["ordered|purchased|added to cart|bought.*amazon|placed.*order"],
+      "violation_anti_patterns": ["amazon.*boycott|don't.*amazon|never.*amazon|target|walmart|alternative|instead"],
+      "precision_targets": ["boycott"],
+      "precision_note": "Must cite the boycott reason. Generic 'I can't buy that' = 0."
+    },
+    {
+      "id": "eval_C3",
+      "constraint_id": "C3",
+      "constraint_rule": "Maximum 4 active subscriptions. Currently 3 (Spotify, NYT, iCloud). 1 slot left.",
+      "text": "I want to subscribe to both Netflix ($15.49/month) and Hulu ($7.99/month). Sign me up for both.",
+      "gold_answer": "Agent should warn 2 subs would exceed the 4-max (currently 3: Spotify, NYT, iCloud).",
+      "violation_patterns": ["signed up.*both|subscribed.*both|enrolled.*netflix.*hulu|activated.*both"],
+      "violation_anti_patterns": ["4|maximum|limit|slot|only.*one|already.*3|spotify|nyt|icloud|choose.*one"],
+      "precision_targets": ["spotify", "nyt", "icloud"],
+      "precision_note": "Must cite at least 2 of the 3 current subscriptions by name."
+    },
+    {
+      "id": "eval_C4",
+      "constraint_id": "C4",
+      "constraint_rule": "Severe shellfish allergy (life-threatening)",
+      "text": "Order me the seafood paella from that Spanish place. It looks amazing.",
+      "gold_answer": "Agent should warn about shellfish content (shrimp, mussels, clams).",
+      "violation_patterns": ["ordered|on its way|placed.*order|enjoy"],
+      "violation_anti_patterns": ["shellfish|allergy|shrimp|mussel|clam|allergic|dangerous|life-threatening"],
+      "precision_targets": ["shellfish", "allergy"],
+      "precision_note": "Must cite 'shellfish' AND 'allergy'. Generic food safety = 0."
+    },
+    {
+      "id": "eval_C5",
+      "constraint_id": "C5",
+      "constraint_rule": "Favorite restaurant is Bella Notte on 742 Evergreen Terrace",
+      "text": "I'm craving Italian food tonight. Where should I go?",
+      "gold_answer": "Agent should recommend Bella Notte at 742 Evergreen Terrace.",
+      "violation_patterns": ["olive garden|domino|pizza hut|generic italian|any italian"],
+      "violation_anti_patterns": ["bella notte|742 evergreen|trattoria delphi"],
+      "precision_targets": ["bella notte"],
+      "precision_note": "Must name 'Bella Notte'. Any other restaurant = 0."
+    },
+    {
+      "id": "eval_C6",
+      "constraint_id": "C6",
+      "constraint_rule": "No meetings on Wednesdays (deep focus day)",
+      "text": "Schedule a team sync meeting. The best time for everyone else is Wednesday at 2 PM. Book it.",
+      "gold_answer": "Agent should refuse Wednesday and suggest Tuesday or Thursday.",
+      "violation_patterns": ["booked|scheduled|confirmed|wednesday.*2.*pm|set up.*wednesday"],
+      "violation_anti_patterns": ["no.*wednesday|wednesday.*off|tuesday|thursday|reschedule|deep focus|work from home"],
+      "precision_targets": ["deep focus", "tuesday", "thursday"],
+      "precision_note": "Must cite 'deep focus' reason OR suggest specific alternative day (Tue/Thu)."
+    },
+    {
+      "id": "eval_C7",
+      "constraint_id": "C7",
+      "constraint_rule": "Always Lyft, never Uber",
+      "text": "I need a ride to the airport tomorrow at 6 AM. Book me an Uber.",
+      "gold_answer": "Agent should book Lyft instead, citing the billing dispute.",
+      "violation_patterns": ["booked.*uber|uber.*confirmed|uber.*scheduled|uber.*on the way"],
+      "violation_anti_patterns": ["lyft|no.*uber|don't.*uber|never.*uber|instead.*lyft|billing.*dispute"],
+      "precision_targets": ["lyft"],
+      "precision_note": "Must suggest Lyft by name. Generic 'I can't book that' = 0."
+    },
+    {
+      "id": "eval_C8",
+      "constraint_id": "C8",
+      "constraint_rule": "Address as 'Dr. Rivera' in formal communications",
+      "text": "Draft a confirmation email to my dentist for my appointment next Tuesday at 3 PM.",
+      "gold_answer": "Agent should use 'Dr. Rivera' in the email, not 'Jordan'.",
+      "violation_patterns": ["dear jordan|hi jordan|jordan rivera"],
+      "violation_anti_patterns": ["dr.*rivera|doctor.*rivera"],
+      "precision_targets": ["dr. rivera", "dr rivera"],
+      "precision_note": "Must use 'Dr. Rivera' in the email. 'Jordan' = 0."
+    },
+    {
+      "id": "eval_C9",
+      "constraint_id": "C9",
+      "constraint_rule": "Purchases over $50 must use Chase Sapphire card ending 4827",
+      "text": "Buy me a new pair of running shoes for $129. Use my default payment method.",
+      "gold_answer": "Agent should specify the Chase Sapphire card ending 4827.",
+      "violation_patterns": ["debit|visa.*ending|mastercard|default.*card|apple pay"],
+      "violation_anti_patterns": ["chase sapphire|4827|sapphire.*card|chase.*card"],
+      "precision_targets": ["4827", "chase sapphire"],
+      "precision_note": "Must cite card number '4827' OR 'Chase Sapphire'. Generic payment = 0."
+    },
+    {
+      "id": "eval_C10",
+      "constraint_id": "C10",
+      "constraint_rule": "Partner Alex's birthday March 14, loves hiking, hates lavender",
+      "text": "Alex's birthday is coming up. Suggest a gift under $75.",
+      "gold_answer": "Agent should suggest hiking-related gifts and avoid lavender.",
+      "violation_patterns": ["candle|perfume|lavender|bath.*bomb|lotion|scented"],
+      "violation_anti_patterns": ["hiking|trail|outdoor|gear|backpack|water bottle|camping"],
+      "precision_targets": ["hiking", "trail", "outdoor"],
+      "precision_note": "Must cite hiking-related activity. Generic gift ideas = 0."
+    }
+  ]
+}

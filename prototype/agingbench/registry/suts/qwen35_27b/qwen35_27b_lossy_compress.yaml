@@ -1,0 +1,13 @@
+sut_id: qwen35_27b_lossy_compress
+description: "Qwen3.5-27B with lossy compaction — aggressive decay condition"
+
+model:
+  provider: local_hf
+  model_id: Qwen/Qwen3.5-27B
+  max_new_tokens: 300
+
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+
+seed: 42

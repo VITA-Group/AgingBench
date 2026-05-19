@@ -1,0 +1,11 @@
+sut_id: deepseek_r1_7b_growing_history
+description: "DeepSeek-R1-Distill-Qwen-7B with growing history"
+model:
+  provider: local_hf
+  model_id: deepseek-ai/DeepSeek-R1-Distill-Qwen-7B
+  max_new_tokens: 500
+memory_policy:
+  type: growing_history
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+  word_budget: 200
+seed: 42

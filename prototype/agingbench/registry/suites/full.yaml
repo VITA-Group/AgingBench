@@ -1,0 +1,86 @@
+suite_id: full
+description: >
+  AgingBench-Full — canonical reproducible suite covering every paper
+  scenario plus the new Tier-2 anchor S8-T (Terminal-bench-Aging). Run
+  this suite to reproduce paper Table 3 numbers.
+version: "1.0.0"
+
+# Fixed seeds across the suite for reproducibility. Multi-seed
+# aggregation is per-scenario (mean +/- std) when --seeds > 1.
+default_seeds: [42, 43, 44]
+
+scenarios:
+  - scenario_id: s1_research_literature
+    metric_group: G1
+    exposure_axis: t_writes
+    n_cycles: 10
+    runner_class: agingbench.runner.s1_runner.S1Runner
+    pressure: medium
+
+  - scenario_id: s2_lifestyle_assistant
+    metric_group: G2
+    exposure_axis: t_writes
+    n_cycles: 10
+    runner_class: agingbench.runner.s2_runner.S2Runner
+    pressure: medium
+
+  - scenario_id: s3_knowledge_base
+    metric_group: G3
+    exposure_axis: t_writes
+    n_cycles: 12
+    runner_class: agingbench.runner.s3_runner.S3Runner
+    pressure: medium
+
+  - scenario_id: s4_software_engineering
+    metric_group: G4
+    exposure_axis: t_steps
+    n_cycles: 8
+    runner_class: agingbench.runner.s4_runner.S4Runner
+    pressure: medium
+
+  - scenario_id: s5_self_planning
+    metric_group: G2
+    exposure_axis: t_steps
+    n_cycles: 10
+    runner_class: agingbench.runner.s5_runner.S5Runner
+    pressure: medium
+
+  - scenario_id: s6_naturalistic
+    metric_group: G2
+    exposure_axis: t_writes
+    n_cycles: 15
+    runner_class: agingbench.runner.s6_runner.S6Runner
+    pressure: medium
+
+  - scenario_id: s7_research_notes
+    metric_group: G2
+    exposure_axis: t_steps
+    n_cycles: 10
+    runner_class: agingbench.runner.s7_runner.S7Runner
+    pressure: medium
+
+  # S8 SWE-bench-Aging (Tier-2): anchored on a real OSS repository with
+  # a curated chain of GitHub issues; workspace persists across sessions
+  # (the agent's self-planned memory). Phase 0 dispatches as a stub;
+  # Phase 1+ delivers the workspace runner + mechanism probes.
+  - scenario_id: s8_swe_bench
+    metric_group: G1
+    exposure_axis: t_steps
+    n_cycles: 8
+    pressure: medium
+
+# Default SUTs covering the open-source-family and API-class rows from
+# Table 3. Override with --sut <yaml> for single-SUT runs.
+default_suts:
+  - agingbench/registry/suts/llama3_lossy_compress.yaml
+  - agingbench/registry/suts/llama3_summarize_store.yaml
+
+expected_wall_time_hr: 6
+
+# Pressure variants
+# -----------------
+# `full.yaml` pins every scenario at `pressure: medium` for paper-Table-3
+# reproducibility. To reproduce the pressure-sweep figures (light / medium
+# / heavy at three presets), use the dedicated `pressure_sweep.yaml`
+# suite instead. Per-scenario pressure can also be overridden ad-hoc with
+# `--pressure {light,medium,heavy}` on the CLI.

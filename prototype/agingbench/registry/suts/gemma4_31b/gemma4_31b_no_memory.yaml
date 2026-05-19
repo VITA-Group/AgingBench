@@ -1,0 +1,10 @@
+sut_id: gemma4_31b_no_memory
+description: "Gemma-4-31B-IT, no persistent memory (control)."
+model:
+  provider: local_hf
+  model_id: google/gemma-4-31b-it
+  max_new_tokens: 3000
+  torch_dtype: bfloat16
+memory_policy:
+  type: no_memory
+seed: 42

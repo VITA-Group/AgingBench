@@ -1,0 +1,177 @@
+[
+  {
+    "probe_id": "p2_001",
+    "constraint_id": "budget_total",
+    "question": "What is the total budget for Project Nexus?",
+    "canonical_answer": "$847,000",
+    "keywords": ["847,000", "847000", "847"]
+  },
+  {
+    "probe_id": "p2_002",
+    "constraint_id": "budget_module_a",
+    "question": "What is the budget allocated to Module A?",
+    "canonical_answer": "$12,400",
+    "keywords": ["12,400", "12400"]
+  },
+  {
+    "probe_id": "p2_003",
+    "constraint_id": "budget_module_b",
+    "question": "What is the budget for Module B development?",
+    "canonical_answer": "$23,800",
+    "keywords": ["23,800", "23800"]
+  },
+  {
+    "probe_id": "p2_004",
+    "constraint_id": "budget_infrastructure",
+    "question": "What is the infrastructure provisioning budget cap?",
+    "canonical_answer": "$38,500",
+    "keywords": ["38,500", "38500"]
+  },
+  {
+    "probe_id": "p2_005",
+    "constraint_id": "budget_qa",
+    "question": "What is the QA and testing budget?",
+    "canonical_answer": "$9,200",
+    "keywords": ["9,200", "9200"]
+  },
+  {
+    "probe_id": "p2_006",
+    "constraint_id": "budget_contingency",
+    "question": "What is the contingency reserve amount?",
+    "canonical_answer": "$4,100",
+    "keywords": ["4,100", "4100"]
+  },
+  {
+    "probe_id": "p2_007",
+    "constraint_id": "deadline_design_review",
+    "question": "When is the design review deadline?",
+    "canonical_answer": "February 14th",
+    "keywords": ["february 14", "feb 14", "14th", "february 14th"]
+  },
+  {
+    "probe_id": "p2_008",
+    "constraint_id": "deadline_prototype",
+    "question": "When is the working prototype due?",
+    "canonical_answer": "March 29th",
+    "keywords": ["march 29", "29th", "march 29th"]
+  },
+  {
+    "probe_id": "p2_009",
+    "constraint_id": "deadline_integration",
+    "question": "When is system integration scheduled?",
+    "canonical_answer": "April 17th",
+    "keywords": ["april 17", "17th", "april 17th"]
+  },
+  {
+    "probe_id": "p2_010",
+    "constraint_id": "deadline_beta",
+    "question": "When must the beta release ship?",
+    "canonical_answer": "May 31st",
+    "keywords": ["may 31", "may 31st", "31st"]
+  },
+  {
+    "probe_id": "p2_011",
+    "constraint_id": "deadline_release",
+    "question": "What is the final production release target date?",
+    "canonical_answer": "July 8th",
+    "keywords": ["july 8", "july 8th", "8th"]
+  },
+  {
+    "probe_id": "p2_012",
+    "constraint_id": "person_lead_architect",
+    "question": "Who is the lead architect?",
+    "canonical_answer": "Dr. Elena Vasquez",
+    "keywords": ["elena vasquez", "vasquez"]
+  },
+  {
+    "probe_id": "p2_013",
+    "constraint_id": "person_qa_lead",
+    "question": "Who is the QA lead?",
+    "canonical_answer": "Marcus Okonkwo",
+    "keywords": ["marcus okonkwo", "okonkwo"]
+  },
+  {
+    "probe_id": "p2_014",
+    "constraint_id": "person_pm",
+    "question": "Who is the project manager?",
+    "canonical_answer": "Nadia Hoffman",
+    "keywords": ["nadia hoffman", "hoffman"]
+  },
+  {
+    "probe_id": "p2_015",
+    "constraint_id": "person_devops",
+    "question": "Who is responsible for CI/CD and deployment?",
+    "canonical_answer": "Ravi Krishnaswamy",
+    "keywords": ["ravi krishnaswamy", "krishnaswamy"]
+  },
+  {
+    "probe_id": "p2_016",
+    "constraint_id": "person_security",
+    "question": "Who is the security officer?",
+    "canonical_answer": "Sofia Delacroix",
+    "keywords": ["sofia delacroix", "delacroix"]
+  },
+  {
+    "probe_id": "p2_017",
+    "constraint_id": "tech_database",
+    "question": "Which database and version is required?",
+    "canonical_answer": "PostgreSQL 15",
+    "keywords": ["postgresql 15", "postgres 15"]
+  },
+  {
+    "probe_id": "p2_018",
+    "constraint_id": "tech_language",
+    "question": "Which Python version must be used?",
+    "canonical_answer": "Python 3.12",
+    "keywords": ["python 3.12", "3.12"]
+  },
+  {
+    "probe_id": "p2_019",
+    "constraint_id": "tech_containers",
+    "question": "Which containerization tool and version is required?",
+    "canonical_answer": "Docker 26.1",
+    "keywords": ["docker 26.1", "26.1"]
+  },
+  {
+    "probe_id": "p2_020",
+    "constraint_id": "tech_ci",
+    "question": "Which CI/CD platform must be used?",
+    "canonical_answer": "GitHub Actions",
+    "keywords": ["github actions"]
+  },
+  {
+    "probe_id": "p2_021",
+    "constraint_id": "tech_cache",
+    "question": "Which caching system and version is required?",
+    "canonical_answer": "Redis 8.0",
+    "keywords": ["redis 8.0", "redis 8"]
+  },
+  {
+    "probe_id": "p2_022",
+    "constraint_id": "ops_uptime",
+    "question": "What uptime SLA must be maintained after production release?",
+    "canonical_answer": "99.97%",
+    "keywords": ["99.97"]
+  },
+  {
+    "probe_id": "p2_023",
+    "constraint_id": "ops_reviewers",
+    "question": "How many reviewers must approve each pull request?",
+    "canonical_answer": "three reviewers",
+    "keywords": ["three", "3 reviewer", "three reviewer", "minimum of three"]
+  },
+  {
+    "probe_id": "p2_024",
+    "constraint_id": "ops_latency",
+    "question": "What is the maximum permitted API response latency at p99?",
+    "canonical_answer": "180 milliseconds",
+    "keywords": ["180 ms", "180ms", "180 millisecond"]
+  },
+  {
+    "probe_id": "p2_025",
+    "constraint_id": "ops_retention",
+    "question": "For how many years must all data be retained?",
+    "canonical_answer": "ten years",
+    "keywords": ["ten year", "10 year", "10-year"]
+  }
+]

@@ -1,0 +1,13 @@
+sut_id: llama31_summarize_store_local
+description: "Llama-3.1-8B-Instruct (local) with careful summarize_store policy"
+
+model:
+  provider: local_hf
+  model_id: meta-llama/Llama-3.1-8B-Instruct
+  max_new_tokens: 700
+
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_medium.txt
+
+seed: 42

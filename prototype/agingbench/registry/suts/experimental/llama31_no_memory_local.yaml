@@ -1,0 +1,9 @@
+sut_id: llama31_no_memory_local
+description: "Llama-3.1-8B with no memory (control)"
+model:
+  provider: local_hf
+  model_id: meta-llama/Llama-3.1-8B-Instruct
+  max_new_tokens: 500
+memory_policy:
+  type: no_memory
+seed: 42

@@ -1,0 +1,19 @@
+sut_id: gpt4omini_append_only
+description: "GPT-4o-mini with append-only episodic memory (top-k cosine retrieval)"
+
+model:
+  provider: litellm
+  model: gpt-4o-mini
+  max_tokens: 700
+  temperature: 0.0
+
+memory_policy:
+  type: append_only
+  top_k: 5
+  # Cap accumulated raw content at 100K to leave ~28K headroom for system
+  # prompt + current task + tools + probes within GPT-4o-mini's 128K context.
+  # Head-truncation (drops oldest) preserves lossless-up-to-budget semantics
+  # for the C_A anchor on long-horizon scenarios (see Table 1).
+  max_input_tokens: 100000
+
+seed: 42

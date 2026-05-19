@@ -1,0 +1,10 @@
+sut_id: qwen3_14b_lossy_episodic
+description: "Qwen3-14B with lossy_episodic: lossy W + full R (pure R-lesion baseline)"
+model:
+  provider: local_hf
+  model_id: Qwen/Qwen3-14B
+  max_new_tokens: 700
+memory_policy:
+  type: lossy_episodic
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+seed: 42

@@ -1,0 +1,12 @@
+sut_id: gpt5_mini_append_only
+description: "GPT-5 mini, append-only episodic store with cosine retrieval."
+model:
+  provider: litellm
+  model: gpt-5-mini
+  max_tokens: 4000
+  temperature: 1.0
+memory_policy:
+  type: append_only
+  # gpt-5-mini context = 272K. Reserve ~22K for system + task + 4K output.
+  max_input_tokens: 250000
+seed: 42

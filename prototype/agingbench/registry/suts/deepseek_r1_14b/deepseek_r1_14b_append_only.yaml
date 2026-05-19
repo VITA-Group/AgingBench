@@ -1,0 +1,11 @@
+sut_id: deepseek_r1_14b_append_only
+description: "DeepSeek-R1-Distill-Qwen-14B, append-only episodic store with cosine retrieval."
+model:
+  provider: local_hf
+  model_id: deepseek-ai/DeepSeek-R1-Distill-Qwen-14B
+  max_new_tokens: 4000
+memory_policy:
+  type: append_only
+  # DeepSeek-R1-Distill-Qwen-14B context = 128K. Reserve ~8K for system + task + 4K output.
+  max_input_tokens: 120000
+seed: 42

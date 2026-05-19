@@ -1,0 +1,14 @@
+sut_id: llama31_lossy_growing_local
+description: "Llama-3.1-8B-Instruct (local path) with growing history + lossy compaction (200-word budget). Validation run."
+
+model:
+  provider: local_hf
+  model_id: meta-llama/Llama-3.1-8B-Instruct
+  max_new_tokens: 500
+
+memory_policy:
+  type: growing_history
+  compaction_prompt: experiments/prompts/compact_shrinking.txt
+  word_budget: 200
+
+seed: 42

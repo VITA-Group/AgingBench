@@ -1,0 +1,15 @@
+sut_id: gpt4o_append_only
+description: "GPT-4o with append-only episodic memory — naive growing store"
+
+model:
+  provider: litellm
+  model: gpt-4o
+  max_tokens: 700
+  temperature: 0.0
+
+memory_policy:
+  type: append_only
+  top_k: 5
+  max_input_tokens: 100000  # cap below GPT-4o's 128k context ceiling
+
+seed: 42

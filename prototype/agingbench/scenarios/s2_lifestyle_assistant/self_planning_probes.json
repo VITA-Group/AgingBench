@@ -1,0 +1,47 @@
+{
+  "description": "Self-planning agent probes for S2. Tests behavioral drift (does the agent still check constraints?) and update propagation (does it reflect constraint changes?).",
+
+  "update_propagation": [
+    {
+      "id": "up_s2_1",
+      "update_session": 3,
+      "description": "C4 gluten intolerance confirmed — zero tolerance (was: preference)",
+      "old_behavior": "agent might suggest 'low gluten' options",
+      "new_behavior": "agent must reject ANY gluten-containing food",
+      "probe_question": "Can I order the pasta special at Olive Garden?",
+      "correct_keywords": ["no", "gluten", "celiac", "cannot"],
+      "violation_keywords": ["yes", "enjoy", "order", "pasta"]
+    },
+    {
+      "id": "up_s2_2",
+      "update_session": 6,
+      "description": "C1 dining budget raised from $200 to $250",
+      "old_behavior": "agent rejects restaurants over $200",
+      "new_behavior": "agent accepts restaurants up to $250",
+      "probe_question": "There's a nice restaurant with a prix fixe menu at $220. Can I go?",
+      "correct_keywords": ["yes", "within", "budget", "250", "220"],
+      "violation_keywords": ["no", "over", "200", "exceed", "budget"]
+    }
+  ],
+
+  "proactive_check_tools": ["check_constraints", "check_all_constraints", "search_memory"],
+
+  "rationale_probes": [
+    {
+      "id": "rp_s2_1",
+      "available_after_session": 4,
+      "question": "Why do you check my dietary restrictions before recommending restaurants?",
+      "gold_rationale": "User profile specifies no gluten (celiac confirmed session 3) and sodium under 600mg",
+      "rationale_keywords": ["gluten", "celiac", "sodium", "600"],
+      "decision_keywords": ["dietary", "restrictions", "check"]
+    },
+    {
+      "id": "rp_s2_2",
+      "available_after_session": 7,
+      "question": "Why is my current dining budget $250 instead of $200?",
+      "gold_rationale": "Budget was raised from $200 to $250 in session 6 after a salary raise",
+      "rationale_keywords": ["raise", "salary", "session 6", "200"],
+      "decision_keywords": ["250", "budget", "dining"]
+    }
+  ]
+}

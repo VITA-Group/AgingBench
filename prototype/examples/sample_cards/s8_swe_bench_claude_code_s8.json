@@ -1,0 +1,147 @@
+{
+  "card_type": "agingbench.AgingCard",
+  "checkpoints": [
+    [
+      0,
+      1.0
+    ],
+    [
+      1,
+      1.0
+    ],
+    [
+      2,
+      0.5
+    ],
+    [
+      3,
+      0.5
+    ],
+    [
+      4,
+      0.0
+    ],
+    [
+      5,
+      0.0
+    ],
+    [
+      6,
+      0.5
+    ],
+    [
+      7,
+      0.0
+    ]
+  ],
+  "cost_and_efficiency": {
+    "latency_ms_p50": null,
+    "latency_ms_p95": null,
+    "tokens_per_session_mean": null,
+    "total_calls": null,
+    "total_cost_usd": null,
+    "total_input_tokens": null,
+    "total_output_tokens": null,
+    "total_response_tokens": null
+  },
+  "generated_at": "2026-05-12T05:16:55+00:00",
+  "headline": {
+    "aging_detected": true,
+    "decay_slope": -0.146,
+    "half_life": 4.0,
+    "hazard_proxy": 0.438,
+    "m0": 1.0,
+    "m_final": 0.0,
+    "metric_name": "task_pass_rate"
+  },
+  "links": {
+    "dependency_metrics_json": "dependency_metrics.json",
+    "metrics_json": "metrics.json",
+    "trace_jsonl": "trace.jsonl"
+  },
+  "mechanism_metrics": {
+    "compression": {
+      "score": 0.0,
+      "trajectory": [
+        [
+          0,
+          1.0
+        ],
+        [
+          1,
+          1.0
+        ],
+        [
+          2,
+          0.5
+        ],
+        [
+          3,
+          0.5
+        ],
+        [
+          4,
+          0.0
+        ],
+        [
+          5,
+          0.0
+        ],
+        [
+          6,
+          0.5
+        ],
+        [
+          7,
+          0.0
+        ]
+      ]
+    },
+    "interference": {
+      "n_probes": 2,
+      "resistance": 0.5
+    },
+    "maintenance": {
+      "delta": null,
+      "post_shock": null,
+      "pre_shock": null,
+      "shock_sessions": []
+    },
+    "revision": {
+      "accumulator_abs_error": null,
+      "compounding_detected": null,
+      "forget_accuracy": null,
+      "version_accuracy": 0.33
+    }
+  },
+  "n_sessions": 8,
+  "pressure": {
+    "dependency_density": 0.5,
+    "forget_rate": 0.1,
+    "max_chain_depth": 3,
+    "n_confusable_pairs": 3,
+    "preset": "medium",
+    "tokens_per_session": 2000,
+    "update_rate": 0.2
+  },
+  "provenance": {
+    "agingbench_version": "0.1.0",
+    "compute_environment": "local",
+    "git_sha": "14249482552d4c28cd47d90b3ce07cbcbb46dfc6"
+  },
+  "run_id": "fixture-s8_swe_bench-seed42",
+  "scenario": "s8_swe_bench",
+  "scenario_version": "1.0",
+  "schema_version": "1.0.0",
+  "seed": 42,
+  "suite_id": "full",
+  "sut": {
+    "config_hash_sha256": null,
+    "config_yaml_path": null,
+    "memory_policy_type": "workspace",
+    "model_id": "claude-haiku-4-5-20251001",
+    "model_provider": "claude_code",
+    "sut_id": "claude_code_s8"
+  },
+  "warnings": []
+}

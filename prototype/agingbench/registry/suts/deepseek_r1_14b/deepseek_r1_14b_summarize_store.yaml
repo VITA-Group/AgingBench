@@ -1,0 +1,11 @@
+sut_id: deepseek_r1_14b_summarize_store
+description: "DeepSeek-R1-Distill-Qwen-14B with summarize_store policy"
+model:
+  provider: local_hf
+  model_id: deepseek-ai/DeepSeek-R1-Distill-Qwen-14B
+  max_new_tokens: 4000
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_medium.txt
+
+seed: 42

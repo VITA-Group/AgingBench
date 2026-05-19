@@ -1,0 +1,18 @@
+scenario_id: s7_research_notes
+display_name: "Research-Notes Coding Task (Tier-2 production CLI)"
+tier: 2
+metric_group: G1
+exposure_axis: t_steps
+default_sessions: 10
+
+description: >
+  Tier-2 evaluation of a long-running developer agent (OpenHands or
+  Claude Code) on a research-notes codebase. Each session: agent
+  receives a task, edits files in a persistent workspace, runs pytest
+  for ground-truth verification, then answers held-out probes that
+  force reliance on workspace files (not conversation memory) via
+  adapter.reset_session(). Renamed from S7+ in v0.2.
+
+runner:
+  module: agingbench.runner.s7_runner
+  class: S7Runner

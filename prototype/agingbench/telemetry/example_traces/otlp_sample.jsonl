@@ -1,0 +1,2 @@
+{"span_id": "s001", "trace_id": "t001", "operation_name": "llm.compaction", "attributes": {"llm.input_tokens": 800, "llm.output_tokens": 200, "llm.model": "gpt-4o-mini"}, "start_time": "2026-05-11T10:30:00Z"}
+{"span_id": "s002", "trace_id": "t001", "operation_name": "llm.answer", "attributes": {"llm.input_tokens": 1200, "llm.output_tokens": 180, "llm.model": "gpt-4o-mini"}, "start_time": "2026-05-11T10:32:00Z"}

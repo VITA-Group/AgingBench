@@ -1,0 +1,10 @@
+sut_id: gpt5_mini_no_memory
+description: "GPT-5 mini, no persistent memory (control)."
+model:
+  provider: litellm
+  model: gpt-5-mini
+  max_tokens: 4000
+  temperature: 1.0
+memory_policy:
+  type: no_memory
+seed: 42

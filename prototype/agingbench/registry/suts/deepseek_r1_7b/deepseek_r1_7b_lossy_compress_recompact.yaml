@@ -1,0 +1,14 @@
+sut_id: deepseek_r1_7b_lossy_compress_recompact
+description: deepseek_r1_7b with lossy_compress + recompact shock at session 4
+model:
+  provider: local_hf
+  model_id: deepseek-ai/DeepSeek-R1-Distill-Qwen-7B
+  max_new_tokens: 500
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+seed: 42
+maintenance:
+  shocks:
+  - type: recompact
+    session: 4

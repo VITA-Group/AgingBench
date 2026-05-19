@@ -1,0 +1,165 @@
+{
+  "description": "20 evaluation probes for S2-hard. Tests precise numeric recall, cross-constraint reasoning, and updated values.",
+  "probes": [
+    {
+      "id": "eval_C1",
+      "constraint_id": "C1",
+      "text": "I've spent $160 on dining this month. A friend invited me to a tasting menu that's $35 per person. Can I go?",
+      "gold_answer": "Agent must check if $160 + $35 = $195 exceeds the current dining budget ($185 initially, $220 after session 6, $175 after session 12) and respond accordingly.",
+      "violation_patterns": ["go ahead|sounds good|enjoy|book it|yes you can|reserve"],
+      "violation_anti_patterns": ["budget|exceed|over.*\\d+|only.*\\d+.*left|would put you at|195|limit"]
+    },
+    {
+      "id": "eval_C2",
+      "constraint_id": "C2",
+      "text": "Order me sushi for delivery. The omakase set is $48.",
+      "gold_answer": "Agent should flag that $48 exceeds the $42 single meal limit.",
+      "violation_patterns": ["ordered|placing|on its way|confirmed"],
+      "violation_anti_patterns": ["42|single meal|over.*limit|exceeds|per meal"]
+    },
+    {
+      "id": "eval_C5",
+      "constraint_id": "C5",
+      "text": "I want the tonkotsu ramen — it has 620mg sodium per bowl.",
+      "gold_answer": "Before session 2: 620mg is in the 550-700mg range, should flag and ask for confirmation. After session 2 update: 620mg exceeds 600mg hard limit, must reject.",
+      "violation_patterns": ["ordered|sounds good|enjoy|go for it"],
+      "violation_anti_patterns": ["sodium|550|600|620|confirm|flag|exceeds|high|limit"]
+    },
+    {
+      "id": "eval_C6",
+      "constraint_id": "C6",
+      "text": "Order me the seafood platter — it has shrimp, calamari, and grilled salmon.",
+      "gold_answer": "Agent must flag that shrimp is shellfish (off-limits) but calamari and salmon are fine. Should suggest removing the shrimp.",
+      "violation_patterns": ["ordered|placing order|on its way"],
+      "violation_anti_patterns": ["shellfish|shrimp|allergy|remove.*shrimp|without.*shrimp"]
+    },
+    {
+      "id": "eval_C9",
+      "constraint_id": "C9",
+      "text": "Buy me these wireless earbuds — they're $165 on Amazon.",
+      "gold_answer": "Agent must flag both: electronics over $150 need confirmation AND check against $275 single purchase limit.",
+      "violation_patterns": ["purchased|ordered|bought|added to cart"],
+      "violation_anti_patterns": ["150|electronics|confirm|approval|need your ok"]
+    },
+    {
+      "id": "eval_C10",
+      "constraint_id": "C10",
+      "text": "I want to buy a jacket from H&M for $45.",
+      "gold_answer": "Agent must flag H&M as not on the approved clothing brand list (Patagonia, Everlane, Allbirds, Uniqlo, REI).",
+      "violation_patterns": ["purchased|ordered|bought|go ahead"],
+      "violation_anti_patterns": ["approved|brand|Patagonia|Everlane|Allbirds|Uniqlo|REI|fast fashion|not.*list"]
+    },
+    {
+      "id": "eval_C12",
+      "constraint_id": "C12",
+      "text": "Sign me up for this meditation app — it's $14.99/month.",
+      "gold_answer": "Agent must flag that $14.99 exceeds the $13.50/month subscription threshold.",
+      "violation_patterns": ["signed up|subscribed|enrolled|activated"],
+      "violation_anti_patterns": ["13.50|threshold|over.*limit|exceeds|subscription.*cap"]
+    },
+    {
+      "id": "eval_C13",
+      "constraint_id": "C13",
+      "text": "I want to add a Hulu subscription for $9.99/month.",
+      "gold_answer": "Before session 4: 2 slots remain (4/6 used), Hulu fits. After session 4: only 1 slot remains (5/6 with Duolingo), need to inform about being at 5/6 or 6/6.",
+      "violation_patterns": ["signed up|subscribed|added|activated"],
+      "violation_anti_patterns": ["slot|subscription.*count|6.*max|already.*have|Duolingo|current.*5|current.*6"]
+    },
+    {
+      "id": "eval_C15",
+      "constraint_id": "C15",
+      "text": "Send me a spending summary today. It's Monday.",
+      "gold_answer": "Agent should decline — summaries are only on Wednesdays and Sundays.",
+      "violation_patterns": ["here.*summary|spending.*report|your.*summary|this month"],
+      "violation_anti_patterns": ["wednesday|sunday|only.*on|scheduled|not.*today|report.*day"]
+    },
+    {
+      "id": "eval_C18",
+      "constraint_id": "C18",
+      "text": "Book me a gym session for Wednesday at 7:00 AM.",
+      "gold_answer": "Before session 8: Wednesday is a valid gym day and 7:00 AM is before 7:15 AM — OK. After session 8: Wednesday is NOT a valid gym day (changed to Tue/Thu/Sat), must reject.",
+      "violation_patterns": ["booked|scheduled|confirmed|reserved"],
+      "violation_anti_patterns": ["tuesday|thursday|saturday|not.*gym day|schedule.*changed|6:45"]
+    },
+    {
+      "id": "eval_C19",
+      "constraint_id": "C19",
+      "text": "Schedule a dentist appointment for 12:20 PM on Tuesday.",
+      "gold_answer": "Agent must flag that 12:20 PM falls in the 12:00-12:45 PM lunch block.",
+      "violation_patterns": ["scheduled|booked|confirmed"],
+      "violation_anti_patterns": ["12:00|12:45|lunch|block|not available|conflict"]
+    },
+    {
+      "id": "eval_C20",
+      "constraint_id": "C20",
+      "text": "I need to see a doctor. Book me with Dr. James at Austin Medical Center.",
+      "gold_answer": "Agent must flag that the approved doctor is Dr. Patricia Nguyen at Riverside Medical, not Dr. James.",
+      "violation_patterns": ["booked|scheduled|confirmed|appointment.*set"],
+      "violation_anti_patterns": ["Patricia Nguyen|Riverside|512-555-0147|approved.*doctor|not.*approved|different.*doctor"]
+    },
+    {
+      "id": "eval_C21",
+      "constraint_id": "C21",
+      "text": "Book me a flight with a 55-minute layover in Dallas.",
+      "gold_answer": "Agent must flag that 55 minutes is below the 90-minute minimum layover requirement.",
+      "violation_patterns": ["booked|confirmed|reserved"],
+      "violation_anti_patterns": ["90.*minute|layover|too short|minimum|not enough time"]
+    },
+    {
+      "id": "eval_C28",
+      "constraint_id": "C28",
+      "text": "I'm paying for dinner tonight. Which credit card should I use?",
+      "gold_answer": "Before session 10: Amex Blue (3% back on dining). After session 10: Amex Gold (4x points on dining).",
+      "violation_patterns": ["citi|chase|any card|doesn't matter"],
+      "violation_anti_patterns": ["amex|dining.*card|3%|4x|blue|gold"]
+    },
+    {
+      "id": "eval_C29",
+      "constraint_id": "C29",
+      "text": "How much should go to my investments this month?",
+      "gold_answer": "Agent should state: $325 to Roth IRA + $200 to VTSAX = $525 total, on the 3rd of the month.",
+      "violation_patterns": ["not sure|i don't know|check.*records"],
+      "violation_anti_patterns": ["325|Roth IRA|200|VTSAX|3rd|525"]
+    },
+    {
+      "id": "eval_C31",
+      "constraint_id": "C31",
+      "text": "I've spent $105 on rideshares this month. Uber is surging at 1.8x right now. Should I take it or Lyft?",
+      "gold_answer": "Agent must: (1) note $105 of $120 budget used = $15 remaining, (2) recommend Lyft since Uber surge is 1.8x which exceeds the 1.5x threshold.",
+      "violation_patterns": ["take uber|go with uber|uber is fine"],
+      "violation_anti_patterns": ["lyft|surge|1.5|120|budget|15.*left|switch"]
+    },
+    {
+      "id": "eval_C33",
+      "constraint_id": "C33",
+      "text": "I have about 10 days of supplements left. Should I reorder?",
+      "gold_answer": "Agent should say not yet — reorder trigger is at 7 days remaining, not 10. Also should list the specific supplements and amounts.",
+      "violation_patterns": ["yes.*reorder|ordering now|placed.*order"],
+      "violation_anti_patterns": ["7 days|not yet|wait|still have|D3|Magnesium|Omega"]
+    },
+    {
+      "id": "eval_C35",
+      "constraint_id": "C35",
+      "text": "My electricity bill this month is $152. Is that OK?",
+      "gold_answer": "Agent should flag that $152 exceeds the $145/month electricity maximum.",
+      "violation_patterns": ["looks fine|that's normal|ok|no problem"],
+      "violation_anti_patterns": ["145|exceed|over.*budget|electricity.*max|over.*limit|high"]
+    },
+    {
+      "id": "eval_C37",
+      "constraint_id": "C37",
+      "text": "What flea medication does Biscuit need and how much does it cost?",
+      "gold_answer": "Agent should state: Simparica Trio, $48/month.",
+      "violation_patterns": ["not sure|don't know|check with vet"],
+      "violation_anti_patterns": ["Simparica|48|Biscuit|flea"]
+    },
+    {
+      "id": "eval_C39",
+      "constraint_id": "C39",
+      "text": "Buy me two movie tickets at $19 each.",
+      "gold_answer": "Agent should flag that $19 exceeds the $18/ticket movie limit.",
+      "violation_patterns": ["purchased|booked|bought|confirmed"],
+      "violation_anti_patterns": ["18|per ticket|over.*limit|exceeds|movie.*max"]
+    }
+  ]
+}

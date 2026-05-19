@@ -1,0 +1,91 @@
+suite_id: pressure_sweep
+description: >
+  AgingBench-Full pressure-sweep extension. Same scenarios as `full.yaml`
+  but each runs at three PressureConfig presets (light, medium, heavy) so
+  paper figures that report aging-curve shape as a function of pressure
+  can be reproduced with one command.
+
+  This suite is heavier than `full.yaml`; expect ~3x the wall-time and
+  cost. For paper Table-3 reproduction (medium pressure only) use
+  `full.yaml` instead.
+version: "1.0.0"
+
+default_seeds: [42, 43, 44]
+
+# Each scenario is replicated at three pressure levels. The scenario_id is
+# tagged with the pressure preset so output dirs are kept distinct.
+scenarios:
+  # ---- S1 Research Literature ----
+  - scenario_id: s1_research_literature
+    metric_group: G1
+    exposure_axis: t_writes
+    n_cycles: 10
+    runner_class: agingbench.runner.s1_runner.S1Runner
+    pressure: light
+    output_suffix: "_p_light"
+  - scenario_id: s1_research_literature
+    metric_group: G1
+    exposure_axis: t_writes
+    n_cycles: 10
+    runner_class: agingbench.runner.s1_runner.S1Runner
+    pressure: medium
+    output_suffix: "_p_medium"
+  - scenario_id: s1_research_literature
+    metric_group: G1
+    exposure_axis: t_writes
+    n_cycles: 10
+    runner_class: agingbench.runner.s1_runner.S1Runner
+    pressure: heavy
+    output_suffix: "_p_heavy"
+
+  # ---- S2 Lifestyle Assistant ----
+  - scenario_id: s2_lifestyle_assistant
+    metric_group: G2
+    exposure_axis: t_writes
+    n_cycles: 10
+    runner_class: agingbench.runner.s2_runner.S2Runner
+    pressure: light
+    output_suffix: "_p_light"
+  - scenario_id: s2_lifestyle_assistant
+    metric_group: G2
+    exposure_axis: t_writes
+    n_cycles: 10
+    runner_class: agingbench.runner.s2_runner.S2Runner
+    pressure: medium
+    output_suffix: "_p_medium"
+  - scenario_id: s2_lifestyle_assistant
+    metric_group: G2
+    exposure_axis: t_writes
+    n_cycles: 10
+    runner_class: agingbench.runner.s2_runner.S2Runner
+    pressure: heavy
+    output_suffix: "_p_heavy"
+
+  # ---- S5 Self-Planning Notebook ----
+  - scenario_id: s5_self_planning
+    metric_group: G2
+    exposure_axis: t_steps
+    n_cycles: 10
+    runner_class: agingbench.runner.s5_runner.S5Runner
+    pressure: light
+    output_suffix: "_p_light"
+  - scenario_id: s5_self_planning
+    metric_group: G2
+    exposure_axis: t_steps
+    n_cycles: 10
+    runner_class: agingbench.runner.s5_runner.S5Runner
+    pressure: medium
+    output_suffix: "_p_medium"
+  - scenario_id: s5_self_planning
+    metric_group: G2
+    exposure_axis: t_steps
+    n_cycles: 10
+    runner_class: agingbench.runner.s5_runner.S5Runner
+    pressure: heavy
+    output_suffix: "_p_heavy"
+
+default_suts:
+  - agingbench/registry/suts/llama3_lossy_compress.yaml
+  - agingbench/registry/suts/llama3_summarize_store.yaml
+
+expected_wall_time_hr: 18

@@ -1,0 +1,13 @@
+sut_id: gemma2_27b_lossy_compress
+description: "Gemma-2-27B-IT with lossy compaction — aggressive decay condition"
+
+model:
+  provider: local_hf
+  model_id: google/gemma-2-27b-it
+  max_new_tokens: 300
+
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+
+seed: 42

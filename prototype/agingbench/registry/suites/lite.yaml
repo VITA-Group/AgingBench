@@ -1,0 +1,52 @@
+suite_id: lite
+description: >
+  AgingBench-Lite — CI-friendly subset for pre-deployment checks against
+  the four-mechanism diagnostic. Designed to run in roughly half an hour
+  with a Haiku-class model.
+version: "1.0.0"
+
+# Pinned configuration for AgingBench-Lite. Product teams should treat
+# this suite as the canonical pre-deployment check before changing model,
+# prompt, memory policy, or tool scaffolding.
+#
+# Coverage:
+#   - S1 (compression) at fixed pressure
+#   - S2 (silent precision loss) at fixed pressure
+#   - S7 Research-Notes Coding Task (Tier-2 production CLI) at fixed pressure
+#
+# S7 (formerly S7+) is the Tier-2 scenario in v1. S8-T Terminal-bench-Aging
+# requires Docker for faithful per-task verification so it is NOT in the
+# lite suite; it is included in full.yaml.
+
+scenarios:
+  - scenario_id: s1_research_literature
+    metric_group: G1
+    exposure_axis: t_writes
+    n_cycles: 10
+    runner_class: agingbench.runner.s1_runner.S1Runner
+    pressure: medium
+
+  - scenario_id: s2_lifestyle_assistant
+    metric_group: G2
+    exposure_axis: t_writes
+    n_cycles: 10
+    runner_class: agingbench.runner.s2_runner.S2Runner
+    pressure: medium
+
+  - scenario_id: s7_research_notes
+    metric_group: G2
+    exposure_axis: t_steps
+    n_cycles: 10
+    runner_class: agingbench.runner.s7_runner.S7Runner
+    pressure: medium
+
+# Default seeds for AgingBench-Lite: three fixed seeds for variance
+# estimation while keeping cost bounded.
+default_seeds: [42, 43, 44]
+
+expected_wall_time_min: 30
+
+# Default SUT for AgingBench-Lite: a Haiku-class model with a
+# straightforward lossy compaction policy. Override with --sut.
+default_suts:
+  - agingbench/registry/suts/haiku45/haiku45_lossy_compress.yaml

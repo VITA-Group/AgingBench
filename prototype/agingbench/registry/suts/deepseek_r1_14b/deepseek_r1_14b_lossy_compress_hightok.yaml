@@ -1,0 +1,11 @@
+sut_id: deepseek_r1_14b_lossy_compress_hightok
+description: "DeepSeek-R1-Distill-Qwen-14B with lossy_compress — 3000 max_new_tokens to rule out truncation-induced aging"
+model:
+  provider: local_hf
+  model_id: deepseek-ai/DeepSeek-R1-Distill-Qwen-14B
+  max_new_tokens: 3000
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+
+seed: 42

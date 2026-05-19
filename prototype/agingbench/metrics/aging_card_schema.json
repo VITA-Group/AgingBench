@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AgingBench/AgingBench/blob/main/prototype/agingbench/metrics/aging_card_schema.json",
+  "title": "AgingCard",
+  "description": "Consolidated per-run output of an AgingBench scenario. Schema version 1.0.0.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "card_type",
+    "generated_at",
+    "run_id",
+    "scenario",
+    "scenario_version",
+    "suite_id",
+    "sut",
+    "seed",
+    "n_sessions",
+    "pressure",
+    "headline",
+    "mechanism_metrics",
+    "cost_and_efficiency",
+    "checkpoints",
+    "provenance",
+    "warnings",
+    "links"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "SemVer. v1 ships 1.0.0. Bumping major requires a migration utility."
+    },
+    "card_type": {
+      "const": "agingbench.AgingCard"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scenario": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scenario_version": {
+      "type": "string"
+    },
+    "suite_id": {
+      "type": "string"
+    },
+    "sut": {
+      "type": "object",
+      "required": ["sut_id"],
+      "properties": {
+        "sut_id": {"type": "string"},
+        "model_provider": {"type": ["string", "null"]},
+        "model_id": {"type": ["string", "null"]},
+        "memory_policy_type": {"type": ["string", "null"]},
+        "config_yaml_path": {"type": ["string", "null"]},
+        "config_hash_sha256": {"type": ["string", "null"]}
+      },
+      "additionalProperties": true
+    },
+    "seed": {"type": "integer"},
+    "n_sessions": {"type": "integer", "minimum": 0},
+    "pressure": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "headline": {
+      "type": "object",
+      "required": ["metric_name"],
+      "properties": {
+        "metric_name": {"type": "string"},
+        "m0": {"type": ["number", "null"]},
+        "m_final": {"type": ["number", "null"]},
+        "half_life": {"type": ["number", "null"]},
+        "decay_slope": {"type": ["number", "null"]},
+        "hazard_proxy": {"type": ["number", "null"]},
+        "aging_detected": {"type": ["boolean", "null"]}
+      },
+      "additionalProperties": true
+    },
+    "mechanism_metrics": {
+      "type": "object",
+      "required": ["compression", "interference", "revision", "maintenance"],
+      "properties": {
+        "compression": {"type": "object"},
+        "interference": {"type": "object"},
+        "revision": {"type": "object"},
+        "maintenance": {"type": "object"}
+      },
+      "additionalProperties": true
+    },
+    "cost_and_efficiency": {
+      "type": "object",
+      "description": "Operational metadata. Tokens and calls are CANONICAL (every AgingCard should populate them when an LLM was called); latency and cost_usd are ADVISORY (recorded only when callers instrument per-call timing/cost). Latency varies with network and provider load and is not an aging signal; cost_usd is a function of tokens times provider-specific pricing that labs typically compute against their own negotiated rates. Tokens + calls are the universal cost signal across providers; absence of latency/cost_usd is expected and not a defect.",
+      "properties": {
+        "total_input_tokens": {"type": ["integer", "null"], "description": "Canonical. Sum of input tokens across all LLM calls."},
+        "total_output_tokens": {"type": ["integer", "null"], "description": "Canonical. Sum of output tokens across all LLM calls."},
+        "total_response_tokens": {"type": ["integer", "null"], "description": "Optional. Some scenarios track response tokens separately."},
+        "tokens_per_session_mean": {"type": ["number", "null"], "description": "Canonical. (input + output) / n_sessions; the per-session token budget."},
+        "total_calls": {"type": ["integer", "null"], "description": "Canonical. Number of LLM calls made across the run."},
+        "total_cost_usd": {"type": ["number", "null"], "description": "Advisory. Sum of per-call cost in USD if callers record it; typically null. Labs computing their own cost should multiply tokens by their negotiated provider rate."},
+        "latency_ms_p50": {"type": ["number", "null"], "description": "Advisory. P50 LLM-call latency in milliseconds if callers record per-call duration; typically null. Latency is dominated by network and provider load (Tier 1) or tool execution outside the LLM call (Tier 2), and is not an aging signal."},
+        "latency_ms_p95": {"type": ["number", "null"], "description": "Advisory. P95 LLM-call latency in milliseconds."}
+      },
+      "additionalProperties": true
+    },
+    "checkpoints": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 2,
+        "prefixItems": [
+          {"type": "number"},
+          {"type": ["number", "null"]}
+        ]
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "properties": {
+        "agingbench_version": {"type": ["string", "null"]},
+        "git_sha": {"type": ["string", "null"]},
+        "compute_environment": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "warnings": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "links": {
+      "type": "object",
+      "additionalProperties": {"type": ["string", "null"]}
+    }
+  }
+}

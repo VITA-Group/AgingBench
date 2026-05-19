@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agingbench/spec/trace.schema.json",
+  "title": "AgingBench Trace Event Schema",
+  "description": "JSONL trace format aligned to OpenInference semantic conventions (PDF §6.1.2, §6.2).",
+  "type": "object",
+  "required": ["event", "span_id", "parent_span_id", "timestamp"],
+  "properties": {
+    "event": {
+      "type": "string",
+      "enum": ["run_start", "cycle_start", "llm_call", "compress", "probe_batch", "cycle_end", "run_end"],
+      "description": "Event type identifier"
+    },
+    "span_id": {
+      "type": "string",
+      "description": "16-character hex span identifier (OTel-compatible)"
+    },
+    "parent_span_id": {
+      "type": "string",
+      "description": "span_id of the parent event; null for run_start"
+    },
+    "timestamp": {
+      "type": "number",
+      "description": "Unix timestamp (float seconds)"
+    },
+    "gen_ai.system": {
+      "type": "string",
+      "description": "LLM provider (OpenInference semantic attribute): 'local_hf', 'openai', 'anthropic', 'google'"
+    },
+    "gen_ai.request.model": {
+      "type": "string",
+      "description": "Model identifier as sent to the provider"
+    },
+    "gen_ai.usage.input_tokens": {
+      "type": "integer",
+      "description": "Prompt token count for this LLM call (OpenInference)"
+    },
+    "gen_ai.usage.output_tokens": {
+      "type": "integer",
+      "description": "Completion token count for this LLM call (OpenInference)"
+    },
+    "input.value": {
+      "type": "string",
+      "description": "First 300 chars of the LLM input (OpenInference)"
+    },
+    "output.value": {
+      "type": "string",
+      "description": "First 300 chars of the LLM output (OpenInference)"
+    },
+    "cycle": { "type": "integer" },
+    "m": { "type": "number", "minimum": 0, "maximum": 1 },
+    "probe_scores": { "type": "array", "items": { "type": "integer", "enum": [0, 1] } },
+    "t_writes": { "type": "integer", "description": "Cumulative long-term memory writes (PDF §5.2 t_writes)" },
+    "sut_id": { "type": "string" },
+    "scenario": { "type": "string" },
+    "policy": { "type": "string" },
+    "seed": { "type": "integer" }
+  }
+}

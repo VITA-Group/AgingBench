@@ -1,0 +1,11 @@
+sut_id: gpt5_mini_lossy_compress_4k
+description: "GPT-5-mini with lossy summarize-store, 4000-token budget. Large budget leaves room for the answer after OpenAI's hidden reasoning tokens. Paired with gpt5_mini_lossy_compress.yaml (500-tok budget) for max_tokens sensitivity."
+model:
+  provider: litellm
+  model: gpt-5-mini
+  max_tokens: 4000
+  temperature: 1.0
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+seed: 42

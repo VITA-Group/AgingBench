@@ -1,0 +1,346 @@
+{
+  "benchmark_source": "WebArena (web-arena-x/webarena)",
+  "description": "Naturalistic aging scenario using WebArena-derived tasks across e-commerce, travel, and project management domains. Sessions are organized in 3 domain workflows (5 sessions each). Within each workflow, the final session is a cross-reference task requiring synthesis of information from earlier sessions. Memory carryover is rational: facts from earlier sessions are needed to answer later questions.",
+  "system_prompt": "You are a research analyst assistant. Your job is to analyze data from various platforms (e-commerce dashboards, mapping services, project management tools), answer questions accurately, and remember findings for future reference. When answering, be precise with names, numbers, and specific details.",
+  "sessions": [
+    {
+      "session_id": 0,
+      "source_task_id": "webarena_0",
+      "domain": "shopping_admin",
+      "environment_data": "=== E-Commerce Admin Dashboard: Annual Sales Report 2022 ===\n\nTop 10 Best-Selling Products (by units sold):\n\n| Rank | Product Name              | Units Sold | Revenue     | Category       |\n|------|---------------------------|------------|-------------|----------------|\n| 1    | Quest Lumaflex Band       | 4,892      | $78,272.00  | Fitness        |\n| 2    | Sprite Foam Yoga Brick    | 3,741      | $18,705.00  | Fitness        |\n| 3    | Dash Digital Watch        | 3,215      | $289,350.00 | Electronics    |\n| 4    | Affirm Water Bottle       | 2,987      | $29,870.00  | Accessories    |\n| 5    | Pursuit Lumaflex Tone Band| 2,654      | $53,080.00  | Fitness        |\n| 6    | Zing Jump Rope            | 2,401      | $33,614.00  | Fitness        |\n| 7    | Sprite Stasis Ball 75 cm  | 2,198      | $59,346.00  | Fitness        |\n| 8    | Harmony Lumaflex Band     | 2,057      | $30,855.00  | Fitness        |\n| 9    | Go-Get'r Pushup Grips     | 1,893      | $24,609.00  | Fitness        |\n| 10   | Crown Summit Backpack     | 1,764      | $66,990.00  | Gear           |\n\nTotal products sold in 2022: 38,102 units\nTotal revenue: $1,247,891.00\nMost popular category: Fitness (71% of top 10)",
+      "task": {
+        "text": "Based on the annual sales report for our e-commerce platform, answer: What is the top-1 best-selling product in 2022, and how many units were sold?",
+        "reference_answer": "Quest Lumaflex Band with 4,892 units sold",
+        "eval_keywords": ["Quest Lumaflex Band", "4,892"]
+      },
+      "recall_probes": [
+        {
+          "probe_id": "s0_p0",
+          "question": "What was the best-selling product on our e-commerce platform in 2022?",
+          "keywords": ["Quest Lumaflex Band", "Lumaflex Band"],
+          "canonical_answer": "Quest Lumaflex Band"
+        },
+        {
+          "probe_id": "s0_p1",
+          "question": "How much total revenue did our e-commerce platform generate in 2022?",
+          "keywords": ["1,247,891", "1247891"],
+          "canonical_answer": "$1,247,891"
+        }
+      ]
+    },
+    {
+      "session_id": 1,
+      "source_task_id": "webarena_200",
+      "domain": "shopping_admin",
+      "environment_data": "=== E-Commerce Admin: Order History (Oldest Completed Orders) ===\n\nFiltered by: Status = Complete, Sorted by: Date (ascending)\n\n| Order # | Date       | Billing Name     | Total    | Items | Ship-to State |\n|---------|------------|------------------|----------|-------|---------------|\n| 100001  | 2020-01-15 | John Lee         | $234.50  | 3     | California    |\n| 100002  | 2020-01-18 | Sarah Miller     | $89.99   | 1     | New York      |\n| 100003  | 2020-01-22 | Robert Chen      | $567.00  | 5     | Texas         |\n| 100004  | 2020-02-01 | Maria Garcia     | $123.45  | 2     | Florida       |\n| 100005  | 2020-02-14 | James Wilson     | $445.00  | 4     | Illinois      |\n\nOldest completed order: #100001 (2020-01-15)\nCustomer: John Lee\nShipping: Standard Ground, delivered 2020-01-22\nPayment: Visa ending in 4532",
+      "task": {
+        "text": "From the order history data, answer: What is the billing name on the oldest completed order, and what was the order total?",
+        "reference_answer": "John Lee, $234.50",
+        "eval_keywords": ["John Lee", "234.50"]
+      },
+      "recall_probes": [
+        {
+          "probe_id": "s1_p0",
+          "question": "Who placed the oldest completed order on our e-commerce platform?",
+          "keywords": ["John Lee"],
+          "canonical_answer": "John Lee"
+        },
+        {
+          "probe_id": "s1_p1",
+          "question": "What was the total amount of the oldest completed order?",
+          "keywords": ["234.50", "234"],
+          "canonical_answer": "$234.50"
+        }
+      ]
+    },
+    {
+      "session_id": 2,
+      "source_task_id": "webarena_21",
+      "domain": "shopping",
+      "environment_data": "=== Product Reviews: SonicBlast Pro Headphones ===\n\nOverall Rating: 4.1/5 (287 reviews)\n\nFiltered reviews mentioning 'ear cups':\n\n1. ★★★☆☆ by MichaelB72 (2023-03-15):\n   \"Sound quality is great but the ear cups are definitely small. After an hour my ears hurt.\"\n\n2. ★★☆☆☆ by TechReviewer_Amy (2023-04-02):\n   \"Not for big heads. The ear cups are way too small for comfortable long listening sessions.\"\n\n3. ★★★★☆ by DavidSoundFan (2023-05-18):\n   \"Excellent bass response. Only complaint: ear cups could be bigger for people with larger ears.\"\n\n4. ★★★☆☆ by JennyRunsDaily (2023-06-01):\n   \"Good for workouts but the small ear cups let in outside noise.\"\n\n5. ★★☆☆☆ by MarkAudiophile (2023-07-22):\n   \"Returned these. The ear cups are embarrassingly small for a product at this price point.\"\n\nTotal reviews mentioning small ear cups: 5 out of 287 (1.7%)",
+      "task": {
+        "text": "From the product review data for SonicBlast Pro Headphones, list all reviewers who mentioned the ear cups being too small.",
+        "reference_answer": "MichaelB72, TechReviewer_Amy, DavidSoundFan, JennyRunsDaily, MarkAudiophile",
+        "eval_keywords": ["MichaelB72", "TechReviewer_Amy", "DavidSoundFan", "JennyRunsDaily", "MarkAudiophile"]
+      },
+      "recall_probes": [
+        {
+          "probe_id": "s2_p0",
+          "question": "Which product had reviews complaining about small ear cups?",
+          "keywords": ["SonicBlast Pro", "SonicBlast"],
+          "canonical_answer": "SonicBlast Pro Headphones"
+        },
+        {
+          "probe_id": "s2_p1",
+          "question": "How many total reviews did the headphone product have?",
+          "keywords": ["287"],
+          "canonical_answer": "287 reviews"
+        }
+      ]
+    },
+    {
+      "session_id": 3,
+      "source_task_id": "webarena_admin_orders",
+      "domain": "shopping_admin",
+      "environment_data": "=== E-Commerce Admin: Pending Orders Dashboard ===\n\nDate: 2023-08-15\n\nPending Orders Summary:\n- Total pending orders: 37\n- Total pending value: $12,458.75\n- Average order value: $336.72\n- Oldest pending order: #104521 (2023-08-01, 14 days ago)\n- Most common pending reason: Payment verification (18 orders)\n\nPending Orders by Category:\n| Category      | Count | Value      |\n|---------------|-------|------------|\n| Fitness       | 15    | $4,230.50  |\n| Electronics   | 9     | $5,112.00  |\n| Gear          | 8     | $2,116.25  |\n| Accessories   | 5     | $1,000.00  |\n\nPending Orders by Region:\n| Region        | Count |\n|---------------|-------|\n| California    | 12    |\n| New York      | 8     |\n| Texas         | 7     |\n| Florida       | 5     |\n| Other         | 5     |",
+      "task": {
+        "text": "From the pending orders dashboard, answer: How many orders are currently pending, what is their total value, and what is the most common reason orders are pending?",
+        "reference_answer": "37 pending orders, $12,458.75 total value, payment verification is the most common reason",
+        "eval_keywords": ["37", "12,458", "payment verification"]
+      },
+      "recall_probes": [
+        {
+          "probe_id": "s3_p0",
+          "question": "How many orders were pending on our e-commerce platform?",
+          "keywords": ["37"],
+          "canonical_answer": "37 pending orders"
+        },
+        {
+          "probe_id": "s3_p1",
+          "question": "Which product category had the highest pending order value?",
+          "keywords": ["Electronics", "5,112"],
+          "canonical_answer": "Electronics with $5,112.00"
+        }
+      ]
+    },
+    {
+      "session_id": 4,
+      "source_task_id": "cross_reference_shopping",
+      "domain": "shopping_admin",
+      "is_cross_reference": true,
+      "environment_data": "",
+      "task": {
+        "text": "Based on your memory of our previous e-commerce research sessions, create a brief executive summary answering these questions:\n1. What was the best-selling product in 2022 and its revenue?\n2. Who was our earliest customer on record and how much did they spend?\n3. What was the most complained-about issue in our headphone product reviews?\n4. How many orders are currently stuck in pending status and why?\n\nBe precise with names, numbers, and specific details.",
+        "reference_answer": "Quest Lumaflex Band ($78,272 revenue), John Lee ($234.50), small ear cups (5 reviewers), 37 pending orders due to payment verification",
+        "eval_keywords": ["Quest Lumaflex Band", "John Lee", "ear cups", "37", "payment verification"]
+      },
+      "recall_probes": []
+    },
+    {
+      "session_id": 5,
+      "source_task_id": "webarena_52",
+      "domain": "map",
+      "environment_data": "=== Mapping Service: Walking Directions ===\n\nFrom: Carnegie Mellon University, 5000 Forbes Ave, Pittsburgh, PA 15213\nTo: Starbucks, 400 S Craig St, Pittsburgh, PA 15213\n\nWalking Route:\n- Distance: 0.5 miles (0.8 km)\n- Estimated time: 7 minutes\n- Route: Head east on Forbes Ave, turn right on S Craig St\n- Elevation change: +15 ft\n- Accessibility: Sidewalks available entire route\n\nAlternative routes:\n- Via Winthrop St: 0.6 miles, 9 minutes\n- Via Margaret Morrison St: 0.7 miles, 11 minutes",
+      "task": {
+        "text": "From the mapping service results, answer: How long does it take to walk from Carnegie Mellon University to the Starbucks on Craig Street, and what is the distance?",
+        "reference_answer": "7 minutes, 0.5 miles",
+        "eval_keywords": ["7 minutes", "0.5 miles"]
+      },
+      "recall_probes": [
+        {
+          "probe_id": "s5_p0",
+          "question": "How long does it take to walk from Carnegie Mellon University to the nearest Starbucks?",
+          "keywords": ["7 minutes", "7 min"],
+          "canonical_answer": "Approximately 7 minutes"
+        },
+        {
+          "probe_id": "s5_p1",
+          "question": "On which street is the Starbucks closest to Carnegie Mellon University?",
+          "keywords": ["Craig", "S Craig"],
+          "canonical_answer": "S Craig Street"
+        }
+      ]
+    },
+    {
+      "session_id": 6,
+      "source_task_id": "webarena_57",
+      "domain": "map",
+      "environment_data": "=== Mapping Service: Nearby Restaurants ===\n\nSearch: Restaurants near University Center, Carnegie Mellon University\nRadius: 0.5 miles\n\nResults (sorted by distance):\n\n1. La Prima Espresso - 0.1 mi - Coffee/Café - ★★★★☆\n   Wean Hall, CMU Campus\n\n2. The Pompeii Pizza - 0.2 mi - Italian - ★★★★☆\n   4619 Liberty Ave\n\n3. Ali Baba Restaurant - 0.2 mi - Middle Eastern - ★★★★☆\n   404 S Craig St\n\n4. Choolaah Indian BBQ - 0.3 mi - Indian - ★★★★★\n   107 S Craig St\n\n5. Lucca Ristorante - 0.3 mi - Italian - ★★★★☆\n   317 S Craig St\n\n6. Rose Tea Café - 0.3 mi - Taiwanese - ★★★★☆\n   5874 Forbes Ave\n\n7. Stack'd Burgers - 0.4 mi - American - ★★★☆☆\n   237 S Craig St\n\nTotal restaurants within 0.5 miles: 7",
+      "task": {
+        "text": "From the mapping service results, list all restaurants within walking distance of the University Center at Carnegie Mellon University.",
+        "reference_answer": "La Prima Espresso, The Pompeii Pizza, Ali Baba Restaurant, Choolaah Indian BBQ, Lucca Ristorante, Rose Tea Café, Stack'd Burgers",
+        "eval_keywords": ["La Prima", "Pompeii", "Ali Baba", "Choolaah", "Lucca", "Rose Tea", "Stack'd"]
+      },
+      "recall_probes": [
+        {
+          "probe_id": "s6_p0",
+          "question": "What is the closest restaurant to the University Center at CMU?",
+          "keywords": ["La Prima"],
+          "canonical_answer": "La Prima Espresso"
+        },
+        {
+          "probe_id": "s6_p1",
+          "question": "How many restaurants are within walking distance of CMU's University Center?",
+          "keywords": ["7", "seven"],
+          "canonical_answer": "7 restaurants"
+        }
+      ]
+    },
+    {
+      "session_id": 7,
+      "source_task_id": "webarena_97",
+      "domain": "map_wikipedia",
+      "environment_data": "=== Research: Top CS School in Massachusetts ===\n\nSource: University rankings (US News 2023)\nTop computer science program in Massachusetts: Massachusetts Institute of Technology (MIT)\nLocation: 77 Massachusetts Ave, Cambridge, MA 02139\n\n=== Mapping Service: Driving Directions ===\n\nFrom: Carnegie Mellon University, Pittsburgh, PA\nTo: Massachusetts Institute of Technology, Cambridge, MA\n\nDriving Route (via I-76 E and I-80 E):\n- Distance: 914 km (568 miles)\n- Estimated driving time: 8 hours 45 minutes\n- Toll roads: Yes (Pennsylvania Turnpike, NJ Turnpike)\n- Fuel estimate: ~25 gallons ($87.50 at $3.50/gal)\n\nAlternative route (via I-90 E):\n- Distance: 952 km (592 miles)\n- Estimated driving time: 9 hours 10 minutes",
+      "task": {
+        "text": "From the research and mapping data, answer: What is the top computer science school in Massachusetts, and how far is the drive from Carnegie Mellon University?",
+        "reference_answer": "MIT (Massachusetts Institute of Technology), 914 km (568 miles) driving distance",
+        "eval_keywords": ["MIT", "914"]
+      },
+      "recall_probes": [
+        {
+          "probe_id": "s7_p0",
+          "question": "What is the driving distance from Carnegie Mellon University to MIT?",
+          "keywords": ["914", "568"],
+          "canonical_answer": "914 km (568 miles)"
+        },
+        {
+          "probe_id": "s7_p1",
+          "question": "How long does it take to drive from CMU to the top CS school in Massachusetts?",
+          "keywords": ["8 hours 45", "8:45", "8h 45"],
+          "canonical_answer": "8 hours 45 minutes"
+        }
+      ]
+    },
+    {
+      "session_id": 8,
+      "source_task_id": "webarena_265",
+      "domain": "map_wikipedia",
+      "environment_data": "=== Research: National Parks Near Boston ===\n\nSource: National Park Service database\nSearch: National parks closest to Boston, MA\n\nResults:\n\n1. Acadia National Park\n   - Location: Mount Desert Island, Maine\n   - Distance from Boston: 457 km (284 miles)\n   - Driving time: 4 hours 35 minutes\n   - Established: 1919\n   - Annual visitors: 3.97 million (2022)\n   - Key features: Rocky coastline, Cadillac Mountain (highest point on US East Coast north of Rio de Janeiro)\n\n2. White Mountain National Forest\n   - Location: New Hampshire/Maine\n   - Distance from Boston: 217 km (135 miles)\n   - Note: National Forest, not National Park\n\n3. Cape Cod National Seashore\n   - Location: Cape Cod, Massachusetts\n   - Distance from Boston: 120 km (75 miles)\n   - Note: National Seashore, not National Park\n\nClosest actual National Park to Boston: Acadia National Park (457 km)",
+      "task": {
+        "text": "From the research data, answer: What is the closest national park to Boston, and how far is it to drive there?",
+        "reference_answer": "Acadia National Park, 457 km (284 miles), approximately 4 hours 35 minutes driving time",
+        "eval_keywords": ["Acadia", "457"]
+      },
+      "recall_probes": [
+        {
+          "probe_id": "s8_p0",
+          "question": "What is the closest national park to Boston?",
+          "keywords": ["Acadia"],
+          "canonical_answer": "Acadia National Park"
+        },
+        {
+          "probe_id": "s8_p1",
+          "question": "How many annual visitors does Acadia National Park receive?",
+          "keywords": ["3.97 million", "3.97", "3,970,000"],
+          "canonical_answer": "3.97 million visitors"
+        }
+      ]
+    },
+    {
+      "session_id": 9,
+      "source_task_id": "cross_reference_travel",
+      "domain": "map",
+      "is_cross_reference": true,
+      "environment_data": "",
+      "task": {
+        "text": "Based on your memory of our previous travel research sessions, plan a multi-stop road trip and answer these questions:\n1. Starting from Carnegie Mellon University, how far is the drive to MIT in Massachusetts?\n2. From the Boston/Cambridge area, what is the closest national park and how far?\n3. What is the total approximate driving distance for a CMU → MIT → closest national park trip?\n4. If we stop at the Starbucks near CMU before departing, which street is it on?\n\nProvide specific distances and names.",
+        "reference_answer": "CMU to MIT: 914 km. Closest national park to Boston: Acadia National Park, 457 km. Total trip: approximately 1,371 km. Starbucks is on Craig Street.",
+        "eval_keywords": ["914", "Acadia", "457", "Craig"]
+      },
+      "recall_probes": []
+    },
+    {
+      "session_id": 10,
+      "source_task_id": "webarena_gitlab_issues",
+      "domain": "gitlab",
+      "environment_data": "=== GitLab: Issue Tracker — OpenAPITools/openapi-generator ===\n\nRepository: OpenAPITools/openapi-generator\nFiltered by: Labels containing 'CLI'\n\nOpen Issues with CLI-related Labels:\n\n| Issue # | Title                                          | Author        | Labels                    | Created    |\n|---------|-------------------------------------------------|---------------|---------------------------|------------|\n| #15234  | CLI: --additional-properties flag silently ignored | dev_martinez | cli, bug                  | 2023-06-12 |\n| #15189  | CLI: Add --dry-run option for generate command   | sarah_coder   | cli, enhancement          | 2023-05-28 |\n| #15102  | CLI: Config file not loaded from current directory| jkim_dev      | cli, bug, config          | 2023-05-15 |\n| #14998  | CLI: Version command shows incorrect build date  | alex_ops      | cli, bug                  | 2023-04-30 |\n| #14876  | CLI: Support environment variables in config     | priya_eng     | cli, enhancement, config  | 2023-04-10 |\n\nTotal CLI-labeled issues: 5\nOpen bugs: 3\nEnhancement requests: 2",
+      "task": {
+        "text": "From the GitLab issue tracker data, list the open issues in the OpenAPITools/openapi-generator repository that have CLI-related labels. How many are bugs vs enhancement requests?",
+        "reference_answer": "5 CLI-labeled issues: #15234, #15189, #15102, #14998, #14876. 3 bugs, 2 enhancement requests.",
+        "eval_keywords": ["15234", "15189", "15102", "14998", "14876"]
+      },
+      "recall_probes": [
+        {
+          "probe_id": "s10_p0",
+          "question": "How many CLI-related issues were open in the OpenAPITools/openapi-generator repository?",
+          "keywords": ["5", "five"],
+          "canonical_answer": "5 CLI-labeled issues"
+        },
+        {
+          "probe_id": "s10_p1",
+          "question": "Who filed the issue about the --additional-properties flag being silently ignored?",
+          "keywords": ["dev_martinez", "martinez"],
+          "canonical_answer": "dev_martinez"
+        }
+      ]
+    },
+    {
+      "session_id": 11,
+      "source_task_id": "webarena_gitlab_group",
+      "domain": "gitlab",
+      "environment_data": "=== GitLab: Group Members — x-lab ===\n\nGroup: x-lab\nVisibility: Private\nCreated: 2023-01-15\n\nMembers:\n\n| Username          | Name              | Role       | Added      |\n|-------------------|-------------------|------------|------------|\n| JonasVautherin    | Jonas Vautherin   | Maintainer | 2023-01-15 |\n| dilipchandima     | Dilip Chandima    | Developer  | 2023-01-15 |\n| dawiss1337        | David Wiss        | Developer  | 2023-02-01 |\n| bmyun             | Byungho Myun      | Developer  | 2023-02-01 |\n| DCMJY             | Diana Chen        | Reporter   | 2023-03-10 |\n\nTotal members: 5\nActive in last 30 days: 4 (DCMJY inactive)\nGroup projects: 3 (agi_index, ml-pipeline, data-viz-tools)",
+      "task": {
+        "text": "From the GitLab group data, list all members of the x-lab group and their roles. Who is the group maintainer?",
+        "reference_answer": "5 members: JonasVautherin (Maintainer), dilipchandima (Developer), dawiss1337 (Developer), bmyun (Developer), DCMJY (Reporter). Maintainer is JonasVautherin.",
+        "eval_keywords": ["JonasVautherin", "dilipchandima", "dawiss1337", "bmyun", "DCMJY"]
+      },
+      "recall_probes": [
+        {
+          "probe_id": "s11_p0",
+          "question": "Who is the maintainer of the x-lab group on GitLab?",
+          "keywords": ["JonasVautherin", "Jonas"],
+          "canonical_answer": "JonasVautherin (Jonas Vautherin)"
+        },
+        {
+          "probe_id": "s11_p1",
+          "question": "How many members does the x-lab GitLab group have?",
+          "keywords": ["5", "five"],
+          "canonical_answer": "5 members"
+        }
+      ]
+    },
+    {
+      "session_id": 12,
+      "source_task_id": "webarena_reddit_analysis",
+      "domain": "reddit",
+      "environment_data": "=== Reddit: Forum Analysis — r/Showerthoughts ===\n\nLatest posts analysis (as of 2023-08-15):\n\nLatest post:\n- Title: \"Spiders are the only web developers that enjoy finding bugs\"\n- Author: u/ThoughtfulPanda42\n- Posted: 2 hours ago\n- Upvotes: 1,247\n- Comments: 89\n\nComment sentiment analysis for this post:\n- Comments with more downvotes than upvotes: 14\n- Most downvoted comment: \"This is a repost\" by u/RepostPolice (-23)\n- Average comment score: +8.3\n\nForum statistics:\n- Subscribers: 25.4 million\n- Posts per day (avg): 342\n- Top post this week: \"Your bed is a wireless charging station for your body\" (45.2K upvotes)",
+      "task": {
+        "text": "From the Reddit analysis data, answer: Who made the latest post on the Showerthoughts forum, and how many comments received more downvotes than upvotes?",
+        "reference_answer": "u/ThoughtfulPanda42 made the latest post. 14 comments received more downvotes than upvotes.",
+        "eval_keywords": ["ThoughtfulPanda42", "14"]
+      },
+      "recall_probes": [
+        {
+          "probe_id": "s12_p0",
+          "question": "Who posted the latest thread in the Showerthoughts forum?",
+          "keywords": ["ThoughtfulPanda42"],
+          "canonical_answer": "u/ThoughtfulPanda42"
+        },
+        {
+          "probe_id": "s12_p1",
+          "question": "How many subscribers does the Showerthoughts subreddit have?",
+          "keywords": ["25.4 million", "25.4M", "25,400,000"],
+          "canonical_answer": "25.4 million subscribers"
+        }
+      ]
+    },
+    {
+      "session_id": 13,
+      "source_task_id": "webarena_gitlab_a11y",
+      "domain": "gitlab",
+      "environment_data": "=== GitLab: Issue Detail — a11yproject/a11yproject.com ===\n\nRepository: a11yproject/a11yproject.com\n\nIssue #847: \"404 error on checklist page after recent deploy\"\n- Status: Open\n- Priority: Critical\n- Author: contrib_rachel\n- Created: 2023-07-20\n- Assigned to: (unassigned)\n- Labels: bug, deploy, urgent\n- Milestone: v4.2 Hotfix\n\nDescription:\nAfter the latest deployment (commit abc1234), the /checklist page returns a 404 error.\nThe page was working correctly before deploy #298.\nLikely cause: the checklist.md file was renamed to accessibility-checklist.md in MR !412 but the route mapping in gatsby-config.js was not updated.\n\nRelated issues: #832 (route mapping refactor), #841 (broken links audit)\n\nLatest merge request:\n- MR !415: \"Fix navigation accessibility for screen readers\"\n- Author: miguel_a11y\n- Status: Merged\n- Merged: 2023-07-19",
+      "task": {
+        "text": "From the GitLab issue data, answer: What is the critical issue in the a11yproject repository, who filed it, and what is the likely cause? Also, what was the latest merge request?",
+        "reference_answer": "Issue #847: 404 error on checklist page, filed by contrib_rachel. Likely cause: checklist.md was renamed but route mapping was not updated. Latest MR: !415 by miguel_a11y.",
+        "eval_keywords": ["847", "contrib_rachel", "route mapping", "415", "miguel_a11y"]
+      },
+      "recall_probes": [
+        {
+          "probe_id": "s13_p0",
+          "question": "What is the critical open issue in the a11yproject repository?",
+          "keywords": ["404", "checklist", "847"],
+          "canonical_answer": "Issue #847: 404 error on the checklist page"
+        },
+        {
+          "probe_id": "s13_p1",
+          "question": "Who submitted the latest merge request in the a11yproject repository?",
+          "keywords": ["miguel_a11y", "miguel"],
+          "canonical_answer": "miguel_a11y"
+        }
+      ]
+    },
+    {
+      "session_id": 14,
+      "source_task_id": "cross_reference_all",
+      "domain": "all",
+      "is_cross_reference": true,
+      "environment_data": "",
+      "task": {
+        "text": "Based on ALL of our previous research sessions across the three domains, create a comprehensive summary report with these sections:\n\n1. E-COMMERCE FINDINGS: What was the best-selling product and its revenue? Who was the earliest customer? What was the top product complaint? How many pending orders exist?\n\n2. TRAVEL RESEARCH: What is the walking time from CMU to the nearest Starbucks? How far is CMU from MIT by car? What is the closest national park to Boston and how far?\n\n3. SOFTWARE PROJECT STATUS: How many CLI issues are open in the openapi-generator repo? Who maintains the x-lab GitLab group? What critical issue exists in the a11yproject repo? Who made the latest Showerthoughts post?\n\nBe precise with all names, numbers, and specific details.",
+        "reference_answer": "E-commerce: Quest Lumaflex Band ($78,272), John Lee ($234.50), small ear cups, 37 pending. Travel: 7 min walk to Craig St Starbucks, 914 km to MIT, Acadia 457 km from Boston. Software: 5 CLI issues, JonasVautherin maintains x-lab, issue #847 (404 on checklist), ThoughtfulPanda42 latest post.",
+        "eval_keywords": ["Quest Lumaflex Band", "John Lee", "ear cups", "37", "7 min", "914", "Acadia", "457", "JonasVautherin", "847", "ThoughtfulPanda42"]
+      },
+      "recall_probes": []
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+sut_id: haiku45_hard_shrinking
+description: "Claude Haiku 4.5 with shrinking compaction budget (400→120 words) on S2-hard"
+
+model:
+  provider: litellm
+  model: claude-haiku-4-5-20251001
+  max_tokens: 500
+  temperature: 0.0
+
+memory_policy:
+  type: shrinking_store
+  compaction_prompt: experiments/prompts/compact_shrinking.txt
+  start_budget: 400
+  min_budget: 120
+  decay_per_step: 20
+
+seed: 42

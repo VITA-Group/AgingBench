@@ -1,0 +1,100 @@
+{
+  "sessions": [
+    {
+      "session": 0,
+      "queries": [
+        {"query_id": "q0_1", "question": "What is the total Q1 budget for the API platform rebuild?", "gold_decision_ids": ["D01"], "keywords": ["340,000", "340000"]},
+        {"query_id": "q0_2", "question": "Which backend framework was selected and why?", "gold_decision_ids": ["D02"], "keywords": ["FastAPI"]},
+        {"query_id": "q0_3", "question": "What is the Phase 1 delivery target date?", "gold_decision_ids": ["D05"], "keywords": ["June 15"]}
+      ]
+    },
+    {
+      "session": 1,
+      "queries": [
+        {"query_id": "q1_1", "question": "What database system was chosen as the primary datastore?", "gold_decision_ids": ["D06"], "keywords": ["PostgreSQL"]},
+        {"query_id": "q1_2", "question": "What is the connection pool limit for production?", "gold_decision_ids": ["D07"], "keywords": ["50"]},
+        {"query_id": "q1_3", "question": "When does the database migration start?", "gold_decision_ids": ["D10"], "keywords": ["March 25"]}
+      ]
+    },
+    {
+      "session": 2,
+      "queries": [
+        {"query_id": "q2_1", "question": "What authentication protocol is required for API endpoints?", "gold_decision_ids": ["D11"], "keywords": ["OAuth", "PKCE"]},
+        {"query_id": "q2_2", "question": "How long before session tokens expire?", "gold_decision_ids": ["D12"], "keywords": ["30 minutes"]},
+        {"query_id": "q2_3", "question": "When is the SOC 2 audit scheduled?", "gold_decision_ids": ["D14"], "keywords": ["August"]}
+      ]
+    },
+    {
+      "session": 3,
+      "queries": [
+        {"query_id": "q3_1", "question": "What are the API rate limits for standard and premium tiers?", "gold_decision_ids": ["D15"], "keywords": ["1000", "5000"]},
+        {"query_id": "q3_2", "question": "Which endpoints use GraphQL vs REST?", "gold_decision_ids": ["D16"], "keywords": ["GraphQL", "analytics"]},
+        {"query_id": "q3_3", "question": "Who approved CloudVault as cloud provider and what is the monthly cost?", "gold_decision_ids": ["D03"], "keywords": ["CloudVault", "12,400"]}
+      ]
+    },
+    {
+      "session": 4,
+      "queries": [
+        {"query_id": "q4_1", "question": "How much of the Q1 budget has been spent so far?", "gold_decision_ids": ["D19"], "keywords": ["127,000", "127000"]},
+        {"query_id": "q4_2", "question": "Has the Phase 1 deadline changed? What is the current target?", "gold_decision_ids": ["D20"], "keywords": ["June 28"]},
+        {"query_id": "q4_3", "question": "What happened to the contingency reserve?", "gold_decision_ids": ["D21"], "keywords": ["38,000", "38000"]}
+      ]
+    },
+    {
+      "session": 5,
+      "queries": [
+        {"query_id": "q5_1", "question": "What frontend framework was selected for the dashboard?", "gold_decision_ids": ["D23"], "keywords": ["Next.js"]},
+        {"query_id": "q5_2", "question": "What are the design system specifications?", "gold_decision_ids": ["D25"], "keywords": ["8px", "Inter"]},
+        {"query_id": "q5_3", "question": "What encryption standard is used for PII data at rest?", "gold_decision_ids": ["D13"], "keywords": ["AES-256"]}
+      ]
+    },
+    {
+      "session": 6,
+      "queries": [
+        {"query_id": "q6_1", "question": "What is the minimum unit test coverage target?", "gold_decision_ids": ["D27"], "keywords": ["85%"]},
+        {"query_id": "q6_2", "question": "How many end-to-end tests are planned?", "gold_decision_ids": ["D28"], "keywords": ["50"]},
+        {"query_id": "q6_3", "question": "Who can approve production deployments?", "gold_decision_ids": ["D29"], "keywords": ["Marcus", "Sarah"]}
+      ]
+    },
+    {
+      "session": 7,
+      "queries": [
+        {"query_id": "q7_1", "question": "What is the current API p95 latency and the target?", "gold_decision_ids": ["D31"], "keywords": ["145", "200"]},
+        {"query_id": "q7_2", "question": "What is the production uptime SLA?", "gold_decision_ids": ["D33"], "keywords": ["99.9%"]},
+        {"query_id": "q7_3", "question": "What triggers the on-call alert?", "gold_decision_ids": ["D34"], "keywords": ["500ms", "p99"]}
+      ]
+    },
+    {
+      "session": 8,
+      "queries": [
+        {"query_id": "q8_1", "question": "What payment processor was selected and what are the fees?", "gold_decision_ids": ["D35"], "keywords": ["Stripe", "2.9%"]},
+        {"query_id": "q8_2", "question": "What is the total monthly third-party cost?", "gold_decision_ids": ["D38"], "keywords": ["12,483", "12483"]},
+        {"query_id": "q8_3", "question": "What is the Redis caching configuration?", "gold_decision_ids": ["D08"], "keywords": ["Redis", "256"]}
+      ]
+    },
+    {
+      "session": 9,
+      "queries": [
+        {"query_id": "q9_1", "question": "What event streaming platform was chosen and what is the retention period?", "gold_decision_ids": ["D39"], "keywords": ["Kafka", "7"]},
+        {"query_id": "q9_2", "question": "What is the data retention policy?", "gold_decision_ids": ["D41"], "keywords": ["90 days", "2 years"]},
+        {"query_id": "q9_3", "question": "When is the analytics pipeline due?", "gold_decision_ids": ["D42"], "keywords": ["May 15"]}
+      ]
+    },
+    {
+      "session": 10,
+      "queries": [
+        {"query_id": "q10_1", "question": "What scope change was announced and how does it affect the timeline?", "gold_decision_ids": ["D43", "D45"], "keywords": ["mobile", "July 18"]},
+        {"query_id": "q10_2", "question": "What is the current budget status?", "gold_decision_ids": ["D44"], "keywords": ["215,000", "215000"]},
+        {"query_id": "q10_3", "question": "How was the component target adjusted?", "gold_decision_ids": ["D47"], "keywords": ["32"]}
+      ]
+    },
+    {
+      "session": 11,
+      "queries": [
+        {"query_id": "q11_1", "question": "What is the final unit test coverage and how does it compare to the target?", "gold_decision_ids": ["D48", "D27"], "keywords": ["87%", "85%"]},
+        {"query_id": "q11_2", "question": "What is the final budget spend and how much remains?", "gold_decision_ids": ["D50"], "keywords": ["298,000", "298000", "42,000"]},
+        {"query_id": "q11_3", "question": "What is the confirmed go-live date and launch sequence?", "gold_decision_ids": ["D51"], "keywords": ["July 18", "2 AM"]}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+sut_id: llama31_growing_budget200
+description: "Llama-3.1-8B growing history with word_budget=200"
+model:
+  provider: local_hf
+  model_id: meta-llama/Llama-3.1-8B-Instruct
+  max_new_tokens: 500
+memory_policy:
+  type: growing_history
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+  word_budget: 200
+seed: 42

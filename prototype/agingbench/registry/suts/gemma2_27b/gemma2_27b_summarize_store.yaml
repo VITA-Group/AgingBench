@@ -1,0 +1,13 @@
+sut_id: gemma2_27b_summarize_store
+description: "Gemma-2-27B-IT with careful summarize_store policy (preserves names/numbers)"
+
+model:
+  provider: local_hf
+  model_id: google/gemma-2-9b-it
+  max_new_tokens: 700
+
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_medium.txt
+
+seed: 42

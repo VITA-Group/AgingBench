@@ -1,0 +1,14 @@
+sut_id: gpt41_lossy_compress
+description: "GPT-4.1 with lossy compaction — aggressive decay condition"
+
+model:
+  provider: litellm
+  model: gpt-4.1
+  max_tokens: 300
+  temperature: 0.0
+
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+
+seed: 42

@@ -1,0 +1,9 @@
+sut_id: haiku45_claude_code_self_planning
+description: "Claude Code (Haiku 4.5 foundation) with true self-planning"
+
+adapter:
+  type: claude_code
+  model: claude-haiku-4-5-20251001
+  max_turns: 20
+
+seed: 42

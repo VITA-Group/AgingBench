@@ -1,0 +1,34 @@
+suite_id: core
+description: "AgingBench v1 core suite — four scenarios (S1–S4), one per metric group (G1–G4)"
+version: "1.0.0"
+
+scenarios:
+  - scenario_id: s1_research_literature
+    metric_group: G1
+    exposure_axis: t_writes
+    n_cycles: 8
+    runner_class: agingbench.runner.s1_runner.S1Runner
+
+  - scenario_id: s2_lifestyle_assistant
+    metric_group: G2
+    exposure_axis: t_writes
+    n_cycles: 10
+    runner_class: agingbench.runner.s2_runner.S2Runner
+
+  - scenario_id: s3_knowledge_base
+    metric_group: G3
+    exposure_axis: t_writes
+    n_cycles: 12
+    runner_class: agingbench.runner.s3_runner.S3Runner
+
+  - scenario_id: s4_software_engineering
+    metric_group: G4
+    exposure_axis: t_steps
+    n_cycles: 8
+    runner_class: agingbench.runner.s4_runner.S4Runner
+
+default_suts:
+  - agingbench/registry/suts/llama3_no_memory.yaml
+  - agingbench/registry/suts/llama3_summarize_store.yaml
+  - agingbench/registry/suts/llama3_lossy_compress.yaml
+  - agingbench/registry/suts/llama3_append_only.yaml

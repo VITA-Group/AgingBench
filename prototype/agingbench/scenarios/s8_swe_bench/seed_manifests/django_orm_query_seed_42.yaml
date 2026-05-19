@@ -1,0 +1,13 @@
+seed: 42
+n_sessions: 8
+chain_id: django_orm_query
+# Chronological order — same as upstream Django dev timeline.
+sessions:
+  - {session: 0, instance_id: django__django-11265}
+  - {session: 1, instance_id: django__django-11734}
+  - {session: 2, instance_id: django__django-12050}
+  - {session: 3, instance_id: django__django-13158}
+  - {session: 4, instance_id: django__django-13590}
+  - {session: 5, instance_id: django__django-15554}
+  - {session: 6, instance_id: django__django-16032}
+  - {session: 7, instance_id: django__django-16263}

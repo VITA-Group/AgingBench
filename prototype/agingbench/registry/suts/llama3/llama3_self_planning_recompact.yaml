@@ -1,0 +1,18 @@
+sut_id: llama3_self_planning_recompact
+description: "Llama-3-8B with ReactFileAdapter + workspace_recompact at block 5 (maintenance aging)"
+
+model:
+  provider: local_hf
+  model_id: meta-llama/Meta-Llama-3-8B-Instruct
+  max_new_tokens: 700
+
+adapter:
+  type: react
+  max_turns: 8
+
+maintenance:
+  shocks:
+    - type: workspace_recompact
+      session: 5
+
+seed: 42

@@ -1,0 +1,15 @@
+scenario_id: s2_lifestyle_assistant
+display_name: "Personal Finance & Lifestyle Assistant"
+metric_group: G2
+exposure_axis: t_writes
+default_sessions: 10
+
+runner:
+  module: agingbench.runner.s2_runner
+  class: S2Runner
+
+data:
+  source_profile: source_profile.json
+  session_tasks: session_tasks.json
+  eval_probes: eval_probes.json
+  constraint_updates: constraint_updates.json

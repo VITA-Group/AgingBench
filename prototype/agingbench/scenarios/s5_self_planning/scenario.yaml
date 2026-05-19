@@ -1,0 +1,17 @@
+scenario_id: s5_self_planning
+display_name: "Self-Planning Notebook"
+tier: 1
+metric_group: G2
+exposure_axis: t_steps
+default_sessions: 10
+
+description: >
+  Self-planning evaluation. The agent manages its own workspace files
+  (notes, plans, scratch) via the in-tree `ReactFileAdapter`. The
+  benchmark drives the loop: streams in tasks (assistant / KB / coding),
+  resets conversation state every `block_length` interactions, and
+  scores responses by keyword match plus workspace inspection.
+
+runner:
+  module: agingbench.runner.s5_runner
+  class: S5Runner

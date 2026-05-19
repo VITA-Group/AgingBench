@@ -1,0 +1,11 @@
+sut_id: claude_code_self_planning
+description: "Claude Code CLI (Sonnet 4.6) with bare mode for S7 self-planning evaluation."
+
+adapter:
+  type: claude_code
+  model: claude-sonnet-4-6-20250514
+  max_turns: 50
+  cli_path: claude
+  bare_mode: true
+
+seed: 42

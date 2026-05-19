@@ -1,0 +1,17 @@
+sut_id: gpt4o_append_only_recompact
+description: "GPT-4o with append-only episodic memory \u2014 naive growing store +\
+  \ recompact@4 shock"
+model:
+  provider: litellm
+  model: gpt-4o
+  max_tokens: 700
+  temperature: 0.0
+memory_policy:
+  type: append_only
+  retriever:
+    top_k: 5
+seed: 42
+maintenance:
+  shocks:
+  - type: recompact
+    session: 4

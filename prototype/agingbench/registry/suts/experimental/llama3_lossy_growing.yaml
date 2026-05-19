@@ -1,0 +1,14 @@
+sut_id: llama3_lossy_growing
+description: "Llama-3-8B-Instruct with growing history + lossy compaction (200-word budget). Re-compresses ALL raw history each session, creating naturally increasing compression pressure."
+
+model:
+  provider: local_hf
+  model_id: meta-llama/Meta-Llama-3-8B-Instruct
+  max_new_tokens: 500
+
+memory_policy:
+  type: growing_history
+  compaction_prompt: experiments/prompts/compact_shrinking.txt
+  word_budget: 200
+
+seed: 42

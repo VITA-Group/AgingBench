@@ -15,7 +15,7 @@
 
 </div>
 
----
+## Overview
 
 The reliability of any long-running system degrades over time: databases accumulate stale indices, software accrues technical debt, and human memory fades with age. Memory-enabled agents are no exception. Even with frozen weights, their system state continues to change as they accumulate context across sessions, and their ability to store, retrieve, and apply knowledge deteriorates in ways that standard snapshot evaluation cannot capture.
 

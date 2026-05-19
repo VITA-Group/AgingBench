@@ -1,10 +1,28 @@
+<div align="center">
+
 # AgingBench
 
-**A benchmark for measuring how AI agent reliability degrades over operational lifetimes.**
+[![Project Page](https://img.shields.io/badge/Project_Page-site-red)](https://agingbench.github.io/)
+[![Version](https://img.shields.io/badge/version-v0.3.0-green)](docs/CHANGELOG.md)
+[![AgingCard](https://img.shields.io/badge/AgingCard-v1.0.0-yellow)](#agingcard)
+[![CLI](https://img.shields.io/badge/CLI-agingbench-purple)](#install)
 
-AI agents with persistent memory (Claude Code, ChatGPT, enterprise assistants) are deployed for weeks or months. Over that time they don't just forget — they lose specific values while appearing correct, cite stale facts after updates, confuse similar entities across domains, and silently regress after routine maintenance events. Standard evaluations miss this: an agent can pass every behavioral test while its factual precision has dropped by 50%.
+> **A longitudinal reliability benchmark suite that explores four aging mechanisms in memory-enabled AI agents.** <br>
+> 8 scenarios | 4 aging mechanisms | AgingCard v1.0.0 | Compression · Interference · Revision · Maintenance.
 
-AgingBench measures this degradation across four mechanisms (compression, interference, revision, maintenance), diagnoses *where in the agent's memory infrastructure* each failure originates, and points to *which component* to fix.
+</div>
+
+---
+
+The reliability of any long-running system degrades over time: databases accumulate stale indices, software accrues technical debt, and human memory fades with age. Memory-enabled agents are no exception. Even with frozen weights, their system state continues to change as they accumulate context across sessions, and their ability to store, retrieve, and apply knowledge deteriorates in ways that standard snapshot evaluation cannot capture.
+
+AgingBench is a longitudinal reliability benchmark suite organized around four aging mechanisms: compression, interference, revision, and maintenance, supporting various scenarios, models, memory policies and agent frameworks, ranging from a fully controlled runner to practical autonomous agents (e.g., Claude Code). 
+
+We are committed to actively maintaining this repository as a resource for evaluating the longitudinal reliability of AI agents, and we welcome contributions and suggestions from the community.
+
+## 📢 Updates
+
+* **v0.3.0** — Initial public release (2026-05-13). Eight scenarios (S1–S8) across the four aging mechanisms, AgingCard schema v1.0.0, `agingbench` + `agingbench-lite` CLIs in a single `pip install`, telemetry-mode post-hoc trace analysis. Full log will be updated in [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 ---
 
@@ -29,7 +47,7 @@ Over time M_t loses facts → scores drop → AgingBench fits the aging curve.
 - **Aging curve `m(t)`** — score vs. session. Half-life = sessions until 50% of capability is lost.
 - **Memory is the independent variable** — same model with different policies produces different aging curves.
 
-### The 8 scenarios
+### Latest supporting scenarios
 
 | ID | Name | Tier | Sessions | What it tests |
 |----|------|:----:|:--------:|---------------|
@@ -37,7 +55,7 @@ Over time M_t loses facts → scores drop → AgingBench fits the aging curve.
 | **S2** | Lifestyle Assistant | T1 | 8–10 | Constraint adherence + revision (forget, accumulator) |
 | **S3** | Knowledge Base | T1 | 8–12 | Decision fidelity under accumulation |
 | **S4** | Software Engineering | T1 | 8–12 | Code planning with retractions |
-| **S5** | Self-Planning Notebook | T1 | 8–20 blocks | Agent manages its own workspace files (via `ReactFileAdapter`) |
+| **S5** | Self-Planning Notebook | T1 | 8–20 | Agent manages its own workspace files |
 | **S6** | Naturalistic | T1 | 10–15 | Multi-domain recall with corrections |
 | **S7** | Research-Notes Coding Task | T2 | 10–20 | Production CLI (OpenHands / Claude Code) building a notes-app codebase |
 | **S8** | SWE-bench-Aging *(newly added)* | T2 | 8 | Production CLI on a curated chain of real Django GitHub issues |
@@ -148,19 +166,6 @@ For library use, set API keys as ordinary env vars (`os.environ["ANTHROPIC_API_K
 
 ---
 
-## Integration adapters
-
-AgingCards can feed downstream eval and observability platforms. Reference skeletons in [`prototype/examples/`](prototype/examples/):
-
-- [`openai_evals_adapter.py`](prototype/examples/openai_evals_adapter.py)
-- [`langsmith_adapter.py`](prototype/examples/langsmith_adapter.py)
-- [`langfuse_adapter.py`](prototype/examples/langfuse_adapter.py)
-- [`mcp_adapter.py`](prototype/examples/mcp_adapter.py)
-
-Each adapter is a ~100-line Python file that consumes an `aging_card.json` and emits the target system's preferred format. Sample cards in [`prototype/examples/sample_cards/`](prototype/examples/sample_cards/) let you test against without running the benchmark.
-
----
-
 ## Four aging mechanisms
 
 1. **Compression** — write-before-query barrier destroys facts at compaction time
@@ -184,6 +189,8 @@ AgingBench treats memory policy as the independent variable: same model, differe
 ---
 
 ## Citation
+
+If you find this work useful, please cite:
 
 ```bibtex
 @inproceedings{agingbench2026,

@@ -560,6 +560,17 @@ def _aging_detected_v12(headline_block: Optional[dict]) -> Optional[bool]:
         if slope > 0.01:
             return True
 
+    # Tier 4 (additive — fires regardless of headline source): maintenance
+    # shock_damage trajectory rising on a trace with enough shock events.
+    # The aggregate_mechanism_trend that feeds Tier 3 does NOT include the
+    # maintenance block, so without this clause a trace whose only aging
+    # signal is repeated shock-damage accumulation would be flagged as
+    # "no aging" even though the dominant-mechanism selector correctly
+    # identifies it as maintenance-dominant.
+    if (headline_block.get("maintenance_shock_damage_verdict") == "rising_degradation"
+            and (headline_block.get("maintenance_n_shocks") or 0) >= 3):
+        return True
+
     return False
 
 
@@ -579,8 +590,18 @@ def _augment_headline_with_fallbacks(
 
     Always returns a dict with at least: source, label. Preserves tier-1
     fields (checkpoints, m0, m_final, half_life, decay_slope) when present.
+
+    Also stashes maintenance shock-damage info (`maintenance_shock_damage_verdict`,
+    `maintenance_n_shocks`) on the headline dict regardless of which tier
+    fires, so `_aging_detected_v12` can read it without an extra parameter.
     """
     out = dict(headline or {})
+
+    # Stash maintenance shock-damage signal on the headline (additive — does
+    # not affect tier selection, only consumed by the aging-detection flag).
+    if maintenance:
+        out["maintenance_shock_damage_verdict"] = maintenance.get("shock_damage_verdict")
+        out["maintenance_n_shocks"] = maintenance.get("n_shocks") or 0
 
     if outcomes_present and out.get("half_life") is not None:
         out["source"] = "outcome_half_life"
@@ -618,6 +639,21 @@ def _augment_headline_with_fallbacks(
         out["aging_trend_slope"] = round(trend_slope, 4)
         return out
 
+    # Tier 3.5: maintenance shock-damage (cumulative form). Catches traces
+    # where shocks fired enough to accumulate meaningful damage even when
+    # the per-session-delta aggregate (Tier 3) doesn't qualify — e.g.,
+    # front-loaded shocks that taper later in deployment. Symmetric with
+    # the Tier-4 clause in `_aging_detected_v12` so the headline label
+    # matches the aging flag.
+    if (maintenance and maintenance.get("shock_damage_verdict") == "rising_degradation"
+            and (maintenance.get("n_shocks") or 0) >= 3):
+        n_shocks = maintenance.get("n_shocks") or 0
+        cum = (maintenance.get("shock_damage_trajectory") or [0])[-1] if maintenance.get("shock_damage_trajectory") else 0.0
+        out["source"] = "maintenance_shock_damage"
+        out["label"]  = f"Maintenance damage: {n_shocks} shocks, cumulative {cum:.1f}"
+        out["maintenance_cum_damage"] = round(cum, 2)
+        return out
+
     # Tier 4: not measurable.
     out["source"] = "not_measurable"
     out["label"]  = "Aging not measurable on this trace"
@@ -653,6 +689,21 @@ def _aggregate_mechanism_trend(
     if rev:
         series.append(list(rev))
         if revision.get("value_supersession_slope") and revision["value_supersession_slope"] > 0.005:
+            n_rising += 1
+    # Maintenance: shock_damage_trajectory is cumulative — convert to
+    # per-session deltas so it composes with the other per-session signals
+    # without dominating the mean. A rising per-session damage series means
+    # later shocks bite harder than earlier ones; that's the maintenance
+    # contribution to aggregate aging.
+    maint_cum = (maintenance or {}).get("shock_damage_trajectory") or []
+    if maint_cum:
+        maint_per_session = [
+            (maint_cum[i] - maint_cum[i-1]) if i > 0 else maint_cum[0]
+            for i in range(len(maint_cum))
+        ]
+        series.append(maint_per_session)
+        sd_slope = maintenance.get("shock_damage_slope")
+        if sd_slope is not None and sd_slope > 0.05:
             n_rising += 1
     if not series:
         return None, 0

@@ -155,7 +155,22 @@ def _independent_score(mechanism: str, block: dict) -> tuple[list[str], float]:
                 if d is not None and d < -0.05:
                     fired.append(f"lifecycle_event:{shock_name}")
                     sev += min(1.0, abs(d))
-        # Also accept a top-level intervention rising verdict (older shape)
+        # v1.2: shock-damage trajectory is the universal maintenance signal
+        # (works on any adapter that emits output_tokens or duration_ms).
+        # Combine n_shocks > 0 (event fired) with rising verdict (events
+        # bite harder over time) before crediting maintenance aging.
+        n_shocks = block.get("n_shocks", 0) or 0
+        sd_v = block.get("shock_damage_verdict")
+        if n_shocks > 0 and sd_v and is_degrading(sd_v):
+            fired.append("lifecycle_event:shock_damage")
+            # Severity from cumulative damage magnitude (final point of
+            # trajectory), capped at 1.0. Cumulative damage > 5.0 units
+            # is a substantial late-deployment shock-aging signal.
+            traj = block.get("shock_damage_trajectory") or []
+            final = traj[-1] if traj else 0
+            sev += min(1.0, final / 5.0)
+        # Also accept the older intervention-rate signal if it fires
+        # (outcome-derived; only when extractors ran)
         v = block.get("intervention_rate_verdict")
         if v and is_degrading(v):
             fired.append("lifecycle_event:intervention_rate")

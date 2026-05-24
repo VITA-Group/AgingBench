@@ -78,6 +78,15 @@ def infer_compression(
     context_noise_traj = _context_noise_ratio_trajectory(sessions)
     context_noise_slope = _ols(context_noise_traj) if len(context_noise_traj) >= 3 else None
 
+    # P3: tool-argument specificity slope. Per session, fraction of arg
+    # values that look specific (UUIDs, timestamps, paths, large IDs) vs
+    # generic ("null", "recent", short nouns). Declining slope = compression
+    # eating specificity. Universal across the 7 adapters since every
+    # adapter populates args. Structural replacement for the regex-based
+    # `fact_density_slope` above (which survives but gets de-emphasized).
+    arg_spec_traj = _tool_argument_specificity_trajectory(sessions)
+    arg_spec_slope = _ols(arg_spec_traj) if len(arg_spec_traj) >= 3 else None
+
     coverage = _compression_coverage(sessions, per_sess_sat, saturation_threshold)
 
     # Saturation-aware verdict for the long-horizon trajectory.
@@ -88,18 +97,68 @@ def infer_compression(
         rising_is_bad=True, slope_eps=0.01,
     )
 
+    # arg_specificity is bounded [0, 1]; falling = degradation. Floor at
+    # 0.05 means args are essentially all-generic.
+    arg_spec_verdict = degradation_verdict(
+        arg_spec_traj, arg_spec_slope,
+        rising_is_bad=False, floor_threshold=0.05, slope_eps=0.005,
+    )
+
     return {
-        "saturation_session_rate":         round(sat_session_rate, 4),
-        "saturation_slope":                (round(sat_slope, 6) if sat_slope is not None else None),
-        "saturation_trajectory":           [(i, round(x, 4)) for i, x in enumerate(per_sess_sat)],
-        "self_contradiction_rate":         round(contradiction_rate, 4),
-        "fact_density_slope":              (round(density_slope, 6) if density_slope is not None else None),
-        "context_noise_ratio_trajectory":  [round(x, 3) if x is not None else None for x in context_noise_traj],
-        "context_noise_slope":             (round(context_noise_slope, 4) if context_noise_slope is not None else None),
-        "context_noise_verdict":           context_noise_verdict,
-        "coverage":                        coverage.as_dict(),
-        "derived_from":                    "telemetry",
+        "saturation_session_rate":             round(sat_session_rate, 4),
+        "saturation_slope":                    (round(sat_slope, 6) if sat_slope is not None else None),
+        "saturation_trajectory":               [(i, round(x, 4)) for i, x in enumerate(per_sess_sat)],
+        "self_contradiction_rate":             round(contradiction_rate, 4),
+        "fact_density_slope":                  (round(density_slope, 6) if density_slope is not None else None),
+        "context_noise_ratio_trajectory":      [round(x, 3) if x is not None else None for x in context_noise_traj],
+        "context_noise_slope":                 (round(context_noise_slope, 4) if context_noise_slope is not None else None),
+        "context_noise_verdict":               context_noise_verdict,
+        "tool_argument_specificity_trajectory":[round(x, 4) if x is not None else None for x in arg_spec_traj],
+        "tool_argument_specificity_slope":     (round(arg_spec_slope, 6) if arg_spec_slope is not None else None),
+        "tool_argument_specificity_verdict":   arg_spec_verdict,
+        "coverage":                            coverage.as_dict(),
+        "derived_from":                        "telemetry",
     }
+
+
+def _tool_argument_specificity_trajectory(sessions: list) -> list:
+    """Per session: fraction of agent ToolCall.args values that look specific
+    (UUIDs, ISO timestamps, version strings, paths, integer IDs ≥ 100) vs
+    generic (null, common short nouns, known generic terms).
+
+    Returns None per session that has no agent tool args.
+    """
+    from ._text_utils import is_specific_value
+
+    out: list = []
+    for s in sessions:
+        n_specific = 0
+        n_total = 0
+        for r in s:
+            if r.role != "agent":
+                continue
+            for tc in r.tool_calls or []:
+                for v in _walk_values(tc.args or {}):
+                    n_total += 1
+                    if is_specific_value(v):
+                        n_specific += 1
+        if n_total == 0:
+            out.append(None)
+        else:
+            out.append(n_specific / n_total)
+    return out
+
+
+def _walk_values(obj):
+    """Yield leaf values from a possibly-nested args dict/list."""
+    if isinstance(obj, dict):
+        for v in obj.values():
+            yield from _walk_values(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            yield from _walk_values(v)
+    else:
+        yield obj
 
 
 def _context_noise_ratio_trajectory(sessions: list) -> list:

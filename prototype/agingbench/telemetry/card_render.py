@@ -149,6 +149,27 @@ def _per_mechanism_severity(mechanism: str, block: dict) -> float:
         return _revision_severity(block)
     if mechanism == "maintenance":
         return _maintenance_severity(block)
+    if mechanism == "consistency":
+        return _consistency_severity(block)
+    return 0.0
+
+
+def _consistency_severity(block: dict) -> float:
+    """Consistency block isn't a mechanism but it carries the aging-happened
+    signal. Score by behavior_drift_at_repeat magnitude so the 5th sparkline
+    on the website gets a meaningful strength meter rather than always 0.
+    """
+    drift = float(block.get("behavior_drift_at_repeat") or 0.0)
+    if drift > 0.5:
+        return 5.0
+    if drift > 0.3:
+        return 4.0
+    if drift > 0.15:
+        return 3.0
+    if drift > 0.05:
+        return 2.0
+    if drift > 0.0:
+        return 1.0
     return 0.0
 
 

@@ -158,8 +158,11 @@ def infer_consistency(
         "tool_path_jaccard_drop_mean": round(tool_drop_mean, 4),
         "response_cosine_drop_mean":   round(resp_drop_mean, 4),
         "outcome_consistency_rate":    (round(outcome_rate, 4) if outcome_rate is not None else None),
-        "consistency_drop_trajectory": [(i, round(v, 4) if v is not None else None)
-                                        for i, v in enumerate(drop_trajectory)],
+        # Flat list of values (one per session) — matches the shape of every
+        # other website-rendered trajectory (e.g. context_noise_ratio_trajectory).
+        # Tuple/(idx, value) form was producing empty sparklines in the demo UI.
+        "consistency_drop_trajectory": [round(v, 4) if v is not None else None
+                                        for v in drop_trajectory],
         "consistency_drop_slope":      (round(drop_slope, 6) if drop_slope is not None else None),
         "consistency_drop_verdict":    drop_verdict,
         "coverage":                    coverage.as_dict(),

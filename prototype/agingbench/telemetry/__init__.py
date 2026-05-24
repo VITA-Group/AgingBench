@@ -1,14 +1,23 @@
 """
-agingbench.telemetry — Trace-to-AgingCard mapping (v1.1 + v1.0-stub).
+agingbench.telemetry — Trace-to-AgingCard mapping (behavioral-DAG pipeline).
 
 Production deployment traces (Langfuse, LangSmith, OpenTelemetry,
 custom JSONL logs, Claude Code session files) carry the per-call data
-needed to compute aging metrics over time. This namespace exposes:
+needed to compute aging metrics over time. Inference is behavioral-DAG-
+based: tool calls, results, and outcomes form the structural signals;
+regex over user text is the final fallback, not the default. This
+namespace exposes:
 
-  trace_to_card(...)        — v1.0 stub: cost block + warnings (legacy API)
-  trace_to_card_v11(...)    — v1.1 full pipeline: adapter → scrub → session
+  trace_to_card(...)        — backward-compatible stub: cost block + warnings
+  trace_to_card_v11(...)    — full pipeline: adapter → scrub → session
                               → memory-reconstruct → 4-mechanism inference
-                              → AgingCard with trace_audit block
+                              + cross-session consistency (P5) →
+                              dominant-mechanism arbitration →
+                              AgingCard with trace_audit block + Lifespan-
+                              Card surface (signature, repair, trace_regime)
+  prepare_trace(source, output) — concatenate fragmented Claude Code
+                              per-conversation .jsonl files into a single
+                              timestamp-sorted trace
 
 Plus the public surface for synthetic-probe-augmented mode:
 

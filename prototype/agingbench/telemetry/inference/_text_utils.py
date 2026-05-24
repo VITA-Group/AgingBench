@@ -137,6 +137,7 @@ def ols_slope(ys: list[float]) -> float | None:
 def cluster_by_similarity(
     items: list[tuple[int, int, str]],
     threshold: float = 0.75,
+    jaccard_threshold: float = 0.40,
 ) -> list[list[tuple[int, int, str]]]:
     """Greedy single-pass clustering by sentence-transformer cosine similarity.
 
@@ -144,8 +145,12 @@ def cluster_by_similarity(
     where each cluster is a list of items whose texts are pairwise similar
     (cosine sim ≥ threshold to the cluster's first member, the centroid).
 
-    Falls back to Jaccard if sentence-transformers is unavailable. Items
-    with empty/whitespace text are skipped.
+    Falls back to Jaccard if sentence-transformers is unavailable (e.g. in
+    Pyodide). Jaccard and cosine have different distributions on short
+    prompts — empirically cosine ~0.75 corresponds to Jaccard ~0.40 on
+    matching repeat-task prompts. The `jaccard_threshold` default is set
+    accordingly so the browser fallback finds the same clusters the
+    encoder would. Items with empty/whitespace text are skipped.
     """
     nonempty = [(s, r, t.strip()) for s, r, t in items if t and t.strip()]
     if not nonempty:
@@ -163,8 +168,8 @@ def cluster_by_similarity(
         embs = model.encode([t[:512] for _, _, t in nonempty])
         return _greedy_cluster(nonempty, embs, threshold, cosine_similarity)
 
-    # Fallback: Jaccard on significant terms.
-    return _greedy_cluster_jaccard(nonempty, threshold)
+    # Fallback: Jaccard on significant terms (uses the scaled threshold).
+    return _greedy_cluster_jaccard(nonempty, jaccard_threshold)
 
 
 def _greedy_cluster(items, embs, threshold, sim_fn):

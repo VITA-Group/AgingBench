@@ -680,7 +680,9 @@ def test_p4_lineage_continuity_drops_on_forgetting():
 
 
 def test_selector_independent_evidence_gating():
-    """Verification case 6: selector — shared signal alone doesn't credit."""
+    """Verification case 6: selector — shared signal alone doesn't credit;
+    among gated mechanisms, argmax always wins (no co-dominant fallback).
+    """
     from agingbench.telemetry.inference._selector import pick_dominant
     # Only saturation rises (independent), no shared signals
     audit_a = {
@@ -693,7 +695,7 @@ def test_selector_independent_evidence_gating():
     }
     r = pick_dominant(audit_a)
     assert r["dominant"] == "compression"
-    assert r["reason"] == "argmax_with_margin"
+    assert r["reason"] == "argmax"
 
     # Only lineage drops (shared) — no independent evidence anywhere
     audit_b = {
@@ -709,7 +711,8 @@ def test_selector_independent_evidence_gating():
     assert r2["dominant"] is None
     assert r2["reason"] == "no_independent_evidence"
 
-    # Co-dominant: 0.9 compression, 0.8 revision (below 1.5x margin)
+    # Close scores: 0.9 compression vs 0.8 revision. Selector picks
+    # the higher one unconditionally (no co-dominant tie-break).
     audit_c = {
         "compression":  {"saturation_session_rate": 0.9},
         "interference": {},
@@ -717,9 +720,8 @@ def test_selector_independent_evidence_gating():
         "maintenance":  {},
     }
     r3 = pick_dominant(audit_c)
-    assert r3["dominant"] is None
-    assert r3["reason"] == "co_dominant"
-    assert set(r3["co_dominant"]) == {"compression", "revision"}
+    assert r3["dominant"] == "compression"
+    assert r3["reason"] == "argmax"
 
 
 def test_headline_policy_fallback_tiers(tmp_path):
@@ -810,7 +812,7 @@ def test_real_claude_code_sample_trace_produces_atlas_card():
 
     # Dominant-mechanism + atlas's card surface
     dm = audit["dominant_mechanism"]
-    assert dm["reason"] in {"argmax_with_margin", "co_dominant", "no_independent_evidence", "no_signal"}
+    assert dm["reason"] in {"argmax", "no_independent_evidence", "no_signal"}
     # On this trace specifically, revision should dominate
     assert dm["dominant"] == "revision"
     assert audit["signature"] == "utilization-dominant (U-stage)"

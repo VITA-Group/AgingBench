@@ -119,7 +119,7 @@ def _mechanism_strength(
     mechanism: str,
     block: dict,
     dominant: Optional[str],
-    co_dominant: list[str],
+    co_dominant: list[str] = None,  # retained for API compat; no longer used
 ) -> int:
     """Map a mechanism block's evidence to 0..5 stars.
 
@@ -134,8 +134,6 @@ def _mechanism_strength(
     base = _per_mechanism_severity(mechanism, block)
     if mechanism == dominant:
         base = max(base, 4.0)
-    elif mechanism in (co_dominant or []):
-        base = max(base, 3.0)
     return int(round(max(0.0, min(5.0, base))))
 
 
@@ -332,12 +330,10 @@ def _dominant_line(dm: dict) -> str:
     scores = dm.get("scores") or {}
 
     if dominant is None:
-        if reason == "co_dominant":
-            return f"Dominant mechanism:    co-dominant ({' + '.join(dm.get('co_dominant') or [])})"
         if reason == "no_independent_evidence":
             compat = dm.get("compatible") or []
             return f"Dominant mechanism:    no independent evidence; compatible: {', '.join(compat)}"
-        return "Dominant mechanism:    no signal"
+        return "Dominant mechanism:    no aging signal"
 
     # Margin description
     top_score = scores.get(dominant, 0.0)

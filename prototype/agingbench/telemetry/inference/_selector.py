@@ -2,10 +2,14 @@
 inference/_selector.py — Dominant-mechanism arbitration.
 
 Replaces the naive argmax over per-mechanism severity scores with
-**independent-evidence gating + separation margin**. The naive argmax
-overclaims because several signals (notably lineage continuity) are
-compatible with multiple mechanisms; only mechanisms with an independent
-prerequisite present should be eligible for dominant attribution.
+**independent-evidence gating + argmax**. The gate filters out
+mechanisms whose only firing signal is a shared one (e.g. lineage
+continuity drop, which is compatible with multiple mechanisms); among
+the mechanisms that pass the gate, the highest credited score wins
+unconditionally. This guarantees the card always renders a single
+dominant mechanism + signature + repair when there's *any* aging
+signal, and only suppresses them when no mechanism has independent
+evidence at all.
 
 Signal classification:
 
@@ -23,22 +27,20 @@ Rule:
   1. A mechanism gets credited *only* if at least one of its independent
      signals fires (`gate=True`). Shared signals (`lineage_continuity_drop`)
      add weight on top of independent evidence but cannot stand alone.
-  2. After gating, apply argmax over surviving mechanisms. Report dominant
-     only if its credited score is ≥ MARGIN × runner-up.
+  2. After gating, apply argmax over surviving mechanisms. The highest
+     credited score wins; ties are broken by mechanism order
+     (compression, interference, revision, maintenance).
   3. If no mechanism passes the gate → return
      {"dominant": None, "reason": "no_independent_evidence",
       "compatible": [...]}.
-  4. Multiple pass + separation below margin → return
-     {"dominant": None, "reason": "co_dominant", "co_dominant": [a, b]}.
+  4. If no mechanism has any signal at all → return
+     {"dominant": None, "reason": "no_signal"}.
 """
 from __future__ import annotations
 
 from typing import Optional
 
 from ._verdict import is_degrading
-
-# Separation margin: dominant must be ≥ this × runner-up to be reported alone.
-SEPARATION_MARGIN = 1.5
 
 INDEPENDENT_SIGNALS = {
     "compression":  ["saturation", "arg_specificity"],
@@ -102,36 +104,16 @@ def pick_dominant(trace_audit: dict) -> dict:
             "compatible": compatible or None,
         }
 
-    # 3. Apply argmax with separation margin.
+    # 3. Apply argmax. The highest credited score wins; ties broken by
+    # the insertion order of INDEPENDENT_SIGNALS (compression first, etc).
     ranked = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
     top_mech, top_score = ranked[0]
-    if len(ranked) == 1 or ranked[1][1] == 0:
-        return {
-            "dominant":    top_mech,
-            "reason":      "argmax_with_margin",
-            "scores":      scores,
-            "evidence":    evidence,
-            "co_dominant": None,
-            "compatible":  None,
-        }
-
-    runner_up_mech, runner_up_score = ranked[1]
-    if top_score >= SEPARATION_MARGIN * runner_up_score:
-        return {
-            "dominant":    top_mech,
-            "reason":      "argmax_with_margin",
-            "scores":      scores,
-            "evidence":    evidence,
-            "co_dominant": None,
-            "compatible":  None,
-        }
-    # Co-dominant: top and runner-up within the margin.
     return {
-        "dominant":    None,
-        "reason":      "co_dominant",
+        "dominant":    top_mech,
+        "reason":      "argmax",
         "scores":      scores,
         "evidence":    evidence,
-        "co_dominant": [top_mech, runner_up_mech],
+        "co_dominant": None,
         "compatible":  None,
     }
 

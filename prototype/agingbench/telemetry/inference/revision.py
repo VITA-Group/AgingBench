@@ -172,6 +172,13 @@ def infer_revision_args_only(sessions: list[list[TelemetryRecord]]) -> dict:
     Weaker than v2 (no external anchor confirming v2 is "the truth") but
     structural and universal — every adapter populates args. The signal still
     constrains a reasonable revision-aging story.
+
+    Filter (narrow): skip arg values that look like identifiers rather
+    than real values — file paths, UUIDs, ISO timestamps, long hex hashes.
+    These are typically just re-referenced (the agent reads the same file
+    again, references the same entity ID), not "reverted to a stale value."
+    Short alphanumerics, decision labels, statuses, numeric IDs, and free
+    text are still tracked. See `_looks_like_value()`.
     """
     # Per-key timeline of values
     key_history: dict[str, list[tuple[int, str]]] = {}
@@ -182,7 +189,10 @@ def infer_revision_args_only(sessions: list[list[TelemetryRecord]]) -> dict:
                 continue
             for tc in r.tool_calls or []:
                 for k, v in _flatten_args(tc.args or {}).items():
-                    key_history.setdefault(k, []).append((sidx, str(v)))
+                    sv = str(v)
+                    if not _looks_like_value(sv):
+                        continue  # path / UUID / timestamp / hash — skip
+                    key_history.setdefault(k, []).append((sidx, sv))
 
     per_session_violations: list[int] = [0] * len(sessions)
     total_stale = 0
@@ -380,6 +390,35 @@ def _flatten_args(args: dict, prefix: str = "") -> dict[str, str]:
         elif isinstance(v, (str, int, float, bool)):
             out[full] = str(v)
     return out
+
+
+# Patterns for the args-only revision filter. We REJECT values matching
+# these patterns because they're identifiers / paths / hashes that are
+# typically re-referenced (the agent re-reads the same file or references
+# the same entity), not "reverted to a stale value."
+_UUID_FULL_RE   = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+_ISO_TS_FULL_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?)?(?:Z|[+-]\d{2}:?\d{2})?$")
+_ABS_PATH_RE    = re.compile(r"^(?:/|\.{1,2}/|~/?|[a-zA-Z]:[\\/])[\w./\\\- ]+$")
+_LONG_HEX_RE    = re.compile(r"^[0-9a-fA-F]{16,}$")
+
+
+def _looks_like_value(v: str) -> bool:
+    """Return False for arg values that are identifiers/paths/hashes
+    (re-references, not real revisions). Conservative — only the clear
+    cases are rejected. Numeric IDs, short alphanumerics, status labels,
+    decision tokens, and free text are all kept.
+    """
+    if not v:
+        return False
+    if _UUID_FULL_RE.match(v):
+        return False
+    if _ISO_TS_FULL_RE.match(v):
+        return False
+    if _ABS_PATH_RE.match(v):
+        return False
+    if _LONG_HEX_RE.match(v):
+        return False
+    return True
 
 
 def _detect_corrections(sessions: list[list[TelemetryRecord]]) -> list[_Correction]:

@@ -135,6 +135,19 @@ class TraceAuditBlock:
     revision:       dict = field(default_factory=dict)
     maintenance:    dict = field(default_factory=dict)
     headline:       dict = field(default_factory=dict)
+    # Cross-session task-consistency probe (P5). Carries
+    # behavior_drift_at_repeat (outcome-free headline source), the
+    # repeat-task aggregate, and a per-session drop trajectory.
+    consistency:    dict = field(default_factory=dict)
+    # Trace-regime disclosure: how complete is the input trace?
+    # Keys: tool_using:bool, multi_session:bool, outcomes:str
+    # ('linked'|'absent'), n_sessions:int, adapter:str.
+    trace_regime:   dict = field(default_factory=dict)
+    # Card render fields (atlas's Agent Lifespan Card surface).
+    # Populated by trace_to_card from the dominant-mechanism selector
+    # + card_lookups.py. Empty when no dominant mechanism passes the gate.
+    signature:      Optional[str] = None
+    repair:         Optional[str] = None
 
 
 def telemetry_record_to_dict(r: TelemetryRecord) -> dict:

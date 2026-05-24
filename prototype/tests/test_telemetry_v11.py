@@ -554,3 +554,409 @@ def test_merge_probe_into_card_attaches_synthetic_probes_block():
     assert "synthetic_probes" in out
     assert "s1_research_literature" in out["synthetic_probes"]
     assert out["synthetic_probes"]["s1_research_literature"]["headline"]["half_life"] == 4.2
+
+
+# ─── Behavioral-DAG telemetry improvement verification (v1.2) ──────────────
+
+
+def _mk_record(s_idx, role, *, text=None, tools=None, tokens=100, ctx=200_000):
+    from datetime import datetime, timedelta
+    from agingbench.telemetry.schema import TelemetryRecord, ToolCall
+    tcs = [ToolCall(name=n, args=a, result_summary=rs)
+           for n, a, rs in (tools or [])]
+    return TelemetryRecord(
+        timestamp=datetime(2026, 5, 1) + timedelta(hours=s_idx),
+        call_id=f"r{s_idx}_{role}",
+        role=role,
+        session_id=f"sess_{s_idx}",
+        prompt_preview=(text if role == "user" else None),
+        response_preview=(text if role == "agent" else None),
+        tool_calls=tcs,
+        input_tokens=tokens,
+        context_window_size=ctx,
+    )
+
+
+def test_p5_consistency_detects_repeat_tasks():
+    """Verification case 1: P5 cross-session consistency."""
+    from agingbench.telemetry.inference.consistency import infer_consistency
+    sessions = [
+        [_mk_record(0, "user", text="Find the Q3 sales report"),
+         _mk_record(0, "agent", text="Q3 sales total is $340K",
+                    tools=[("search", {"q": "q3"}, None)])],
+        [_mk_record(1, "user", text="Can you find me the Q3 sales numbers?"),
+         _mk_record(1, "agent", text="Q3 sales total: $340K",
+                    tools=[("search", {"q": "q3"}, None)])],
+        [_mk_record(2, "user", text="What was the Q3 sales total?"),
+         _mk_record(2, "agent", text="Cannot find that.",
+                    tools=[("web_search", {"q": "q3"}, None)])],
+    ]
+    r = infer_consistency(sessions)
+    assert r["n_repeated_tasks_detected"] >= 1
+    assert r["behavior_drift_at_repeat"] > 0.2
+    assert r["derived_from"] == "cross_session_task_consistency"
+    # Sparkline-ready trajectory shape
+    assert isinstance(r["consistency_drop_trajectory"], list)
+
+
+def test_p2_embedding_goal_anchor_handles_paraphrase():
+    """Verification case 2: P2 embedding anchor (paraphrase doesn't over-report drift)."""
+    from agingbench.telemetry.inference.interference import _goal_anchor_drift_trajectory
+    sessions = [
+        [_mk_record(0, "user", text="Help me plan my Q3 sales review"),
+         _mk_record(0, "agent", text="I'll help plan your Q3 sales review.")],
+        [_mk_record(1, "user", text="next"),
+         _mk_record(1, "agent", text="continuing with sales review planning")],
+        [_mk_record(2, "user", text="and?"),
+         # Paraphrase of session-0 goal
+         _mk_record(2, "agent", text="Returning to the sales review planning for Q3.")],
+        [_mk_record(3, "user", text="aside"),
+         # Off-topic
+         _mk_record(3, "agent", text="Let's discuss chocolate chip cookie recipes.")],
+    ]
+    traj = _goal_anchor_drift_trajectory(sessions)
+    # Paraphrase should score HIGH (not lexical-only-low like Jaccard would)
+    assert traj[2] is not None
+    assert traj[3] is not None
+    assert traj[2] > traj[3], "paraphrase should keep similarity higher than off-topic"
+
+
+def test_p1_revision_v2_tool_result_update_propagation():
+    """Verification case 3: P1 v2 — agent cites stale value after world updated it."""
+    from agingbench.telemetry.inference.revision import infer_revision_v2
+    sessions = [
+        [_mk_record(0, "agent", tools=[("lookup", {}, '{"customer.tier": "premium"}')])],
+        [_mk_record(1, "agent", tools=[("lookup", {}, None)])],
+        [_mk_record(2, "agent", tools=[("update", {}, '{"customer.tier": "free"}')])],
+        [_mk_record(3, "agent", tools=[("notify", {"customer.tier": "premium"}, None)])],
+    ]
+    r = infer_revision_v2(sessions)
+    assert r["n_stale_propagations"] >= 1
+    assert r["derived_from"] == "tool_result_update_propagation"
+    # Backward-compat aliases for the website sparkline
+    assert r["value_supersession_trajectory"] == r["per_session_violation_trajectory"]
+    assert r["value_supersession_slope"] == r["violation_trajectory_slope"]
+    assert r["value_supersession_verdict"] == r["violation_trajectory_verdict"]
+
+
+def test_p3_argument_specificity_discriminates():
+    """Verification case 4: P3 — specific args trace > generic args trace."""
+    from agingbench.telemetry.inference.compression import (
+        _tool_argument_specificity_trajectory,
+    )
+    sessions_specific = [
+        [_mk_record(0, "agent", tools=[("op", {"id": "550e8400-e29b-41d4-a716-446655440000",
+                                                "date": "2026-01-15T00:00:00Z"}, None)])],
+        [_mk_record(1, "agent", tools=[("op", {"id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+                                                "date": "2026-02-15T00:00:00Z"}, None)])],
+        [_mk_record(2, "agent", tools=[("op", {"id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+                                                "date": "2026-03-15T00:00:00Z"}, None)])],
+    ]
+    sessions_generic = [
+        [_mk_record(0, "agent", tools=[("op", {"id": "recent", "date": None}, None)])],
+        [_mk_record(1, "agent", tools=[("op", {"id": "current", "date": "today"}, None)])],
+        [_mk_record(2, "agent", tools=[("op", {"id": "latest", "date": "null"}, None)])],
+    ]
+    ta = _tool_argument_specificity_trajectory(sessions_specific)
+    tb = _tool_argument_specificity_trajectory(sessions_generic)
+    assert all((v or 0) >= 0.5 for v in ta)
+    assert all((v or 0) <= 0.5 for v in tb)
+
+
+def test_p4_lineage_continuity_drops_on_forgetting():
+    """Verification case 5: P4 — agent stops referencing prior entities."""
+    from agingbench.telemetry.inference.interference import (
+        _tool_lineage_continuity_trajectory,
+    )
+    sessions = [
+        [_mk_record(0, "agent", tools=[("init", {}, '{"customer_id": "cust_42_init"}')])],
+        [_mk_record(1, "agent", tools=[("ref", {"id": "cust_42_init"}, None)])],
+        [_mk_record(2, "agent", tools=[("ref", {"id": "cust_42_init"}, None)])],
+        [_mk_record(3, "agent", tools=[("ref", {"id": "cust_24_new"}, None)])],
+    ]
+    traj = _tool_lineage_continuity_trajectory(sessions)
+    assert traj[2] is not None and traj[3] is not None
+    assert traj[3] < traj[2], "lineage should fall when agent introduces new unseen entity"
+
+
+def test_selector_independent_evidence_gating():
+    """Verification case 6: selector — shared signal alone doesn't credit."""
+    from agingbench.telemetry.inference._selector import pick_dominant
+    # Only saturation rises (independent), no shared signals
+    audit_a = {
+        "compression":  {"saturation_session_rate": 0.81,
+                         "tool_argument_specificity_verdict": "flat"},
+        "interference": {"tool_kl_mean_post_baseline": 0.0,
+                         "goal_anchor_drift_verdict": "flat"},
+        "revision":     {"n_stale_propagations": 0},
+        "maintenance":  {},
+    }
+    r = pick_dominant(audit_a)
+    assert r["dominant"] == "compression"
+    assert r["reason"] == "argmax_with_margin"
+
+    # Only lineage drops (shared) — no independent evidence anywhere
+    audit_b = {
+        "compression":  {"saturation_session_rate": 0.0,
+                         "lineage_continuity_verdict": "falling_degradation"},
+        "interference": {"tool_kl_mean_post_baseline": 0.0,
+                         "lineage_continuity_verdict": "falling_degradation"},
+        "revision":     {"n_stale_propagations": 0,
+                         "lineage_continuity_verdict": "falling_degradation"},
+        "maintenance":  {},
+    }
+    r2 = pick_dominant(audit_b)
+    assert r2["dominant"] is None
+    assert r2["reason"] == "no_independent_evidence"
+
+    # Co-dominant: 0.9 compression, 0.8 revision (below 1.5x margin)
+    audit_c = {
+        "compression":  {"saturation_session_rate": 0.9},
+        "interference": {},
+        "revision":     {"n_stale_propagations": 4},
+        "maintenance":  {},
+    }
+    r3 = pick_dominant(audit_c)
+    assert r3["dominant"] is None
+    assert r3["reason"] == "co_dominant"
+    assert set(r3["co_dominant"]) == {"compression", "revision"}
+
+
+def test_headline_policy_fallback_tiers(tmp_path):
+    """Verification case 7: headline policy chooses correct tier per trace shape."""
+    import json
+    from agingbench.telemetry import trace_to_card_v11
+
+    def write_trace(events):
+        p = tmp_path / "trace.jsonl"
+        with p.open("w") as f:
+            for ev in events:
+                f.write(json.dumps(ev) + "\n")
+        return str(p)
+
+    # Tier 4: empty/flat trace -> not_measurable
+    events = [{"session_id": "s0", "timestamp": "2026-05-01T10:00:00",
+               "role": "user", "prompt_preview": "hi"}]
+    result = trace_to_card_v11(write_trace(events), trace_format="generic")
+    src = result.card["trace_audit"]["headline"].get("source")
+    assert src in ("not_measurable", "aging_trend"), src
+
+
+def test_website_sparkline_backward_compat():
+    """Verification case 8: revision block emits both new and legacy field names."""
+    from agingbench.telemetry.inference.revision import infer_revision_v2
+    sessions = [
+        [_mk_record(0, "agent", tools=[("op", {}, '{"x": "a"}')])],
+        [_mk_record(1, "agent", tools=[("op", {}, '{"x": "b"}')])],
+        [_mk_record(2, "agent", tools=[("op", {"x": "a"}, None)])],
+    ]
+    r = infer_revision_v2(sessions)
+    # New canonical names
+    assert "value_supersession_trajectory" in r
+    assert "value_supersession_slope" in r
+    assert "value_supersession_verdict" in r
+    # Legacy aliases (the website's sparkline reads these)
+    assert "per_session_violation_trajectory" in r
+    assert "violation_trajectory_slope" in r
+    assert "violation_trajectory_verdict" in r
+    # Same values
+    assert r["value_supersession_trajectory"] == r["per_session_violation_trajectory"]
+    assert r["value_supersession_slope"] == r["violation_trajectory_slope"]
+    assert r["value_supersession_verdict"] == r["violation_trajectory_verdict"]
+
+
+# ─── Real-data sanity checks (sample trace + optional local fixtures) ────
+
+
+def test_real_claude_code_sample_trace_produces_atlas_card():
+    """Real-data sanity: the canned claude_code sample trace produces
+    atlas's example card surface (revision dominant, U-stage signature,
+    typed-state-for-derived-values repair).
+
+    Pinned to the trace bundled with the website at
+    `AgingBench.github.io/assets/sample_traces/claude_code.jsonl` —
+    skipped if that file is not on the local filesystem.
+    """
+    import os
+    from agingbench.telemetry import trace_to_card_v11
+
+    SAMPLE = "/ssd1/jianing/project/AgingBench.github.io/assets/sample_traces/claude_code.jsonl"
+    if not os.path.exists(SAMPLE):
+        pytest.skip(f"sample trace not present at {SAMPLE}")
+
+    result = trace_to_card_v11(SAMPLE, trace_format="claude_code")
+    audit = result.card["trace_audit"]
+
+    # Basic pipeline outputs
+    assert result.n_records > 0
+    assert result.n_sessions >= 2
+    assert audit["trace_regime"]["adapter"] == "claude_code"
+    assert audit["trace_regime"]["tool_using"] is True
+
+    # All five blocks populate without exception
+    for mech in ("compression", "interference", "revision", "maintenance", "consistency"):
+        assert mech in audit, f"missing block: {mech}"
+        assert "derived_from" in audit[mech]
+
+    # Revision-aging via tool-argument self-reversion fallback (claude_code
+    # adapter doesn't populate result_summary; expect tier 2 of the ladder)
+    assert audit["revision"]["derived_from"] in {
+        "tool_argument_self_reversion",
+        "tool_result_update_propagation",
+    }
+    # Backward-compat aliases preserved
+    assert audit["revision"]["per_session_violation_trajectory"] == \
+        audit["revision"]["value_supersession_trajectory"]
+
+    # Dominant-mechanism + atlas's card surface
+    dm = audit["dominant_mechanism"]
+    assert dm["reason"] in {"argmax_with_margin", "co_dominant", "no_independent_evidence", "no_signal"}
+    # On this trace specifically, revision should dominate
+    assert dm["dominant"] == "revision"
+    assert audit["signature"] == "utilization-dominant (U-stage)"
+    assert "typed state for derived values" in audit["repair"]
+
+
+def test_real_claude_code_sample_consistency_block_finds_clusters():
+    """Real-data sanity for P5: the sample trace contains at least one
+    repeat-task cluster, and the agent-response/tool-path extraction
+    survives the tool-result-as-user-role boundary case."""
+    import os
+    from agingbench.telemetry import trace_to_card_v11
+
+    SAMPLE = "/ssd1/jianing/project/AgingBench.github.io/assets/sample_traces/claude_code.jsonl"
+    if not os.path.exists(SAMPLE):
+        pytest.skip(f"sample trace not present at {SAMPLE}")
+
+    result = trace_to_card_v11(SAMPLE, trace_format="claude_code")
+    c = result.card["trace_audit"]["consistency"]
+    # Cluster found (≥ 1 repeat task)
+    assert c["n_repeated_tasks_detected"] >= 1
+    # behavior_drift must be a real measurement, not 0.0 from missed boundaries.
+    # The pre-fix bug returned 0.0 because _agent_response_after / _tool_path
+    # stopped at the first tool-result record (role='user' with empty prompt).
+    assert c["behavior_drift_at_repeat"] > 0.0
+    assert c["consistency_drop_trajectory"]  # non-empty trajectory
+
+
+import os as _os
+
+@pytest.mark.skipif(
+    not _os.path.exists(
+        "/ssd1/jianing/project/aging_arxiv/telemetry_test_traces/opus47_s7_seed43.jsonl"
+    ),
+    reason="local fixture not present; run only when the larger test trace is staged",
+)
+def test_real_opus47_s7_trace_full_pipeline():
+    """Larger real-trace robustness check. Local-only — runs against the
+    Opus 4.7 / S7 / seed-43 conversation file copied under
+    `telemetry_test_traces/`. Asserts the full pipeline produces a
+    coherent card across all five blocks + selector + headline + card lookups."""
+    from agingbench.telemetry import trace_to_card_v11
+    from agingbench.telemetry.card_render import render_card_ascii
+
+    PATH = "/ssd1/jianing/project/aging_arxiv/telemetry_test_traces/opus47_s7_seed43.jsonl"
+    result = trace_to_card_v11(PATH, trace_format="claude_code")
+    audit = result.card["trace_audit"]
+
+    assert result.n_sessions >= 10, "this trace has many Claude Code conversations"
+    assert audit["consistency"]["n_repeated_tasks_detected"] >= 2
+
+    # Renderer produces a non-empty card string
+    txt = render_card_ascii(audit, width=72)
+    assert "Mechanism evidence:" in txt
+    assert "Diagnostic signature" in txt or "Dominant mechanism" in txt
+
+
+# ─── prepare_trace helper (Claude Code fragmented-file preprocessor) ─────
+
+
+def test_prepare_trace_concatenates_directory(tmp_path):
+    """prepare_trace: directory of .jsonl files → single sorted .jsonl."""
+    import json
+    from agingbench.telemetry import prepare_trace
+
+    # Two fake conversation files with timestamps out-of-order across files
+    (tmp_path / "conv_a.jsonl").write_text(
+        json.dumps({"timestamp": "2026-05-01T11:00:00", "role": "user", "msg": "later"}) + "\n"
+    )
+    (tmp_path / "conv_b.jsonl").write_text(
+        json.dumps({"timestamp": "2026-05-01T09:00:00", "role": "user", "msg": "earlier"}) + "\n" +
+        json.dumps({"timestamp": "2026-05-01T10:00:00", "role": "agent", "msg": "middle"}) + "\n"
+    )
+
+    out = prepare_trace(str(tmp_path), output=str(tmp_path / "combined.jsonl"))
+    assert out.exists()
+
+    lines = [json.loads(line) for line in out.open()]
+    # 3 events total, sorted by timestamp
+    assert len(lines) == 3
+    assert [l["msg"] for l in lines] == ["earlier", "middle", "later"]
+
+
+def test_prepare_trace_default_output_path(tmp_path):
+    """When output=None and source is a directory, write `<dir>/agingbench_trace.jsonl`."""
+    import json
+    from agingbench.telemetry import prepare_trace
+
+    (tmp_path / "a.jsonl").write_text(
+        json.dumps({"timestamp": "2026-05-01T00:00:00", "role": "user"}) + "\n"
+    )
+    out = prepare_trace(str(tmp_path))
+    assert out.name == "agingbench_trace.jsonl"
+    assert out.parent == tmp_path
+
+
+def test_prepare_trace_accepts_single_file(tmp_path):
+    """A single file source is a no-op (with optional sort)."""
+    import json
+    from agingbench.telemetry import prepare_trace
+
+    src = tmp_path / "trace.jsonl"
+    src.write_text(
+        json.dumps({"timestamp": "2026-05-01T10:00:00", "role": "agent"}) + "\n" +
+        json.dumps({"timestamp": "2026-05-01T09:00:00", "role": "user"}) + "\n"
+    )
+    out = prepare_trace(str(src))
+    assert out.exists()
+    assert out.name == "trace.prepared.jsonl"
+    lines = [json.loads(line) for line in out.open()]
+    # Sorted by timestamp (default)
+    assert lines[0]["role"] == "user"
+    assert lines[1]["role"] == "agent"
+
+
+def test_prepare_trace_raises_on_missing_path():
+    from agingbench.telemetry import prepare_trace
+    with pytest.raises(FileNotFoundError):
+        prepare_trace("/does/not/exist")
+
+
+def test_prepare_trace_output_feeds_trace_to_card_v11(tmp_path):
+    """End-to-end: prepare_trace → trace_to_card_v11 produces a card."""
+    import json
+    from agingbench.telemetry import prepare_trace, trace_to_card_v11
+
+    # Two minimal Claude Code-shaped conversations
+    base_ts = "2026-05-01T10:00:00"
+    (tmp_path / "c1.jsonl").write_text(
+        json.dumps({"type": "user", "sessionId": "s1", "timestamp": base_ts,
+                    "message": {"role": "user", "content": [{"type": "text", "text": "hi"}]}}) + "\n"
+        + json.dumps({"type": "assistant", "sessionId": "s1", "timestamp": base_ts,
+                      "message": {"role": "assistant", "content": [{"type": "text", "text": "hello"}]}}) + "\n"
+    )
+    (tmp_path / "c2.jsonl").write_text(
+        json.dumps({"type": "user", "sessionId": "s2", "timestamp": "2026-05-01T11:00:00",
+                    "message": {"role": "user", "content": [{"type": "text", "text": "hi"}]}}) + "\n"
+        + json.dumps({"type": "assistant", "sessionId": "s2", "timestamp": "2026-05-01T11:00:00",
+                      "message": {"role": "assistant", "content": [{"type": "text", "text": "hi again"}]}}) + "\n"
+    )
+
+    combined = prepare_trace(str(tmp_path), output=str(tmp_path / "combined.jsonl"))
+    result = trace_to_card_v11(str(combined), trace_format="claude_code")
+    assert result.n_records > 0
+    assert result.n_sessions >= 1
+    audit = result.card["trace_audit"]
+    # All five blocks should populate
+    for mech in ("compression", "interference", "revision", "maintenance", "consistency"):
+        assert mech in audit

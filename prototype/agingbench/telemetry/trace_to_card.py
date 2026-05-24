@@ -225,9 +225,12 @@ def trace_to_card_v11(
         Session-detection idle threshold for traces without explicit IDs.
     """
     from .adapters import get_adapter
+    from .card_lookups import diagnostic_signature, recommended_repair
     from .inference import (
         infer_compression, infer_interference, infer_revision, infer_maintenance,
     )
+    from .inference._selector import pick_dominant
+    from .inference.consistency import infer_consistency
     from .memory_reconstruction import detect_shocks
     from .privacy_scrubber import scrub_records
     from .profiles import load_profile, merge_overrides, outcome_rules_hash
@@ -282,9 +285,18 @@ def trace_to_card_v11(
     interference_b = infer_interference(sessions)
     revision_b     = infer_revision(sessions)
     maintenance_b  = infer_maintenance(sessions, shocks, outcomes)
+    # P5: cross-session task-consistency probe (load-bearing for the card
+    # headline when outcomes are absent).
+    consistency_b  = infer_consistency(sessions)
 
-    # 8. Headline curve from outcomes (if any)
+    # 8. Headline curve from outcomes (if any). Falls back to P5
+    # behavior_drift_at_repeat, then to aggregate mechanism trend.
     headline_block = _headline_from_outcomes(sessions, outcomes)
+    headline_block = _augment_headline_with_fallbacks(
+        headline_block, consistency_b,
+        compression_b, interference_b, revision_b, maintenance_b,
+        outcomes_present=bool(outcomes),
+    )
 
     # 9. Build AgingCard envelope
     from agingbench.metrics.aging_card import build_aging_card
@@ -336,7 +348,7 @@ def trace_to_card_v11(
 
     # Attach the trace_audit block (parallel to mechanism_metrics)
     rules_hash = outcome_rules_hash(prof)
-    card["trace_audit"] = {
+    trace_audit = {
         "derived_from":           "telemetry",
         "deployment_type":        prof.deployment_type,
         "n_sessions_detected":    len(sessions),
@@ -347,8 +359,26 @@ def trace_to_card_v11(
         "interference":           interference_b,
         "revision":               revision_b,
         "maintenance":            maintenance_b,
+        "consistency":            consistency_b,
         "headline":               headline_block,
+        "trace_regime":           _build_trace_regime(
+            sessions, records, outcomes, trace_format
+        ),
     }
+
+    # Dominant-mechanism selector (independent-evidence gated + margin).
+    selector_result = pick_dominant(trace_audit)
+    trace_audit["dominant_mechanism"] = selector_result
+    # Atlas's card surface: signature + repair from static lookups when a
+    # single mechanism dominates with adequate separation.
+    if selector_result["dominant"] is not None:
+        trace_audit["signature"] = diagnostic_signature(selector_result["dominant"])
+        trace_audit["repair"]    = recommended_repair(selector_result["dominant"])
+    else:
+        trace_audit["signature"] = None
+        trace_audit["repair"]    = None
+
+    card["trace_audit"] = trace_audit
 
     # 10. Merge synthetic probes if any
     if synthetic_probe_cards:
@@ -494,4 +524,139 @@ def _headline_from_outcomes(sessions, outcomes) -> dict:
         "m_final":      round(m_final, 4),
         "decay_slope":  slope,
         "half_life":    half_life,
+    }
+
+
+def _augment_headline_with_fallbacks(
+    headline: dict,
+    consistency: dict,
+    compression: dict, interference: dict, revision: dict, maintenance: dict,
+    *,
+    outcomes_present: bool,
+) -> dict:
+    """Implement the 4-tier headline policy described in the plan.
+
+    Tier 1: outcomes present                          -> half_life (already computed)
+    Tier 2: outcomes absent, P5 clusters present      -> behavior_drift_at_repeat
+    Tier 3: neither, but mechanism trend rises        -> aging_trend slope
+    Tier 4: nothing                                    -> not_measurable
+
+    Always returns a dict with at least: source, label. Preserves tier-1
+    fields (checkpoints, m0, m_final, half_life, decay_slope) when present.
+    """
+    out = dict(headline or {})
+
+    if outcomes_present and out.get("half_life") is not None:
+        out["source"] = "outcome_half_life"
+        out["label"]  = f"Half-life: {out['half_life']} sessions"
+        return out
+
+    # Tier 2: P5-derived behavior_drift. Fires on ≥ 1 repeat-task cluster
+    # (each cluster already ≥ 2 occurrences by `min_cluster_size=2`). The
+    # `underpowered` boolean flag stays on the headline dict so a UI can
+    # apply muted styling if it wants, but the label itself stays clean.
+    n_clusters = (consistency or {}).get("n_repeated_tasks_detected", 0)
+    if n_clusters >= 1:
+        drift = consistency.get("behavior_drift_at_repeat") or 0.0
+        n_sessions = consistency.get("consistency_drop_trajectory") or []
+        cluster_sizes = consistency.get("cluster_sizes") or []
+        n_occurrences = sum(cluster_sizes)
+        out["source"] = "behavior_drift_at_repeat"
+        out["label"]  = (
+            f"Behavior drift: {round(drift * 100)}% on repeat tasks "
+            f"({len(n_sessions)} sessions, {n_clusters} cluster"
+            f"{'s' if n_clusters != 1 else ''}, {n_occurrences} occurrences)"
+        )
+        out["behavior_drift_at_repeat"] = drift
+        out["n_clusters"] = n_clusters
+        out["underpowered"] = n_clusters == 1
+        return out
+
+    # Tier 3: aggregate mechanism severity rising over time.
+    trend_slope, n_blocks_rising = _aggregate_mechanism_trend(
+        compression, interference, revision, maintenance,
+    )
+    if trend_slope is not None and trend_slope > 0.01 and n_blocks_rising >= 1:
+        out["source"] = "aging_trend"
+        out["label"]  = f"Aging trend: rising (slope {trend_slope:+.3f}/session)"
+        out["aging_trend_slope"] = round(trend_slope, 4)
+        return out
+
+    # Tier 4: not measurable.
+    out["source"] = "not_measurable"
+    out["label"]  = "Aging not measurable on this trace"
+    out["disclosure"] = (
+        "Enable an outcome extractor or run a longer trace with repeat "
+        "tasks to surface a headline metric."
+    )
+    return out
+
+
+def _aggregate_mechanism_trend(
+    compression: dict, interference: dict, revision: dict, maintenance: dict,
+) -> tuple[Optional[float], int]:
+    """Sum per-session severity scores across the four mechanism blocks and
+    fit a slope. Returns (slope, n_blocks_with_rising_signal)."""
+    series: list[Optional[float]] = []
+    n_rising = 0
+    # Compression: saturation trajectory (already (i, v) tuples)
+    sat = (compression or {}).get("saturation_trajectory") or []
+    sat_vals = [v for _, v in sat]
+    if sat_vals:
+        series.append(sat_vals)
+        if compression.get("saturation_slope") and compression["saturation_slope"] > 0.005:
+            n_rising += 1
+    # Interference: KL trajectory
+    kl = (interference or {}).get("tool_kl_trajectory") or []
+    if kl:
+        series.append(list(kl))
+        if interference.get("tool_kl_slope") and interference["tool_kl_slope"] > 0.005:
+            n_rising += 1
+    # Revision: violation trajectory (already per-session counts)
+    rev = (revision or {}).get("value_supersession_trajectory") or (revision or {}).get("per_session_violation_trajectory") or []
+    if rev:
+        series.append(list(rev))
+        if revision.get("value_supersession_slope") and revision["value_supersession_slope"] > 0.005:
+            n_rising += 1
+    if not series:
+        return None, 0
+    # Aggregate: per-session mean of available signals.
+    max_len = max(len(s) for s in series)
+    agg = []
+    for i in range(max_len):
+        vals = [s[i] for s in series if i < len(s) and s[i] is not None]
+        if vals:
+            agg.append(sum(vals) / len(vals))
+        else:
+            agg.append(None)
+    nn = [v for v in agg if v is not None]
+    if len(nn) < 3:
+        return None, n_rising
+    # OLS slope
+    n = len(nn)
+    xs = list(range(n))
+    mx, my = sum(xs) / n, sum(nn) / n
+    num = sum((x - mx) * (y - my) for x, y in zip(xs, nn))
+    den = sum((x - mx) ** 2 for x in xs)
+    slope = num / den if den else None
+    return slope, n_rising
+
+
+def _build_trace_regime(sessions, records, outcomes, trace_format: str) -> dict:
+    """Disclosure record: what kind of trace did the card run on?
+
+    Used by the card UI to caveat low-coverage outputs and by the website
+    sparkline to render appropriate verbosity.
+    """
+    n_tool_calls = 0
+    for r in records:
+        n_tool_calls += len(r.tool_calls or [])
+    return {
+        "tool_using":   n_tool_calls > 0,
+        "multi_session": len(sessions) >= 2,
+        "outcomes":      "linked" if outcomes else "absent",
+        "n_sessions":    len(sessions),
+        "n_records":     len(records),
+        "n_tool_calls":  n_tool_calls,
+        "adapter":       trace_format,
     }

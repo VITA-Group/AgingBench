@@ -52,6 +52,7 @@ from .outcome_extractors import (
     extract_from_record_patterns,
     extract_from_git_log,
 )
+from .prepare_trace import prepare_trace
 
 
 __all__ = [
@@ -74,4 +75,6 @@ __all__ = [
     "extract_from_claude_session_flags",
     "extract_from_record_patterns",
     "extract_from_git_log",
+    # Trace preprocessing (Claude Code fragmented-file concatenation)
+    "prepare_trace",
 ]

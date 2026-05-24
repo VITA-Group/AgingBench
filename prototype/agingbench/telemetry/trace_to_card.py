@@ -315,10 +315,7 @@ def trace_to_card_v11(
         "n_checkpoints": len(headline_block.get("checkpoints", [])),
         "n_sessions": len(sessions),
         "headline_metric": "telemetry_outcome_rate" if outcomes else "telemetry_partial",
-        "aging_detected": (
-            headline_block.get("decay_slope") is not None
-            and headline_block.get("decay_slope") < -0.01
-        ) if headline_block else None,
+        "aging_detected": _aging_detected_v12(headline_block),
         "checkpoints": headline_block.get("checkpoints", []),
         "session_results": [],
         # Surface aggregated cost so build_aging_card._build_cost_block picks
@@ -525,6 +522,45 @@ def _headline_from_outcomes(sessions, outcomes) -> dict:
         "decay_slope":  slope,
         "half_life":    half_life,
     }
+
+
+def _aging_detected_v12(headline_block: Optional[dict]) -> Optional[bool]:
+    """Return True/False/None for whether aging is detected.
+
+    Widened from the pre-v1.2 check (which required outcome-derived
+    decay_slope to fire) so traces without OutcomeEvents still surface
+    aging when v1.2 signals (behavior_drift on repeat tasks or rising
+    aggregate mechanism trend) say so. Returns None only when the
+    headline block is itself empty.
+    """
+    if not headline_block:
+        return None
+
+    # Tier 1 (outcome-derived): decay_slope < -0.01 or ≥10% drop from m0
+    decay = headline_block.get("decay_slope")
+    if decay is not None and decay < -0.01:
+        return True
+    m0 = headline_block.get("m0")
+    m_final = headline_block.get("m_final")
+    if (m0 is not None and m_final is not None and m0 > 0
+            and (m0 - m_final) / m0 >= 0.10):
+        return True
+
+    source = headline_block.get("source") or ""
+
+    # Tier 2: behavior_drift on repeat tasks ≥ 10% counts as detected
+    if source == "behavior_drift_at_repeat":
+        drift = headline_block.get("behavior_drift_at_repeat") or 0.0
+        if drift > 0.10:
+            return True
+
+    # Tier 3: aggregate mechanism severity rising
+    if source == "aging_trend":
+        slope = headline_block.get("aging_trend_slope") or 0.0
+        if slope > 0.01:
+            return True
+
+    return False
 
 
 def _augment_headline_with_fallbacks(

@@ -17,7 +17,7 @@ NOT this upstream workflow.
 
 1. Copy the template:
    ```bash
-   curl -O https://raw.githubusercontent.com/AgingBench/AgingBench/main/examples/ci/agingbench-lite-template.yml
+   curl -O https://raw.githubusercontent.com/VITA-Group/AgingBench/main/examples/ci/agingbench-lite-template.yml
    mkdir -p .github/workflows
    mv agingbench-lite-template.yml .github/workflows/agingbench-lite.yml
    ```

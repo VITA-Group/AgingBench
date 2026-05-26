@@ -72,12 +72,12 @@ Tier 1 = benchmark-driven loop; Tier 2 = external agent driving its own loop, wr
 ## Install
 
 ```bash
-pip install "git+https://github.com/AgingBench/AgingBench.git@v0.3.0#subdirectory=prototype"
+pip install "git+https://github.com/VITA-Group/AgingBench.git@v0.3.0#subdirectory=prototype"
 ```
 
 Registers the `agingbench` and `agingbench-lite` CLIs and bundles the prompt templates, profile YAMLs, and JSON schemas the runner needs at runtime.
 
-> **Local clone alternative** (for development): `git clone https://github.com/AgingBench/AgingBench.git && cd AgingBench && uv sync --extra api --project prototype`.
+> **Local clone alternative** (for development): `git clone https://github.com/VITA-Group/AgingBench.git && cd AgingBench && uv sync --extra api --project prototype`.
 
 API keys are required for any run that calls an API model (Anthropic / OpenAI / Gemini). Set `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` / `HF_TOKEN` in your shell or in a `.env` at the repo root (auto-loaded by the CLI). Local-GPU SUTs (e.g. `qwen3_8b_lossy_compress.yaml`) need no API key.
 

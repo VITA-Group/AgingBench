@@ -192,7 +192,9 @@ class S8AgentRunner:
                  memory_window_bytes: Optional[int] = None,
                  cli_path: str = "agent",
                  subprocess_timeout: int = 600,
-                 sandbox: Optional[str] = None):
+                 sandbox: Optional[str] = None,
+                 custom_adapter_class: Optional[str] = None,
+                 custom_adapter_kwargs: Optional[dict] = None):
         self.adapter_kind = adapter_kind
         self.model = model
         self.host_workspace_root = Path(host_workspace_root)
@@ -204,6 +206,9 @@ class S8AgentRunner:
         # Phase 14c: memory_policy.window_bytes from SUT yaml -> bounded-
         # context memory policy. None means unbounded (current default).
         self.memory_window_bytes = memory_window_bytes
+        # Optional: only consulted when adapter_kind == "custom".
+        self.custom_adapter_class = custom_adapter_class
+        self.custom_adapter_kwargs = custom_adapter_kwargs
         self._adapter = None  # lazily constructed per session (each session needs a fresh cwd)
 
     def run(self, req: S8AgentRequest) -> S8AgentResponse:
@@ -374,9 +379,16 @@ class S8AgentRunner:
             return _LiteLLMAgentBridge(
                 model=self.model, cwd=cwd, api_key_env=self.api_key_env,
             )
+        if self.adapter_kind == "custom":
+            from agingbench.core.agent_adapter import build_custom_adapter
+            return build_custom_adapter(
+                {"type": "custom", "class": self.custom_adapter_class,
+                 **(self.custom_adapter_kwargs or {})},
+                workspace_dir=cwd,
+            )
         raise ValueError(
             f"Unsupported S8 agent adapter_kind: {self.adapter_kind!r}. "
-            "Supported: claude_code | openhands | cursor | litellm"
+            "Supported: claude_code | openhands | cursor | litellm | custom"
         )
 
 
@@ -461,4 +473,6 @@ def build_s8_agent_from_sut(sut_cfg: dict, host_workspace_root: Path) -> S8Agent
         cli_path=agent_cfg.get("cli_path", "agent"),
         subprocess_timeout=int(agent_cfg.get("subprocess_timeout") or 600),
         sandbox=agent_cfg.get("sandbox"),
+        custom_adapter_class=agent_cfg.get("class"),
+        custom_adapter_kwargs=agent_cfg.get("kwargs"),
     )

@@ -1127,6 +1127,9 @@ def _run_s5(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
             preset=adapter_cfg.get("preset"),
             subprocess_timeout=adapter_cfg.get("subprocess_timeout", 1800),
         )
+    elif adapter_type == "custom":
+        from agingbench.core.agent_adapter import build_custom_adapter
+        adapter = build_custom_adapter(adapter_cfg, workspace_dir)
     else:
         raise ValueError(f"S7 CLI runner: unknown adapter type '{adapter_type}'")
 
@@ -1303,6 +1306,9 @@ def _run_s7(sut_cfg, scenario_cfg, output_dir, n_cycles, *,
             sandbox=adapter_cfg.get("sandbox"),
         )
         workspace_dir = effective_workspace
+    elif adapter_type == "custom":
+        from agingbench.core.agent_adapter import build_custom_adapter
+        adapter = build_custom_adapter(adapter_cfg, workspace_dir)
     else:
         raise ValueError(f"S7+ runner: unknown adapter type '{adapter_type}'")
 

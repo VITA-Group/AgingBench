@@ -1,0 +1,32 @@
+# Example SUT YAML for a Bring-Your-Own Tier-1 memory backbone.
+#
+# Companion to examples/byo_memory_minimal.py. Two ways to run with it:
+#
+#   1. Reference the class from this YAML (no flag needed):
+#      agingbench run --scenario s1_research_literature \
+#                     --sut examples/sut_byo_memory.yaml --card
+#
+#   2. Override the class via the CLI flag (YAML stays generic):
+#      agingbench run --scenario s1_research_literature \
+#                     --sut examples/sut_byo_memory.yaml \
+#                     --memory-policy my_pkg.my_memory:MyMemory --card
+#
+# This SUT is suitable for Tier-1 scenarios (S1, S2, S3, S4, S6). For Tier-2
+# (S5, S7, S8) you want sut_byo_agent.yaml instead.
+
+sut_id: byo_memory_demo
+description: "Demo: minimal MemoryPolicy via type:custom — see examples/byo_memory_minimal.py"
+
+model:
+  provider: litellm
+  model: claude-haiku-4-5
+  max_tokens: 2048
+
+memory_policy:
+  type: custom
+  # Importable module:ClassName on PYTHONPATH. Replace with your own.
+  class: byo_memory_minimal:MyMemory
+  # Any further keys here are forwarded as kwargs to MyMemory(...).
+  keep_last_k: 5
+
+seed: 42

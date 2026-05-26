@@ -64,6 +64,8 @@ def cmd_run(suite_id: Optional[str], scenario_id: Optional[str],
             seeds: int = 1,
             diagnose: bool = False,
             agent_spec: Optional[str] = None,
+            adapter_spec: Optional[str] = None,
+            memory_policy_spec: Optional[str] = None,
             generated: bool = False, gen_sessions: int = 0,
             emit_card: bool = False) -> None:
     """Run one or more scenarios from a suite against one or more SUTs.
@@ -95,6 +97,26 @@ def cmd_run(suite_id: Optional[str], scenario_id: Optional[str],
     for sut_path in sut_paths:
         sut_cfg = _load_yaml(sut_path)
         sut_id = sut_cfg["sut_id"]
+
+        # CLI override hooks: --adapter / --memory-policy stomp the SUT YAML's
+        # blocks with a {type: custom, class: <spec>} stub. Preserves any
+        # other keys (max_turns, model, etc.) so users can mix flag+YAML.
+        if adapter_spec:
+            if ":" not in adapter_spec:
+                print(f"[error] --adapter must be 'module.path:ClassName', got '{adapter_spec}'",
+                      file=sys.stderr)
+                sys.exit(1)
+            existing = dict(sut_cfg.get("adapter") or {})
+            existing.update({"type": "custom", "class": adapter_spec})
+            sut_cfg["adapter"] = existing
+        if memory_policy_spec:
+            if ":" not in memory_policy_spec:
+                print(f"[error] --memory-policy must be 'module.path:ClassName', got '{memory_policy_spec}'",
+                      file=sys.stderr)
+                sys.exit(1)
+            existing = dict(sut_cfg.get("memory_policy") or {})
+            existing.update({"type": "custom", "class": memory_policy_spec})
+            sut_cfg["memory_policy"] = existing
 
         for scen in scenarios:
             sid = scen["scenario_id"]
@@ -353,7 +375,21 @@ def _build_parser():
                             "single run. Results include per-session write/read/utilization "
                             "error decomposition.")
     run_p.add_argument("--agent", metavar="MODULE:CLASS",
-                       help="Custom agent class (e.g. 'my_agents.recall:RecallAgent')")
+                       help="Override the Tier-1 ReferenceAgent reasoning class "
+                            "(advanced; subclass of agingbench.core.agent.AgentInterface). "
+                            "For BYO Tier-2 agents, use --adapter instead.")
+    run_p.add_argument("--adapter", metavar="MODULE:CLASS",
+                       help="Tier-2 BYO agent: subclass of AgentAdapter "
+                            "(e.g. 'my_pkg.my_agent:MyAgent'). Overrides the "
+                            "SUT YAML's adapter: block, replacing it with "
+                            "{type: custom, class: <spec>}. See "
+                            "examples/byo_agent_minimal.py.")
+    run_p.add_argument("--memory-policy", metavar="MODULE:CLASS", dest="memory_policy",
+                       help="Tier-1 BYO memory backbone: subclass of MemoryPolicy "
+                            "(e.g. 'my_pkg.my_memory:MyMemory'). Overrides the "
+                            "SUT YAML's memory_policy: block, replacing it with "
+                            "{type: custom, class: <spec>}. See "
+                            "examples/byo_memory_minimal.py.")
     run_p.add_argument("--generated", action="store_true",
                        help="Use programmatic scenario generator instead of curated data. "
                             "Note: this does NOT disable LLM calls — the agent still queries its "
@@ -410,6 +446,8 @@ def main(argv: list | None = None) -> int:
             seeds=args.seeds,
             diagnose=getattr(args, 'diagnose', False),
             agent_spec=args.agent,
+            adapter_spec=getattr(args, 'adapter', None),
+            memory_policy_spec=getattr(args, 'memory_policy', None),
             generated=args.generated,
             gen_sessions=args.sessions,
             emit_card=getattr(args, 'card', False),

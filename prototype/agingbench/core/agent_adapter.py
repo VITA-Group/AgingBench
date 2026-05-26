@@ -75,6 +75,13 @@ class AgentAdapter(ABC):
                 files: list[dict] — [{path, size_bytes, mtime}, ...]
                 total_bytes: int — total size of all persistent state
         Default: empty dict (opaque agent — no workspace visibility).
+
+        Scoring impact: AgingBench's probe scorers fall back to response-text
+        scoring when this is empty; metrics still emit, but signals tied to
+        workspace persistence (S5/S7 file-tracking probes, the lineage-
+        continuity component of telemetry-mode interference) will be muted.
+        If your agent writes notes / state / memos to a known directory,
+        returning those files here meaningfully sharpens the AgingCard.
         """
         return {}
 
@@ -84,5 +91,52 @@ class AgentAdapter(ABC):
         For transparent adapters, this returns the concatenated content of
         workspace files. For opaque adapters, returns empty string (benchmark
         relies on response-based scoring via recall probes instead).
+
+        Scoring impact: when empty, keyword-survival probes (S1, S2, S6) and
+        the entity-recall component of S3 score only against the agent's
+        natural-language reply — they can't credit information that lives
+        in the agent's *memory* but wasn't recited in the response. Opaque
+        adapters that don't expose memory will read as slightly more aged
+        on these scenarios than they otherwise would.
         """
         return ""
+
+
+def build_custom_adapter(adapter_cfg: dict, workspace_dir):
+    """Instantiate an AgentAdapter declared in a SUT YAML's ``adapter:`` block.
+
+    Used by Tier-2 runners (S5 self-planning, S7+ research-notes, S8 SWE-bench)
+    to load a user-provided adapter without editing the dispatch chain.
+
+    Expected SUT YAML shape:
+
+        adapter:
+          type: custom
+          class: my_pkg.my_module:MyAdapter   # importable module:ClassName
+          # any further keys are passed as kwargs to MyAdapter(...)
+          model: gpt-4o
+          max_turns: 30
+
+    The constructor is always passed ``cwd=workspace_dir`` (a string path) and
+    any remaining keys from ``adapter:``. Mirrors ``build_memory_policy``'s
+    ``type: custom`` hook in ``core/memory/base.py``.
+    """
+    import importlib
+
+    class_spec = adapter_cfg.get("class", "")
+    if ":" not in class_spec:
+        raise ValueError(
+            "custom adapter requires 'class' in 'module:ClassName' format, "
+            f"got {class_spec!r}"
+        )
+    module_path, class_name = class_spec.rsplit(":", 1)
+    mod = importlib.import_module(module_path)
+    cls = getattr(mod, class_name)
+    kwargs = {k: v for k, v in adapter_cfg.items() if k not in ("type", "class")}
+    kwargs.setdefault("cwd", str(workspace_dir))
+    instance = cls(**kwargs)
+    if not isinstance(instance, AgentAdapter):
+        raise TypeError(
+            f"{class_spec} did not return an AgentAdapter subclass instance"
+        )
+    return instance

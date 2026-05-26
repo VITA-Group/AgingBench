@@ -67,6 +67,31 @@ Tier 1 = benchmark-driven loop; Tier 2 = external agent driving its own loop, wr
 
 > **Want a new scenario?** S8 was added in v0.3.0 and we're actively welcoming further scenario contributions — production agent deployments, domain-specific failure modes, anything that exercises a memory-aging axis we haven't covered yet. See [docs/CONTRIBUTING.md#adding-a-scenario](docs/CONTRIBUTING.md#adding-a-scenario) for the protocol (scenario manifest → generator → runner → tests).
 
+### Bring your own agent or memory policy
+
+Out-of-the-box AgingBench ships four Tier-2 adapters (`claude_code`, `openhands`, `codex`, `cursor`) and ten Tier-1 memory policies. Custom agents and memory backbones plug in by subclassing one ABC each — no edits to AgingBench internals:
+
+| Track | Subclass | SUT YAML hook | Runnable template |
+|---|---|---|---|
+| Tier-2 (S5, S7, S8) — agent framework / harness | [`AgentAdapter`](prototype/agingbench/core/agent_adapter.py) | `adapter: { type: custom, class: my_pkg.mod:MyAgent }` | [`prototype/examples/byo_agent_minimal.py`](prototype/examples/byo_agent_minimal.py) |
+| Tier-1 (S1–S4, S6) — memory backbone / RAG / KV store | [`MemoryPolicy`](prototype/agingbench/core/memory/base.py) | `memory_policy: { type: custom, class: my_pkg.mod:MyMemory }` | [`prototype/examples/byo_memory_minimal.py`](prototype/examples/byo_memory_minimal.py) |
+
+Both templates self-test under `python examples/byo_*_minimal.py` and are short enough (≈150 lines each, mostly comments) to read in one sitting. The `type: custom` dispatch loads any importable `module:ClassName`; extra YAML keys are forwarded as kwargs. If you don't want the SUT-YAML round-trip, both flags also work directly:
+
+```bash
+agingbench run --scenario s7_research_notes \
+  --sut examples/sut_byo_agent.yaml \
+  --adapter my_pkg.my_agent:MyAgent --seeds 3 --card
+
+agingbench run --scenario s1_research_literature \
+  --sut examples/sut_byo_memory.yaml \
+  --memory-policy my_pkg.my_memory:MyMemory --seeds 3 --card
+```
+
+`AgentAdapter` / `MemoryPolicy` are also usable standalone in your own driver code — they aren't coupled to the CLI.
+
+> **Opaque-agent caveat.** For Tier-2 BYO agents, the optional `get_workspace_state` and `get_memory_text` hooks are how AgingBench peeks at what your agent persists to disk. Leaving them at the default `{}`/`""` is fine — the run still produces a valid AgingCard — but file-survival and entity-recall probes will only credit information your agent recites back in its reply. If your agent writes notes / scratchpads / memos to a known directory, returning them from these hooks meaningfully sharpens the diagnosis.
+
 ---
 
 ## Install
@@ -184,6 +209,8 @@ AgingBench treats memory policy as the independent variable: same model, differe
 
 | If you want to… | Read |
 |---|---|
+| Plug in your agent (Tier 2) | [`prototype/examples/byo_agent_minimal.py`](prototype/examples/byo_agent_minimal.py) |
+| Plug in your memory backbone (Tier 1) | [`prototype/examples/byo_memory_minimal.py`](prototype/examples/byo_memory_minimal.py) |
 | Add a new model / memory policy / scenario / adapter | [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) |
 | Submit an AgingCard to the public leaderboard | [docs/LEADERBOARD.md](docs/LEADERBOARD.md) |
 | Use telemetry mode on production traces | [`prototype/agingbench/telemetry/README.md`](prototype/agingbench/telemetry/README.md) |

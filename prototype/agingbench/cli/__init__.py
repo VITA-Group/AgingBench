@@ -261,11 +261,21 @@ def cmd_compare(result_dirs: list[str]) -> None:
 # ------------------------------------------------------------------ formatting
 
 def _print_row(stats: dict) -> None:
+    m0 = stats.get("m0")
+    m_final = stats.get("m_final")
+    if m0 is None or m_final is None:
+        phase = stats.get("phase", "unknown")
+        status = stats.get("scaffold_status") or stats.get("headline_metric") or ""
+        print(f"  (no aging curve — phase={phase})")
+        if status:
+            print(f"  {str(status)[:120]}")
+        return
     hl = stats.get("half_life", float("inf"))
     hl_str = f"{hl:.2f}" if hl != float("inf") else "\u221e"
     hp = stats.get("hazard_proxy", 0.0)
-    print(f"  m0={stats['m0']:.3f}  m_final={stats['m_final']:.3f}  "
-          f"half_life={hl_str}  slope={stats['decay_slope']:.5f}  "
+    slope = stats.get("decay_slope", 0.0)
+    print(f"  m0={m0:.3f}  m_final={m_final:.3f}  "
+          f"half_life={hl_str}  slope={slope:.5f}  "
           f"hazard={hp:.4f}")
     if "task_m0" in stats:
         print(f"  task_m0={stats['task_m0']:.3f}  task_m_final={stats['task_m_final']:.3f}  "
@@ -281,8 +291,19 @@ def _print_summary_table(results: list[dict]) -> None:
     for r in results:
         hl = r.get("half_life", float("inf"))
         hl_str = f"{hl:.1f}" if hl != float("inf") else "\u221e"
+        m0 = r.get("m0")
+        m_final = r.get("m_final")
+        slope = r.get("decay_slope", float("nan"))
+        if m0 is None or m_final is None:
+            m0_str = "  n/a"
+            m_final_str = "    n/a"
+            slope_str = "      n/a"
+        else:
+            m0_str = f"{m0:>5.3f}"
+            m_final_str = f"{m_final:>7.3f}"
+            slope_str = f"{slope:>9.5f}"
         print(f"  {r['sut_id']:<33} {r['scenario']:<28} "
-              f"{r['m0']:>5.3f} {r['m_final']:>7.3f} {hl_str:>6} {r['decay_slope']:>9.5f}")
+              f"{m0_str:>5} {m_final_str:>7} {hl_str:>6} {slope_str:>9}")
     print("=" * len(header))
 
 

@@ -237,6 +237,7 @@ class S7Runner:
         max_probe_retries: int = 0,
         snapshots_dir: Path | None = None,
         archive_dir: Path | None = None,
+        checkpoint_dir: Path | None = None,
     ):
         self.adapter = adapter
         self.tracer = tracer
@@ -252,23 +253,179 @@ class S7Runner:
         # still land in the archival location we report.
         self.snapshots_dir = snapshots_dir or (workspace_dir.parent / "snapshots")
         self.archive_dir = archive_dir  # None = don't copy back at end
+        self.checkpoint_dir = checkpoint_dir
 
     # ------------------------------------------------------------------ run loop
+
+    _SKIP_SNAPSHOT_PARTS = (
+        ".openhands_persist", "__pycache__",
+        "notes.egg-info", "build", "dist", "snapshots",
+    )
+
+    def _load_checkpoint(self) -> dict[str, Any] | None:
+        if not self.checkpoint_dir:
+            return None
+        path = self.checkpoint_dir / "metrics.json"
+        if not path.exists():
+            return None
+        try:
+            data = json.loads(path.read_text())
+        except (json.JSONDecodeError, OSError):
+            return None
+        if data.get("run_status") == "complete":
+            return None
+        per_session = data.get("per_session") or []
+        if not per_session:
+            return None
+        return data
+
+    def _curves_from_per_session(
+        self, per_session: list[dict],
+    ) -> tuple[list[tuple[int, float]], ...]:
+        recall_curve = [(s["session"], s["probe_recall"]) for s in per_session]
+        task_curve = [(s["session"], s["task_score_coarse"]) for s in per_session]
+        pytest_curve = [(s["session"], s["pytest_pass_rate"]) for s in per_session]
+        ws_fid_curve = [(s["session"], s["workspace_fidelity"]) for s in per_session]
+        return recall_curve, task_curve, pytest_curve, ws_fid_curve
+
+    def _restore_workspace_from_snapshot(self, snap_dir: Path) -> None:
+        if not snap_dir.exists():
+            raise RuntimeError(
+                f"Cannot resume S7: missing workspace snapshot at {snap_dir}"
+            )
+        for src in snap_dir.rglob("*"):
+            if not src.is_file():
+                continue
+            rel = src.relative_to(snap_dir)
+            if any(bad in rel.parts for bad in self._SKIP_SNAPSHOT_PARTS):
+                continue
+            dst = self.workspace / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+
+    def _save_checkpoint(
+        self,
+        *,
+        per_session_metrics: list[dict],
+        recall_curve: list[tuple[int, float]],
+        task_curve: list[tuple[int, float]],
+        pytest_curve: list[tuple[int, float]],
+        ws_fid_curve: list[tuple[int, float]],
+        run_status: str,
+        expected_n_sessions: int | None = None,
+        error: str | None = None,
+    ) -> None:
+        if not self.checkpoint_dir:
+            return
+        result = self._finalize_result(
+            per_session_metrics, recall_curve, task_curve, pytest_curve, ws_fid_curve,
+        )
+        result["run_status"] = run_status
+        if expected_n_sessions is not None:
+            result["expected_n_sessions"] = expected_n_sessions
+        if error:
+            result["last_error"] = error
+        self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        (self.checkpoint_dir / "metrics.json").write_text(json.dumps(result, indent=2))
+
+    def _finalize_result(
+        self,
+        per_session_metrics: list[dict],
+        recall_curve: list[tuple[int, float]],
+        task_curve: list[tuple[int, float]],
+        pytest_curve: list[tuple[int, float]],
+        ws_fid_curve: list[tuple[int, float]],
+    ) -> dict[str, Any]:
+        m0 = recall_curve[0][1] if recall_curve else 1.0
+        m_final = recall_curve[-1][1] if recall_curve else 0.0
+        half_life = self._compute_half_life(recall_curve)
+        slope = self._compute_slope(recall_curve)
+
+        maint_deltas = {}
+        for event_name, k in [("schema_migration_s3", 3), ("sqlite_migration_s8", 8)]:
+            pre_window = [v for t, v in recall_curve if k - 2 <= t < k]
+            post_window = [v for t, v in recall_curve if k < t <= k + 2]
+            if pre_window and post_window:
+                maint_deltas[event_name] = {
+                    "pre_mean": sum(pre_window) / len(pre_window),
+                    "post_mean": sum(post_window) / len(post_window),
+                    "delta": (sum(post_window) / len(post_window)) -
+                             (sum(pre_window) / len(pre_window)),
+                    "window_size": 2,
+                }
+
+        def _mean_over_sessions(key):
+            vals = [s.get(key) for s in per_session_metrics
+                    if s.get(key) is not None]
+            return sum(vals) / len(vals) if vals else None
+
+        run_level_mechanisms = {
+            "m_compression_mean": _mean_over_sessions("m_compression"),
+            "m_compression_final": (per_session_metrics[-1].get("m_compression")
+                                    if per_session_metrics else None),
+            "m_interference_mean": _mean_over_sessions("m_interference"),
+            "m_revision_explicit_mean": _mean_over_sessions("m_revision_explicit"),
+            "m_revision_latent_abs_err_mean":
+                _mean_over_sessions("m_revision_latent_abs_err"),
+            "m_maintenance_delta": maint_deltas,
+            "probe_turns_mean": _mean_over_sessions("probe_turns_mean"),
+            "probe_turns_when_correct_mean":
+                _mean_over_sessions("probe_turns_when_correct"),
+            "probe_turns_when_wrong_mean":
+                _mean_over_sessions("probe_turns_when_wrong"),
+        }
+
+        return {
+            "scenario": "s7_research_notes",
+            "sut_id": self.sut_id,
+            "n_sessions": len(per_session_metrics),
+            "m0": m0,
+            "m_final": m_final,
+            "half_life": half_life,
+            "decay_slope": slope,
+            "checkpoints": list(recall_curve),
+            "headline_metric": "recall_accuracy",
+            "recall_curve": recall_curve,
+            "task_curve": task_curve,
+            "pytest_curve": pytest_curve,
+            "workspace_fidelity_curve": ws_fid_curve,
+            "per_session": per_session_metrics,
+            "factgraph_summary": self.fg.get("summary", {}),
+            **run_level_mechanisms,
+        }
 
     def run(self, n_sessions: int | None = None, seed: int = 42) -> dict:
         sessions = self.data["sessions"]
         if n_sessions is not None:
             sessions = sessions[:n_sessions]
 
-        per_session_metrics: list[dict] = []
-        recall_curve: list[tuple[int, float]] = []
-        task_curve: list[tuple[int, float]] = []
-        pytest_curve: list[tuple[int, float]] = []
-        ws_fid_curve: list[tuple[int, float]] = []
+        prior = self._load_checkpoint()
+        if prior:
+            per_session_metrics = list(prior["per_session"])
+            recall_curve, task_curve, pytest_curve, ws_fid_curve = (
+                self._curves_from_per_session(per_session_metrics)
+            )
+            completed = {s["session"] for s in per_session_metrics}
+            last_idx = max(completed)
+            snap_dir = self.snapshots_dir / f"session_{last_idx:02d}"
+            self._restore_workspace_from_snapshot(snap_dir)
+            print(
+                f"  [S7+] Resuming from session {last_idx + 1} "
+                f"({len(completed)}/{len(sessions)} complete)"
+            )
+        else:
+            per_session_metrics = []
+            recall_curve = []
+            task_curve = []
+            pytest_curve = []
+            ws_fid_curve = []
+            completed = set()
 
         for sess in sessions:
             t0 = time.time()
             idx = sess["session_idx"]
+            if idx in completed:
+                continue
 
             # 1. Send task prompt
             self.adapter.reset_session()
@@ -277,8 +434,17 @@ class S7Runner:
                 task_text = task_resp.text
                 task_tokens = task_resp.input_tokens + task_resp.output_tokens
             except Exception as e:
-                task_text = f"[ERROR: {type(e).__name__}: {e}]"
-                task_tokens = 0
+                self._save_checkpoint(
+                    per_session_metrics=per_session_metrics,
+                    recall_curve=recall_curve,
+                    task_curve=task_curve,
+                    pytest_curve=pytest_curve,
+                    ws_fid_curve=ws_fid_curve,
+                    run_status="failed",
+                    expected_n_sessions=len(sessions),
+                    error=str(e),
+                )
+                raise
 
             # 2. Post-process + pip install (fail-soft) + pytest slice
             _fix_literal_newlines(self.workspace)
@@ -295,9 +461,7 @@ class S7Runner:
             snap_dir.mkdir(parents=True, exist_ok=True)
             for src_ext in (".py", ".md", ".txt", ".toml", ".cfg"):
                 for src in self.workspace.rglob(f"*{src_ext}"):
-                    if any(bad in src.parts for bad in
-                           (".openhands_persist", "__pycache__",
-                            "notes.egg-info", "build", "dist", "snapshots")):
+                    if any(bad in src.parts for bad in self._SKIP_SNAPSHOT_PARTS):
                         continue
                     rel = src.relative_to(self.workspace)
                     dst = snap_dir / rel
@@ -318,9 +482,17 @@ class S7Runner:
                         pr.text, p["expected_keywords"], p["forbidden_keywords"]
                     )
                 except Exception as e:
-                    pr_text = f"[ERROR: {e}]"
-                    pr = None
-                    score = 0.0
+                    self._save_checkpoint(
+                        per_session_metrics=per_session_metrics,
+                        recall_curve=recall_curve,
+                        task_curve=task_curve,
+                        pytest_curve=pytest_curve,
+                        ws_fid_curve=ws_fid_curve,
+                        run_status="failed",
+                        expected_n_sessions=len(sessions),
+                        error=str(e),
+                    )
+                    raise
                 probe_scores.append(score)
                 # num_turns at probe time is the key signal for the
                 # "memory-vs-lookup" strategy distinction:
@@ -465,74 +637,27 @@ class S7Runner:
                 f"probes={recall:.3f}  ws_fid={ws_fid:.3f}  ({elapsed:.0f}s)"
             )
 
-        # Aging-curve aggregates on probe_recall (the primary longitudinal signal)
-        m0 = recall_curve[0][1] if recall_curve else 1.0
-        m_final = recall_curve[-1][1] if recall_curve else 0.0
-        half_life = self._compute_half_life(recall_curve)
-        slope = self._compute_slope(recall_curve)
+            self._save_checkpoint(
+                per_session_metrics=per_session_metrics,
+                recall_curve=recall_curve,
+                task_curve=task_curve,
+                pytest_curve=pytest_curve,
+                ws_fid_curve=ws_fid_curve,
+                run_status="partial",
+                expected_n_sessions=len(sessions),
+            )
 
-        # Maintenance Δ_pre/post around lifecycle events (session 3 = schema
-        # migration; session 8 = SQLite migration). Pre/post windows are
-        # 2 sessions each (or whatever fits given run length).
-        maint_deltas = {}
-        for event_name, k in [("schema_migration_s3", 3), ("sqlite_migration_s8", 8)]:
-            pre_window = [v for t, v in recall_curve if k - 2 <= t < k]
-            post_window = [v for t, v in recall_curve if k < t <= k + 2]
-            if pre_window and post_window:
-                maint_deltas[event_name] = {
-                    "pre_mean": sum(pre_window) / len(pre_window),
-                    "post_mean": sum(post_window) / len(post_window),
-                    "delta": (sum(post_window) / len(post_window)) -
-                             (sum(pre_window) / len(pre_window)),
-                    "window_size": 2,
-                }
-
-        # Run-level mechanism aggregates (mean over sessions where metric defined)
-        def _mean_over_sessions(key):
-            vals = [s.get(key) for s in per_session_metrics
-                    if s.get(key) is not None]
-            return sum(vals) / len(vals) if vals else None
-
-        run_level_mechanisms = {
-            "m_compression_mean": _mean_over_sessions("m_compression"),
-            "m_compression_final": (per_session_metrics[-1].get("m_compression")
-                                    if per_session_metrics else None),
-            "m_interference_mean": _mean_over_sessions("m_interference"),
-            "m_revision_explicit_mean": _mean_over_sessions("m_revision_explicit"),
-            "m_revision_latent_abs_err_mean":
-                _mean_over_sessions("m_revision_latent_abs_err"),
-            "m_maintenance_delta": maint_deltas,
-            # Run-level probe-turn aggregates — distinguishes lookup from memory
-            "probe_turns_mean": _mean_over_sessions("probe_turns_mean"),
-            "probe_turns_when_correct_mean":
-                _mean_over_sessions("probe_turns_when_correct"),
-            "probe_turns_when_wrong_mean":
-                _mean_over_sessions("probe_turns_when_wrong"),
-        }
-
-        return {
-            "scenario": "s7_research_notes",
-            "sut_id": self.sut_id,
-            "n_sessions": len(per_session_metrics),
-            "m0": m0,
-            "m_final": m_final,
-            "half_life": half_life,
-            "decay_slope": slope,
-            # `checkpoints` is the AgingCard's canonical per-session trajectory
-            # field. For S7 the recall_curve is the headline metric, so it
-            # doubles as the checkpoints series. Aliased rather than
-            # duplicated so downstream consumers can use either name; renamed
-            # the headline_metric to make the alias explicit.
-            "checkpoints": list(recall_curve),
-            "headline_metric": "recall_accuracy",
-            "recall_curve": recall_curve,
-            "task_curve": task_curve,
-            "pytest_curve": pytest_curve,
-            "workspace_fidelity_curve": ws_fid_curve,
-            "per_session": per_session_metrics,
-            "factgraph_summary": self.fg.get("summary", {}),
-            **run_level_mechanisms,
-        }
+        result = self._finalize_result(
+            per_session_metrics, recall_curve, task_curve, pytest_curve, ws_fid_curve,
+        )
+        result["run_status"] = "complete"
+        result["expected_n_sessions"] = len(sessions)
+        if self.checkpoint_dir:
+            self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+            (self.checkpoint_dir / "metrics.json").write_text(
+                json.dumps(result, indent=2)
+            )
+        return result
 
     # Note: the run() method returns above. After run() returns, the
     # CLI wrapper is responsible for calling _archive_workspace if an

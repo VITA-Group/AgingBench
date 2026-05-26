@@ -11,6 +11,7 @@ controls:
 Adapters:
   - ReactFileAdapter: reference ReAct agent with file tools (core/adapters/)
   - ClaudeCodeAgentAdapter: wraps existing ClaudeCodeAdapter (core/adapters/)
+  - CursorAgentAdapter: wraps Cursor Agent CLI (core/adapters/)
   - CodexAdapter: stub for OpenAI Codex (core/adapters/)
   - Custom: user implements AgentAdapter for their system
 """

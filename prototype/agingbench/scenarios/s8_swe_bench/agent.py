@@ -189,12 +189,18 @@ class S8AgentRunner:
                  host_workspace_root: Path,
                  max_turns: int = 30,
                  api_key_env: Optional[str] = None,
-                 memory_window_bytes: Optional[int] = None):
+                 memory_window_bytes: Optional[int] = None,
+                 cli_path: str = "agent",
+                 subprocess_timeout: int = 600,
+                 sandbox: Optional[str] = None):
         self.adapter_kind = adapter_kind
         self.model = model
         self.host_workspace_root = Path(host_workspace_root)
         self.max_turns = max_turns
         self.api_key_env = api_key_env
+        self.cli_path = cli_path
+        self.subprocess_timeout = subprocess_timeout
+        self.sandbox = sandbox
         # Phase 14c: memory_policy.window_bytes from SUT yaml -> bounded-
         # context memory policy. None means unbounded (current default).
         self.memory_window_bytes = memory_window_bytes
@@ -354,13 +360,23 @@ class S8AgentRunner:
                 api_key_env=self.api_key_env or "OPENAI_API_KEY",
                 system_prompt=_AGENT_SYSTEM_PROMPT,
             )
+        if self.adapter_kind == "cursor":
+            from agingbench.core.adapters.cursor_agent_adapter import CursorAgentAdapter
+            return CursorAgentAdapter(
+                model=self.model,
+                cwd=str(cwd),
+                system_prompt=_AGENT_SYSTEM_PROMPT,
+                cli_path=self.cli_path,
+                timeout_sec=self.subprocess_timeout,
+                sandbox=self.sandbox,
+            )
         if self.adapter_kind == "litellm":
             return _LiteLLMAgentBridge(
                 model=self.model, cwd=cwd, api_key_env=self.api_key_env,
             )
         raise ValueError(
             f"Unsupported S8 agent adapter_kind: {self.adapter_kind!r}. "
-            "Supported: claude_code | openhands | litellm"
+            "Supported: claude_code | openhands | cursor | litellm"
         )
 
 
@@ -442,4 +458,7 @@ def build_s8_agent_from_sut(sut_cfg: dict, host_workspace_root: Path) -> S8Agent
         max_turns=max_turns,
         api_key_env=api_key_env,
         memory_window_bytes=int(window) if window else None,
+        cli_path=agent_cfg.get("cli_path", "agent"),
+        subprocess_timeout=int(agent_cfg.get("subprocess_timeout") or 600),
+        sandbox=agent_cfg.get("sandbox"),
     )

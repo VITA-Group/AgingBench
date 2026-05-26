@@ -1285,17 +1285,39 @@ def _run_s7(sut_cfg, scenario_cfg, output_dir, n_cycles, *,
         # Re-point workspace_dir so pytest + probe scoring target the
         # isolated dir where the agent's files actually live.
         workspace_dir = effective_workspace
+    elif adapter_type == "cursor":
+        from ..core.adapters.cursor_agent_adapter import CursorAgentAdapter
+        if adapter_cfg.get("isolated_workspace", True):
+            import tempfile as _tf
+            isolated_ws = _Path(_tf.mkdtemp(prefix="aging_cursor_ws_"))
+            print(f"  [S7+] Cursor workspace isolated at {isolated_ws}")
+            effective_workspace = isolated_ws
+        else:
+            effective_workspace = _Path(str(workspace_dir))
+        adapter = CursorAgentAdapter(
+            model=adapter_cfg.get("model", "composer-2"),
+            cwd=str(effective_workspace),
+            cli_path=adapter_cfg.get("cli_path", "agent"),
+            max_turns=adapter_cfg.get("max_turns", 50),
+            timeout_sec=adapter_cfg.get("subprocess_timeout", 600),
+            sandbox=adapter_cfg.get("sandbox"),
+        )
+        workspace_dir = effective_workspace
     else:
         raise ValueError(f"S7+ runner: unknown adapter type '{adapter_type}'")
 
     n_sessions = gen_sessions if gen_sessions > 0 else (n_cycles if n_cycles > 0 else 5)
-    gen = S7Generator(
-        seed=sut_cfg.get("seed", 42),
-        pressure=_resolve_pressure(sut_cfg, scenario_cfg),
-    )
-    data = gen.generate(n_sessions=n_sessions)
-    # Persist generated task for reproducibility
-    (output_dir / "scenario.json").write_text(_json.dumps(data, indent=2))
+    scenario_path = output_dir / "scenario.json"
+    if scenario_path.exists():
+        data = _json.loads(scenario_path.read_text())
+        print(f"  [S7+] Loaded existing scenario from {scenario_path}")
+    else:
+        gen = S7Generator(
+            seed=sut_cfg.get("seed", 42),
+            pressure=_resolve_pressure(sut_cfg, scenario_cfg),
+        )
+        data = gen.generate(n_sessions=n_sessions)
+        scenario_path.write_text(_json.dumps(data, indent=2))
 
     tests_dir = _Path(__file__).parent.parent / "scenarios" / "s7_research_notes" / "tests"
 
@@ -1307,9 +1329,10 @@ def _run_s7(sut_cfg, scenario_cfg, output_dir, n_cycles, *,
         generated_data=data, tests_dir=tests_dir, workspace_dir=workspace_dir,
         snapshots_dir=output_dir / "snapshots",
         archive_dir=(output_dir / "workspace_archive"
-                     if adapter_type == "claude_code" and
+                     if adapter_type in ("claude_code", "cursor") and
                         adapter_cfg.get("isolated_workspace", True)
                      else None),
+        checkpoint_dir=output_dir,
     )
     result = runner.run(n_sessions=n_sessions, seed=sut_cfg.get("seed", 42))
     runner.archive_workspace_if_set()
@@ -1317,6 +1340,7 @@ def _run_s7(sut_cfg, scenario_cfg, output_dir, n_cycles, *,
     result.setdefault("sut_id", sut_cfg["sut_id"])
     result.setdefault("metric_group", "G1")
     result.setdefault("headline_metric", "recall_accuracy")
+    result.setdefault("run_status", "complete")
     (output_dir / "metrics.json").write_text(_json.dumps(result, indent=2))
     print(f"  m0={result['m0']:.3f}  m_final={result['m_final']:.3f}  "
           f"half_life={result['half_life']}  slope={result['decay_slope']:.5f}")

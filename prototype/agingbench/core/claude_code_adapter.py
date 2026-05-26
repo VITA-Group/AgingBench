@@ -22,6 +22,87 @@ from pathlib import Path
 from typing import Optional
 
 
+class ClaudeCodeError(RuntimeError):
+    """Fatal Claude Code CLI failure (usage limit, auth, model access, etc.)."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        exit_code: int | None = None,
+        api_status: int | None = None,
+        raw: str | None = None,
+    ):
+        super().__init__(message)
+        self.exit_code = exit_code
+        self.api_status = api_status
+        self.raw = raw
+
+
+_FATAL_API_STATUSES = frozenset({401, 402, 403, 429, 529})
+_FATAL_MESSAGE_MARKERS = (
+    "rate limit",
+    "usage limit",
+    "quota",
+    "billing",
+    "overloaded",
+    "too many requests",
+    "credit",
+    "subscription",
+    "authentication",
+    "not logged in",
+    "out of extra usage",
+    "exceeds",
+)
+
+
+def _is_fatal_api_error(message: str, api_status: int | None) -> bool:
+    if api_status in _FATAL_API_STATUSES:
+        return True
+    low = message.lower()
+    return any(marker in low for marker in _FATAL_MESSAGE_MARKERS)
+
+
+def _raise_if_fatal_cli_error(
+    *,
+    exit_code: int,
+    stdout: str,
+    stderr: str,
+) -> None:
+    """Parse Claude Code JSON/text output and raise on unrecoverable failures."""
+    message = stderr.strip()
+    api_status: int | None = None
+    is_error = False
+
+    if stdout.strip():
+        try:
+            data = json.loads(stdout)
+        except json.JSONDecodeError:
+            if not message:
+                message = stdout.strip()[:500]
+        else:
+            if isinstance(data, dict):
+                is_error = bool(data.get("is_error"))
+                api_status = data.get("api_error_status")
+                message = str(
+                    data.get("result")
+                    or data.get("error")
+                    or data.get("message")
+                    or message
+                )
+
+    if exit_code != 0 or is_error:
+        if not message:
+            message = f"Claude Code exited with code {exit_code}"
+        if exit_code != 0 or is_error or _is_fatal_api_error(message, api_status):
+            raise ClaudeCodeError(
+                message,
+                exit_code=exit_code,
+                api_status=api_status,
+                raw=(stdout or stderr)[:1000] or None,
+            )
+
+
 @dataclass
 class ClaudeCodeResponse:
     """Result of a single Claude Code invocation."""
@@ -151,21 +232,24 @@ class ClaudeCodeAdapter:
                 env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"},
             )
 
-            if result.returncode != 0:
-                return ClaudeCodeResponse(
-                    text=f"[ERROR] Claude Code exited with code {result.returncode}: {result.stderr[:500]}",
-                )
+            _raise_if_fatal_cli_error(
+                exit_code=result.returncode,
+                stdout=result.stdout,
+                stderr=result.stderr,
+            )
 
             # Parse JSON output
             return self._parse_json_output(result.stdout)
 
-        except subprocess.TimeoutExpired:
-            return ClaudeCodeResponse(text="[ERROR] Claude Code timed out after 600s")
-        except FileNotFoundError:
-            return ClaudeCodeResponse(
-                text=f"[ERROR] Claude Code CLI not found at '{self.cli_path}'. "
-                     f"Install with: npm install -g @anthropic-ai/claude-code"
-            )
+        except ClaudeCodeError:
+            raise
+        except subprocess.TimeoutExpired as exc:
+            raise ClaudeCodeError("Claude Code timed out after 600s") from exc
+        except FileNotFoundError as exc:
+            raise ClaudeCodeError(
+                f"Claude Code CLI not found at '{self.cli_path}'. "
+                f"Install with: npm install -g @anthropic-ai/claude-code"
+            ) from exc
 
     def _send_sdk(
         self,
@@ -229,6 +313,18 @@ class ClaudeCodeAdapter:
 
         # Claude Code JSON output varies by version; handle common formats
         if isinstance(data, dict):
+            if data.get("is_error"):
+                message = str(
+                    data.get("result")
+                    or data.get("error")
+                    or data.get("message")
+                    or "Claude Code returned is_error=true"
+                )
+                raise ClaudeCodeError(
+                    message,
+                    api_status=data.get("api_error_status"),
+                    raw=stdout[:1000],
+                )
             text = data.get("result", data.get("text", data.get("content", "")))
             session_id = data.get("session_id")
             if session_id:

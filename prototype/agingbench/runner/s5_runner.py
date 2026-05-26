@@ -488,9 +488,14 @@ class S5Runner(BaseRunner):
                 lag_curves[lag].append((block, score))
 
         # Build aging curves
+        # Derive exposures from the actual number of scored sessions, not
+        # n_sessions: if a run terminates early (adapter error) session_results
+        # is shorter, and a hardcoded range(n_sessions) would desync the
+        # exposures/scores zip in compute_decay_slope. Identical to range(
+        # n_sessions) on a complete run.
         recall_scores = [sr["recall_accuracy"] for sr in session_results]
         primary_curve = AgingCurve(
-            exposures=list(range(n_sessions)),
+            exposures=list(range(len(recall_scores))),
             scores=recall_scores,
             scenario="s5_self_planning",
             sut_id=self.sut_id,
@@ -498,7 +503,7 @@ class S5Runner(BaseRunner):
 
         task_scores = [sr["task_accuracy"] for sr in session_results]
         task_curve = AgingCurve(
-            exposures=list(range(n_sessions)),
+            exposures=list(range(len(task_scores))),
             scores=task_scores,
             scenario="s5_self_planning",
             sut_id=self.sut_id,

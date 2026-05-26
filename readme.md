@@ -69,7 +69,7 @@ Tier 1 = benchmark-driven loop; Tier 2 = external agent driving its own loop, wr
 
 ### Bring your own agent or memory policy
 
-Out-of-the-box AgingBench ships four Tier-2 adapters (`claude_code`, `openhands`, `codex`, `cursor`) and ten Tier-1 memory policies. Custom agents and memory backbones plug in by subclassing one ABC each — no edits to AgingBench internals:
+Out-of-the-box AgingBench ships four Tier-2 adapters (`claude_code`, `openhands`, `codex`, `cursor`) and eleven Tier-1 memory policies. Custom agents and memory backbones plug in by subclassing one ABC each — no edits to AgingBench internals:
 
 | Track | Subclass | SUT YAML hook | Runnable template |
 |---|---|---|---|
@@ -79,6 +79,8 @@ Out-of-the-box AgingBench ships four Tier-2 adapters (`claude_code`, `openhands`
 Both templates self-test under `python examples/byo_*_minimal.py` and are short enough (≈150 lines each, mostly comments) to read in one sitting. The `type: custom` dispatch loads any importable `module:ClassName`; extra YAML keys are forwarded as kwargs. If you don't want the SUT-YAML round-trip, both flags also work directly:
 
 ```bash
+# No --generated flag → these run on the scenario's curated dataset (fixed session count).
+# Add --generated to switch to the programmatic generator and set the count with --sessions.
 agingbench run --scenario s7_research_notes \
   --sut examples/sut_byo_agent.yaml \
   --adapter my_pkg.my_agent:MyAgent --seeds 3 --card
@@ -116,7 +118,7 @@ API keys are required for any run that calls an API model (Anthropic / OpenAI / 
 uv run --project prototype agingbench run \
   --scenario s6_naturalistic \
   --sut agingbench/registry/suts/qwen3_8b/qwen3_8b_lossy_compress.yaml \
-  --sessions 10 --card
+  --generated --sessions 10 --card
 ```
 
 Runs the naturalistic multi-domain scenario for 10 sessions on **Qwen3-8B** locally (open weights, no API key). To run on an API model instead, swap the `--sut` to one under `agingbench/registry/suts/haiku45/` (needs `ANTHROPIC_API_KEY`) or `gpt4omini/` (needs `OPENAI_API_KEY`) — API runs are faster, billed at your provider's per-token rate.
@@ -141,13 +143,13 @@ Each run writes to `prototype/experiments/results/<scenario>/<sut_id>/`:
 
 ```bash
 # Lite — S1, S2, S7 × 3 seeds × Haiku-class. ~30 min, no Docker.
-uv run --project prototype agingbench run --suite lite --seeds 3 --card
+uv run --project prototype agingbench run --suite lite --generated --seeds 3 --card
 
 # Full — all scenarios (S1–S7 + S8 extension) × default SUTs × 3 seeds. ~6 hr. S8 needs Docker.
-uv run --project prototype agingbench run --suite full --seeds 3 --card
+uv run --project prototype agingbench run --suite full --generated --seeds 3 --card
 
 # Pressure sweep — S1+S2+S5 at light/medium/heavy PressureConfig presets.
-uv run --project prototype agingbench run --suite pressure_sweep --seeds 3 --card
+uv run --project prototype agingbench run --suite pressure_sweep --generated --seeds 3 --card
 ```
 
 Override the default SUT for any suite with `--sut <yaml>` (browse [`prototype/agingbench/registry/suts/`](prototype/agingbench/registry/suts/)). Compare two run directories with `agingbench compare <run_a> <run_b>`. Product teams that want lite as a pre-deployment check on every PR can copy [`prototype/examples/ci/agingbench-lite-template.yml`](prototype/examples/ci/agingbench-lite-template.yml) into their own `.github/workflows/`.

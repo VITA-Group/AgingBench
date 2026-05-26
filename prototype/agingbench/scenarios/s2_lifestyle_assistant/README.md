@@ -74,19 +74,19 @@ distributions are over tool-call frequencies (`check_constraints`,
 agingbench run \
   --scenario s2_lifestyle_assistant \
   --sut agingbench/registry/suts/haiku45/haiku45_lossy_compress.yaml \
-  --sessions 10 --card
+  --generated --sessions 10 --card
 
 # Multi-seed for confidence intervals
 agingbench run \
   --scenario s2_lifestyle_assistant \
   --sut agingbench/registry/suts/haiku45/haiku45_lossy_compress.yaml \
-  --sessions 10 --seeds 3 --card
+  --generated --sessions 10 --seeds 3 --card
 
 # Oracle ablation (attribution analysis)
 agingbench run \
   --scenario s2_lifestyle_assistant \
   --sut agingbench/registry/suts/haiku45/haiku45_lossy_compress.yaml \
-  --sessions 10 --oracle memory --card
+  --generated --sessions 10 --oracle memory --card
 ```
 
 Outputs:

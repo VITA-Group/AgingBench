@@ -57,7 +57,7 @@ OpenHands SUT:
 agingbench run \
   --scenario s7_research_notes \
   --sut agingbench/registry/suts/openhands/openhands_gpt4omini_s7.yaml \
-  --sessions 12 \
+  --generated --sessions 12 \
   --card
 ```
 
@@ -67,7 +67,7 @@ Claude Code SUT:
 agingbench run \
   --scenario s7_research_notes \
   --sut agingbench/registry/suts/claude_code/claude_code_sonnet46_s7.yaml \
-  --sessions 12 \
+  --generated --sessions 12 \
   --card
 ```
 

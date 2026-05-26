@@ -82,5 +82,6 @@ expected_wall_time_hr: 6
 # `full.yaml` pins every scenario at `pressure: medium` for paper-Table-3
 # reproducibility. To reproduce the pressure-sweep figures (light / medium
 # / heavy at three presets), use the dedicated `pressure_sweep.yaml`
-# suite instead. Per-scenario pressure can also be overridden ad-hoc with
-# `--pressure {light,medium,heavy}` on the CLI.
+# suite instead. Per-scenario pressure is set via a `pressure:` key in the
+# SUT YAML or the scenario entry (preset name or PressureConfig overrides),
+# resolved by `cli/loaders.py::_resolve_pressure` — it is not a CLI flag.

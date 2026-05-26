@@ -19,7 +19,7 @@ We accept AgingCard JSON submissions via GitHub. One card per (model × scenario
    uv run agingbench run \
      --scenario <s1_…|s7_research_notes> \
      --sut <your-sut.yaml> \
-     --sessions 10 --seeds 3 --card
+     --generated --sessions 10 --seeds 3 --card
    ```
 2. **Validate** against the schema:
    ```bash

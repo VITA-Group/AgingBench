@@ -45,7 +45,7 @@ Per session `t`:
 agingbench run \
   --scenario s6_naturalistic \
   --sut agingbench/registry/suts/haiku45/haiku45_lossy_growing.yaml \
-  --sessions 15 \
+  --generated --sessions 15 \
   --card
 ```
 

@@ -354,6 +354,13 @@ class S6Runner(BaseRunner, DiagnosticMixin):
                     probe["question"], session_id=session_idx
                 )
                 scored = score_recall_probe(probe_result["output"], probe)
+                # Carry the raw probe answer so forget_accuracy's text scan and
+                # the per-probe token diagnostics below see it. score_recall_probe
+                # itself only returns {probe_id, recalled, keywords}, so without
+                # this the probe responses were silently dropped from
+                # task_outputs_text (forget_accuracy then only saw the primary
+                # task output).
+                scored["agent_answer"] = probe_result["output"]
                 probe_results.append(scored)
                 _log_traj("recall_probe", session=session_idx,
                           probe_id=probe.get("probe_id", ""),

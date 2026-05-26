@@ -11,7 +11,7 @@ cd prototype
 uv run agingbench run \
   --scenario s1_research_literature \
   --sut <your-sut.yaml> \
-  --sessions 10 --seeds 3 --card
+  --generated --sessions 10 --seeds 3 --card
 ```
 
 Validate:

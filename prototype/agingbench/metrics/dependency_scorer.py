@@ -35,7 +35,10 @@ def score_dependency_chain(
     session_results : list[dict]
         Per-session output from any runner. Must contain at least:
         - "session": int
-        - "task_score" or "task_accuracy" or "recall_rate": float
+        - a primary correctness score under one of the keys recognized by
+          ``_extract_score`` (task_score / task_accuracy / recall_rate /
+          recall_accuracy / dep_recall / query_accuracy / keyword_m /
+          constraint_precision): float
         - "task_keywords_found" or "keywords_found": list[str] (optional)
 
     dependency_graph : dict
@@ -771,8 +774,25 @@ def score_accumulator(
 # ------------------------------------------------------------------ helpers
 
 def _extract_score(result: dict) -> float:
-    """Extract the primary score from a session result dict."""
-    for key in ["task_score", "task_accuracy", "recall_rate", "recall_accuracy"]:
+    """Extract the primary per-session correctness score from a result dict.
+
+    The DAG mechanism metrics (version_accuracy, interference_resistance,
+    chain_recall_*) use this single [0,1] value as a correctness proxy for the
+    session's task. Each scenario runner stores that score under a
+    scenario-specific key, so all of them must be recognized here — otherwise
+    the metric silently reads 0.0 for every session and collapses to a
+    degenerate value (this was the case for S1/S2/S3/S4 before 2026-05).
+
+    Keys are checked in priority order; the first present one wins. The four
+    generic keys come first for back-compat with S5/S6 and synthetic test
+    fixtures; scenario-specific headline keys follow:
+      - dep_recall            → S4 software-engineering (dependency recall)
+      - query_accuracy        → S3 knowledge-base
+      - keyword_m             → S1 research-literature (keyword recall)
+      - constraint_precision  → S2 lifestyle-assistant
+    """
+    for key in ("task_score", "task_accuracy", "recall_rate", "recall_accuracy",
+                "dep_recall", "query_accuracy", "keyword_m", "constraint_precision"):
         if key in result:
             val = result[key]
             return float(val) if val is not None else 0.0

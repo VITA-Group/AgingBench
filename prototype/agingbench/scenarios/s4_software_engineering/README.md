@@ -45,6 +45,6 @@ Per session:
 agingbench run \
   --scenario s4_software_engineering \
   --sut agingbench/registry/suts/haiku45/haiku45_lossy_growing.yaml \
-  --sessions 8 \
+  --generated --sessions 8 \
   --card
 ```

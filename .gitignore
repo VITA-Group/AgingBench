@@ -41,3 +41,8 @@ prototype/experiments/**/.pytest_cache/
 # macOS Finder metadata
 .DS_Store
 **/.DS_Store
+
+# Promo animation workshop: GIF generators and their rendered output.
+# Local-only marketing assets; not part of the benchmark/source tree.
+promo/
+paper.tex

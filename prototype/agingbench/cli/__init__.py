@@ -79,6 +79,21 @@ def cmd_run(suite_id: Optional[str], scenario_id: Optional[str],
         unchanged output.
     """
 
+    # --sessions / --cycles only have meaning with the programmatic generator.
+    # Curated (non-generated) scenarios run a fixed number of sessions baked
+    # into their scenario data, so honoring a session-count override there
+    # would be misleading. Require --generated and fail loudly otherwise.
+    if (gen_sessions > 0 or cycles > 0) and not generated:
+        print(
+            "[error] --sessions / --cycles require --generated.\n"
+            "        Curated scenarios run a fixed number of sessions from "
+            "their scenario defaults;\n"
+            "        pass --generated to use the programmatic generator and "
+            "control the session count.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     if suite_id:
         suite = _load_suite(suite_id)
         scenarios = suite["scenarios"]
@@ -126,6 +141,12 @@ def cmd_run(suite_id: Optional[str], scenario_id: Optional[str],
             manifest = _SCENARIO_MANIFESTS.get(sid)
             if manifest and n_cyc == scen.get("n_cycles", 8):
                 n_cyc = cycles if cycles > 0 else manifest.get("default_sessions", n_cyc)
+
+            # In generated mode --sessions is the authoritative session count
+            # (the runners' generated branch uses gen_sessions). Mirror it into
+            # n_cyc so the logged "cycles=" line matches what actually runs.
+            if generated and gen_sessions > 0:
+                n_cyc = gen_sessions
 
             runner_fn = _SCENARIO_RUNNERS.get(sid)
             if runner_fn is None and manifest:
@@ -364,7 +385,9 @@ def _build_parser():
     run_p.add_argument("--sut", metavar="PATH",
                        help="SUT YAML config (default: all SUTs registered in suite)")
     run_p.add_argument("--cycles", type=int, default=0,
-                       help="Override n_cycles (0 = use suite/YAML value)")
+                       help="Override session/cycle count. REQUIRES --generated "
+                            "(curated scenarios have a fixed session count). "
+                            "0 = use suite/YAML value.")
     run_p.add_argument("--output", default="",
                        help="Output root dir (default: experiments/results/<scenario>/<sut>)")
     run_p.add_argument("--seeds", type=int, default=1,
@@ -396,13 +419,15 @@ def _build_parser():
                             "configured model, so an API key (e.g. ANTHROPIC_API_KEY) is still required "
                             "unless the SUT uses a local model.")
     run_p.add_argument("--sessions", type=int, default=0,
-                       help="Override session count for --generated or single-scenario mode. "
-                            "NOTE: per-runner semantics differ and are intentionally preserved "
-                            "for paper reproducibility: S1 treats N as 'through session N "
-                            "inclusive' (N+1 cycles); S2/S3/S4/S6 treat N as 'N sessions' "
-                            "(exclusive); S7+ treats N as 'N agent blocks'. Suite-driven runs "
-                            "(`--suite lite/full/core/...`) bypass this flag entirely and use "
-                            "n_cycles from the suite YAML.")
+                       help="Override the generated session count. REQUIRES --generated: "
+                            "curated scenarios run a fixed number of sessions baked into "
+                            "their data, so this flag only applies to the programmatic "
+                            "generator. NOTE: per-runner semantics differ and are "
+                            "intentionally preserved for paper reproducibility: S1 treats N "
+                            "as 'through session N inclusive' (N+1 cycles); S2/S3/S4/S6 treat "
+                            "N as 'N sessions' (exclusive); S7+ treats N as 'N agent blocks'. "
+                            "Suite-driven runs (`--suite lite/full/core/...`) use n_cycles "
+                            "from the suite YAML.")
     # AgingCard emission. Default OFF so existing CI scripts that don't
     # pass --card produce unchanged output.
     run_p.add_argument("--card", action="store_true", default=False,

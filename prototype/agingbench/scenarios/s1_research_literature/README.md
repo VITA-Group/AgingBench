@@ -50,7 +50,7 @@ session at which `m(t)` first drops below `m_0 / 2`.
 agingbench run \
   --scenario s1_research_literature \
   --sut agingbench/registry/suts/haiku45/haiku45_lossy_growing.yaml \
-  --sessions 8 \
+  --generated --sessions 8 \
   --card
 ```
 

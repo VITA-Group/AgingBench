@@ -44,12 +44,14 @@ Per session:
 agingbench run \
   --scenario s3_knowledge_base \
   --sut agingbench/registry/suts/haiku45/haiku45_lossy_growing.yaml \
-  --sessions 12 \
+  --generated --sessions 12 \
   --card
 ```
 
 For longer-horizon stress tests:
 
 ```bash
-agingbench run --scenario s3_knowledge_base --sessions 100 --pressure heavy
+agingbench run --scenario s3_knowledge_base --generated --sessions 100
 ```
+
+Aging *pressure* (interference/revision/dependency density) is not a CLI flag — it is set via a `pressure:` key in the SUT YAML (a preset name `none`/`light`/`medium`/`heavy`, or explicit `PressureConfig` overrides), resolved per `cli/loaders.py::_resolve_pressure`. See `agingbench/registry/suites/pressure_sweep.yaml` for examples.

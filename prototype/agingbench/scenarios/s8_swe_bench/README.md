@@ -76,7 +76,7 @@ s8_swe_bench/
 agingbench run \
   --scenario s8_swe_bench \
   --sut agingbench/registry/suts/claude_code/claude_code_sonnet46_s8.yaml \
-  --sessions 8 \
+  --generated --sessions 8 \
   --output experiments/results/my_run \
   --card
 ```

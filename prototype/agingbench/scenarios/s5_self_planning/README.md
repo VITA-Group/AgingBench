@@ -49,7 +49,7 @@ or a custom adapter. Example with Claude Code:
 agingbench run \
   --scenario s5_self_planning \
   --sut agingbench/registry/suts/claude_code/claude_code_self_planning.yaml \
-  --sessions 12 \
+  --generated --sessions 12 \
   --card
 ```
 
@@ -59,5 +59,5 @@ Or with the local React file-tools adapter (requires `meta-llama/Llama-3.1-8B-In
 agingbench run \
   --scenario s5_self_planning \
   --sut agingbench/registry/suts/experimental/llama31_react_local.yaml \
-  --sessions 10 --card
+  --generated --sessions 10 --card
 ```

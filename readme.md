@@ -10,22 +10,22 @@
 [![CLI](https://img.shields.io/badge/CLI-agingbench-purple)](#install)
 [![License](https://img.shields.io/badge/license-MIT-orange)](LICENSE)
 
-> **A longitudinal reliability benchmark that explores four aging mechanisms in memory-enabled AI agents.** <br>
-> 8 scenarios | 4 aging mechanisms | AgingCard v1.0.0 | Compression · Interference · Revision · Maintenance.
+> **A longitudinal reliability benchmark foundation for agent lifespan engineering.** <br>
+> 7+ scenarios | 4 aging mechanisms | AgingCard v1.0.0 | Compression · Interference · Revision · Maintenance.
 
 </div>
 
 ## Overview
 
-The reliability of any long-running system degrades over time: databases accumulate stale indices, software accrues technical debt, and human memory fades with age. Memory-enabled agents are no exception. Even with frozen weights, their system state continues to change as they accumulate context across sessions, and their ability to store, retrieve, and apply knowledge deteriorates in ways that standard snapshot evaluation cannot capture.
+Long-lived AI agents are increasingly deployed as persistent operational systems, yet they are still evaluated like freshly initialized models. Day-one benchmarks miss a basic systems question: *how long does an agent remain reliable after deployment?* Even when model weights are frozen, an agent's effective state keeps changing as it compresses interaction history, retrieves from a growing memory store, revises facts after updates, and undergoes routine maintenance. Reliability is therefore a lifespan property of the full agent harness, not a snapshot property of the base model.
 
-AgingBench is a longitudinal reliability benchmark suite organized around four aging mechanisms: compression, interference, revision, and maintenance, supporting various scenarios, models, memory policies and agent frameworks, ranging from a fully controlled runner to practical autonomous agents (e.g., Claude Code). 
+**AgingBench** is a longitudinal reliability benchmark for **agent lifespan engineering (ALE)** — measuring not only whether deployed agents degrade, but what form the degradation takes and where repair should target. It organizes agent *aging* into four mechanisms (**compression**, **interference**, **revision**, **maintenance**) and uses temporal dependency graphs + paired counterfactual probes to produce stage-level diagnostic profiles (write, retrieval, utilization). Both scenario mode (controlled scenarios against your model) and telemetry mode (production-trace analysis) emit the same AgingCard schema, so the same vocabulary covers both pre-deployment evaluation and post-deployment observability.
 
-We are committed to actively maintaining this repository as a resource for evaluating the longitudinal reliability of AI agents, and we welcome contributions and suggestions from the community.
+We are committed to actively maintaining this repository as a foundation for ALE research and engineering, and welcome contributions from the community.
 
 ## 📢 Updates
 
-* **v0.3.0** — Initial public release (2026-05-13). Eight scenarios (S1–S8) across the four aging mechanisms, AgingCard schema v1.0.0, `agingbench` + `agingbench-lite` CLIs in a single `pip install`, telemetry-mode post-hoc trace analysis. Full log will be updated in [docs/CHANGELOG.md](docs/CHANGELOG.md).
+* **v0.3.0** — Initial public release (2026-05-25). Seven core scenarios (S1–S7) across the four aging mechanisms, plus the *S8 SWE-bench-Aging* community extension. AgingCard schema v1.0.0, `agingbench` + `agingbench-lite` CLIs in a single `pip install`, behavioral-DAG telemetry-mode post-hoc trace analysis. Full log will be updated in [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 ---
 
@@ -65,7 +65,7 @@ Over time M_t loses facts → scores drop → AgingBench fits the aging curve.
 
 Tier 1 = benchmark-driven loop; Tier 2 = external agent driving its own loop, wrapped via an adapter. Per-scenario READMEs at [`prototype/agingbench/scenarios/sN_*/README.md`](prototype/agingbench/scenarios/) cover data design, scoring pipeline, and example invocations.
 
-> **Want a new scenario?** S8 was added in v0.3.0 and we're actively welcoming further scenario contributions — production agent deployments, domain-specific failure modes, anything that exercises a memory-aging axis we haven't covered yet. See [docs/CONTRIBUTING.md#how-to-add-a-new-scenario](docs/CONTRIBUTING.md#how-to-add-a-new-scenario) for the protocol (scenario manifest → generator → runner → tests).
+> **Want a new scenario?** S8 was added in v0.3.0 and we're actively welcoming further scenario contributions — production agent deployments, domain-specific failure modes, anything that exercises a memory-aging axis we haven't covered yet. See [docs/CONTRIBUTING.md#adding-a-scenario](docs/CONTRIBUTING.md#adding-a-scenario) for the protocol (scenario manifest → generator → runner → tests).
 
 ---
 
@@ -118,7 +118,7 @@ Each run writes to `prototype/experiments/results/<scenario>/<sut_id>/`:
 # Lite — S1, S2, S7 × 3 seeds × Haiku-class. ~30 min, no Docker.
 uv run --project prototype agingbench run --suite lite --seeds 3 --card
 
-# Full — all 8 scenarios × default SUTs × 3 seeds. ~6 hr. S8 needs Docker.
+# Full — all scenarios (S1–S7 + S8 extension) × default SUTs × 3 seeds. ~6 hr. S8 needs Docker.
 uv run --project prototype agingbench run --suite full --seeds 3 --card
 
 # Pressure sweep — S1+S2+S5 at light/medium/heavy PressureConfig presets.
@@ -197,7 +197,7 @@ If you find this work useful, please cite:
 
 ```bibtex
 @inproceedings{agingbench2026,
-  title     = {Long-Lived AI Agents Age Too: They Quietly Decay After Deployment},
+  title     = {Your Agents Are Aging Too: Agent Lifespan Engineering for Deployed Systems},
   author    = {Zhu, Jianing and Ro, Yeonju and Robertson, John and Wang, Kevin and
                Li, Junbo and Vikalo, Haris and Akella, Aditya and Wang, Zhangyang},
   booktitle = {Preprint},

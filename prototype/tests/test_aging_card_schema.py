@@ -97,7 +97,7 @@ def test_validate_card_path_missing_file(tmp_path):
 
 def test_sample_card_validates():
     """The fixture sample card (committed in examples/sample_cards/) must validate."""
-    sample = Path(__file__).parent.parent / "examples" / "sample_cards" / "s1_haiku45_lossy_compress.json"
+    sample = Path(__file__).parent.parent / "examples" / "sample_cards" / "s1_research_literature_haiku45_lossy_compress.json"
     if not sample.is_file():
         pytest.skip("sample card not present")
     errors = validate_card_path(sample)

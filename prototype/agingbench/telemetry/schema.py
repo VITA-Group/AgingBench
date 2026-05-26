@@ -126,7 +126,7 @@ class TraceAuditBlock:
     deployment_type:        str = "generic"
     n_sessions_detected:    int = 0
     n_outcome_events:       int = 0
-    session_detection_mode: str = "idle_gap"   # 'explicit_id'|'idle_gap'|'user_id_split'
+    session_detection_mode: str = "idle_gap"   # 'explicit_id'|'idle_gap'
     outcome_rules_hash:     Optional[str] = None
 
     # Per-mechanism sub-dicts — populated by inference modules.

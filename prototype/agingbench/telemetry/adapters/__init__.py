@@ -16,6 +16,10 @@ from ..schema import TelemetryRecord
 
 
 # format name → normaliser
+# NOTE: `langsmith` routes through the generic adapter (no dedicated
+# normaliser). Kept in the registry for backward compat, but NOT
+# advertised as a first-class format in the README until we ship a
+# dedicated fixture + adapter-level test for it.
 ADAPTERS: dict[str, Callable[[dict], Optional[TelemetryRecord]]] = {
     "generic":            generic.normalize,
     "claude_code":        claude_code.normalize,

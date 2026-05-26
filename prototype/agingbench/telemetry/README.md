@@ -89,7 +89,7 @@ extractors push it to L3 without extra integration.
 ```python
 from agingbench.telemetry import list_supported_formats
 list_supported_formats()
-# ['claude_code', 'generic', 'langfuse', 'langsmith',
+# ['claude_code', 'generic', 'langfuse',
 #  'openai_assistants', 'openhands', 'otlp']
 ```
 
@@ -108,8 +108,12 @@ list_supported_formats()
 | `openai_assistants` | `thread.message` / `thread.run` / `thread.run.step` objects |
 | `openhands` | OpenHands SDK event log (`source`, `action`, `observation`, `llm_metrics`) |
 | `langfuse` | Langfuse SDK exports or REST-API JSON (camelCase or snake_case) |
-| `langsmith` | LangSmith run JSON — routed through the generic adapter |
 | `otlp` | OTLP JSON spans (`gen_ai.*` semconv + legacy `llm.*` namespace) |
+
+LangSmith run JSON works today via `trace_format="generic"` — its field
+shape is covered by the generic adapter's aliasing. A dedicated
+`langsmith` format will be added once we ship a fixture + adapter-level
+test for it.
 
 Each adapter normalises into the canonical `TelemetryRecord`; all
 downstream inference is format-agnostic, so the parse-tested adapters
@@ -145,15 +149,14 @@ empty list, not a crash.
 ## Deployment profiles
 
 A profile encodes domain conventions (outcome-extraction rules,
-subject-linkage, mechanism weights, privacy patterns, session
-detection):
+default privacy patterns, session-detection defaults):
 
 ```python
 from agingbench.telemetry import list_profiles, load_profile
 list_profiles()                     # ['code_assistant', 'generic']
 p = load_profile("code_assistant")
 p.outcome_rules                     # {'pr_merged': 'success', ...}
-p.mechanism_weights                 # {'compression': 0.8, 'revision': 1.5, ...}
+p.privacy_patterns                  # [{'pattern': 'AKIA...', 'replacement': '[AWS_ACCESS_KEY]'}, ...]
 ```
 
 Override per call:
@@ -362,25 +365,29 @@ extractors, deployment profiles, synthetic-probe orchestrator, ASCII
 card renderer, `prepare_trace` preprocessor) are shipped and covered
 by the test suite (~85 telemetry-specific tests across
 `test_telemetry_adapters.py`, `test_telemetry_stub.py`,
-`test_telemetry_v11.py`; 143+ total `prototype/tests/`).
+`test_telemetry_v11.py`; 228+ tests total in `prototype/tests/`).
 
 **Trace-format coverage in this release**: Claude Code is verified
 end-to-end on real production traces; the `generic` adapter is
-verified against fixture data. The remaining five adapters
-(`openai_assistants`, `openhands`, `langfuse`, `langsmith`, `otlp`)
-pass adapter-level tests against shipped fixtures, but their
-*extraction recipes* — the steps needed to dump a JSONL of the right
-shape from each live third-party SDK — have not been validated against
-current SDK versions and are tracked as future work.
+verified against fixture data. The remaining four adapters
+(`openai_assistants`, `openhands`, `langfuse`, `otlp`) pass
+adapter-level tests against shipped fixtures, but their *extraction
+recipes* — the steps needed to dump a JSONL of the right shape from
+each live third-party SDK — have not been validated against current
+SDK versions and are tracked as future work. LangSmith run JSON is
+routable today via `trace_format="generic"`.
 
 ## Roadmap
 
 | Milestone | Scope |
 |---|---|
-| **Next** | End-to-end validation of the five parse-tested adapters against current SDKs (`openai_assistants`, `openhands`, `langfuse`, `langsmith`, `otlp`), promoting each to "verified" as it lands. More outcome extractors (GitHub Actions CI status, Langfuse score events, Slack reactions). Validation correlation study against scenario-derived metrics. |
+| **Next** | End-to-end validation of the four parse-tested adapters against current SDKs (`openai_assistants`, `openhands`, `langfuse`, `otlp`), promoting each to "verified" as it lands. Add a dedicated `langsmith` format (currently routes through `generic`). More outcome extractors (GitHub Actions CI status, Langfuse score events, Slack reactions). Validation correlation study against scenario-derived metrics. |
 | **Later** | Cross-tenant aggregation with differential privacy. Streaming ingestion. Native protobuf OTLP. |
 | **v2** | Multilingual user-correction detection. Workspace-fidelity inference for self-planning agents (S5). |
 
 Contributing a validated recipe for one of the parse-tested adapters
-is the highest-leverage way to widen format coverage — see the
-top-level `docs/CONTRIBUTING.md`.
+is the highest-leverage way to widen format coverage. The top-level
+`docs/CONTRIBUTING.md` covers SUT YAMLs and integration adapters;
+telemetry-adapter recipes can be contributed by adding a fixture under
+`example_traces/`, a `normalize()` implementation under `adapters/`,
+and registering the format in `adapters/__init__.py`.

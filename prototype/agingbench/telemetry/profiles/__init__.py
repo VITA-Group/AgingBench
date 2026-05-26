@@ -3,8 +3,6 @@ agingbench/telemetry/profiles/ — Deployment-type measurement templates.
 
 A profile encodes (per deployment type):
   - default outcome-extraction rules
-  - subject-linkage rules
-  - mechanism-inference weights
   - default privacy patterns
   - session-detection defaults
 
@@ -25,8 +23,6 @@ PROFILES_DIR = Path(__file__).parent
 class Profile:
     deployment_type:        str
     outcome_rules:          dict = field(default_factory=dict)
-    subject_linkage:        dict = field(default_factory=dict)
-    mechanism_weights:      dict = field(default_factory=dict)
     session_detection:      dict = field(default_factory=dict)
     privacy_patterns:       list = field(default_factory=list)
     raw:                    dict = field(default_factory=dict)
@@ -44,8 +40,6 @@ def load_profile(name: str = "generic") -> Profile:
     return Profile(
         deployment_type=doc.get("deployment_type", name),
         outcome_rules=doc.get("outcome_rules", {}) or {},
-        subject_linkage=doc.get("subject_linkage", {}) or {},
-        mechanism_weights=doc.get("mechanism_weights", {}) or {},
         session_detection=doc.get("session_detection", {}) or {},
         privacy_patterns=doc.get("privacy_patterns", []) or [],
         raw=doc,
@@ -63,8 +57,6 @@ def merge_overrides(profile: Profile, overrides: Optional[dict]) -> Profile:
     return Profile(
         deployment_type=profile.deployment_type,
         outcome_rules={**profile.outcome_rules, **overrides.get("outcome_rules", {})},
-        subject_linkage={**profile.subject_linkage, **overrides.get("subject_linkage", {})},
-        mechanism_weights={**profile.mechanism_weights, **overrides.get("mechanism_weights", {})},
         session_detection={**profile.session_detection, **overrides.get("session_detection", {})},
         privacy_patterns=profile.privacy_patterns + (overrides.get("privacy_patterns") or []),
         raw=profile.raw,

@@ -107,11 +107,12 @@ def test_load_profile_generic_has_defaults():
     assert "outcome_rules" in p.raw or p.outcome_rules == {} or p.outcome_rules
 
 
-def test_load_profile_code_assistant_has_revision_weight():
+def test_load_profile_code_assistant():
     p = load_profile("code_assistant")
     assert p.deployment_type == "code_assistant"
-    # Code-assistant emphasises revision
-    assert p.mechanism_weights.get("revision", 1.0) >= 1.0
+    # Code-assistant profile should ship custom privacy patterns for
+    # secrets that commonly leak into pasted code.
+    assert p.privacy_patterns, "code_assistant profile should ship privacy_patterns"
 
 
 def test_load_profile_unknown_falls_back():

@@ -24,7 +24,12 @@ from pathlib import Path
 from typing import Any, Optional
 
 
-# Trace formats the v1 stub knows about.
+# Trace formats the v1 stub knows about. NOTE: `langsmith` is included
+# (silently routes through the `generic` adapter) for backward compat,
+# but is intentionally NOT advertised as a first-class format in the
+# README — it ships without a dedicated fixture/test. Users with
+# LangSmith run JSON should prefer `trace_format="generic"` going
+# forward; a dedicated langsmith adapter + fixture is on the roadmap.
 SUPPORTED_TRACE_FORMATS = (
     "langfuse", "langsmith", "otlp", "generic", "claude_code",
     "openai_assistants", "openhands",

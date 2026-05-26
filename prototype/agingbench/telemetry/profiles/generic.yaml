@@ -14,16 +14,6 @@ outcome_rules:
   user_thumbs_up:    success
   user_thumbs_down:  fail
 
-subject_linkage:
-  # Default: no cross-session subject linkage.
-  primary: null
-
-mechanism_weights:
-  compression:   1.0
-  interference:  1.0
-  revision:      1.0
-  maintenance:   1.0
-
 session_detection:
   primary: explicit_session_id
   fallback_idle_gap_minutes: 30

@@ -4,13 +4,11 @@ session_detection.py — Group records into sessions.
 Strategy (in priority order):
   1. Explicit session_id field (Langfuse, OpenAI threads, Claude Code)
   2. Explicit reset markers in user messages (/clear, /reset)
-  3. user_id grouping + idle-gap split
-  4. Pure idle-gap split (last resort)
+  3. Pure idle-gap split (last resort)
 """
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Optional
 
 from .schema import TelemetryRecord
 
@@ -21,7 +19,6 @@ _RESET_PATTERNS = ("/clear", "/reset", "/new", "/end", "new conversation")
 def detect_sessions(
     records: list[TelemetryRecord],
     idle_gap_minutes: float = 30.0,
-    user_id_field: Optional[str] = None,
 ) -> tuple[list[list[TelemetryRecord]], str]:
     """Return (sessions, mode) where sessions is list of lists and mode is the
     detection strategy that fired.
@@ -37,17 +34,6 @@ def detect_sessions(
             groups[key].append(r)
         sessions = [sorted(g, key=lambda r: r.timestamp) for g in groups.values()]
         return _stable_session_order(sessions), "explicit_id"
-
-    # Strategy 2 + 4: idle-gap split (with optional user-id pre-grouping).
-    if user_id_field:
-        by_user = defaultdict(list)
-        for r in records:
-            uid = (r.user_id_hash or r.raw.get(user_id_field) or "_anon")
-            by_user[uid].append(r)
-        sessions = []
-        for uid, recs in by_user.items():
-            sessions.extend(_split_by_idle_gap(recs, idle_gap_minutes))
-        return _stable_session_order(sessions), "user_id_split"
 
     sessions = _split_by_idle_gap(records, idle_gap_minutes)
     return sessions, "idle_gap"

@@ -37,3 +37,7 @@ prototype/experiments/**/snapshots/
 prototype/experiments/**/*.egg-info/
 prototype/experiments/**/.openhands_persist/
 prototype/experiments/**/.pytest_cache/
+
+# macOS Finder metadata
+.DS_Store
+**/.DS_Store

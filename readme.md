@@ -4,11 +4,12 @@
 
 <p>
 
-[![Project Page](https://img.shields.io/badge/Project_Page-site-red)](https://agingbench.github.io/)
+[![Project Page](https://img.shields.io/badge/Project_Page-site-orange)](https://agingbench.github.io/)
+[![ArXiv](https://img.shields.io/badge/arXiv-Read-darkred)](https://arxiv.org/abs/2605.26302v1)
 [![Version](https://img.shields.io/badge/version-v0.3.0-green)](docs/CHANGELOG.md)
 [![AgingCard](https://img.shields.io/badge/AgingCard-v1.0.0-yellow)](#agingcard)
 [![CLI](https://img.shields.io/badge/CLI-agingbench-purple)](#install)
-[![License](https://img.shields.io/badge/license-MIT-orange)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 > **A longitudinal reliability benchmark foundation for agent lifespan engineering.** <br>
 > 7+ scenarios | 4 aging mechanisms | AgingCard v1.0.0 | Compression · Interference · Revision · Maintenance.
@@ -229,7 +230,7 @@ If you find this work useful, please cite:
   title     = {Your Agents Are Aging Too: Agent Lifespan Engineering for Deployed Systems},
   author    = {Zhu, Jianing and Ro, Yeonju and Robertson, John and Wang, Kevin and
                Li, Junbo and Vikalo, Haris and Akella, Aditya and Wang, Zhangyang},
-  booktitle = {Preprint},
+  booktitle = {arXiv preprint arXiv:2605.26302},
   year      = {2026}
 }
 ```

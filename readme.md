@@ -24,6 +24,10 @@ Long-lived AI agents are increasingly deployed as persistent operational systems
 
 We are committed to actively maintaining this repository as a foundation for ALE research and engineering, and welcome contributions from the community.
 
+<div align="center">
+<img src="docs/hero_mechs_combined.gif" width="820" alt="AgingBench: an agent ages across sessions (left), shown across the four aging mechanisms — compression, interference, revision, maintenance (right).">
+</div>
+
 ## 📢 Updates
 
 * **v0.3.0** — Initial public release (2026-05-25). Seven core scenarios (S1–S7) across the four aging mechanisms, plus the *S8 SWE-bench-Aging* community extension. AgingCard schema v1.0.0, `agingbench` + `agingbench-lite` CLIs in a single `pip install`, behavioral-DAG telemetry-mode post-hoc trace analysis. Full log will be updated in [docs/CHANGELOG.md](docs/CHANGELOG.md).

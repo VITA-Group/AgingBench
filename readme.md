@@ -16,6 +16,11 @@
 
 </div>
 
+<br>
+<div align="center">
+<img src="docs/hero_mechs_combined.gif" width="920" alt="AgingBench: an agent ages across sessions (left), shown across the four aging mechanisms — compression, interference, revision, maintenance (right).">
+</div>
+
 ## Overview
 
 Long-lived AI agents are increasingly deployed as persistent operational systems, yet they are still evaluated like freshly initialized models. Day-one benchmarks miss a basic systems question: *how long does an agent remain reliable after deployment?* Even when model weights are frozen, an agent's effective state keeps changing as it compresses interaction history, retrieves from a growing memory store, revises facts after updates, and undergoes routine maintenance. Reliability is therefore a lifespan property of the full agent harness, not a snapshot property of the base model.
@@ -23,10 +28,6 @@ Long-lived AI agents are increasingly deployed as persistent operational systems
 **AgingBench** is a longitudinal reliability benchmark for **agent lifespan engineering (ALE)** — measuring not only whether deployed agents degrade, but what form the degradation takes and where repair should target. It organizes agent *aging* into four mechanisms (**compression**, **interference**, **revision**, **maintenance**) and uses temporal dependency graphs + paired counterfactual probes to produce stage-level diagnostic profiles (write, retrieval, utilization). Both scenario mode (controlled scenarios against your model) and telemetry mode (production-trace analysis) emit the same AgingCard schema, so the same vocabulary covers both pre-deployment evaluation and post-deployment observability.
 
 We are committed to actively maintaining this repository as a foundation for ALE research and engineering, and welcome contributions from the community.
-
-<div align="center">
-<img src="docs/hero_mechs_combined.gif" width="820" alt="AgingBench: an agent ages across sessions (left), shown across the four aging mechanisms — compression, interference, revision, maintenance (right).">
-</div>
 
 ## 📢 Updates
 

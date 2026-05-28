@@ -228,7 +228,7 @@ If you find this work useful, please cite:
 ```bibtex
 @inproceedings{agingbench2026,
   title     = {Your Agents Are Aging Too: Agent Lifespan Engineering for Deployed Systems},
-  author    = {Zhu, Jianing and Ro, Yeonju and Robertson, John and Wang, Kevin and
+  author    = {Zhu, Jianing and Ro, Yeonju and Robertson, John T and Wang, Kevin and
                Li, Junbo and Vikalo, Haris and Akella, Aditya and Wang, Zhangyang},
   booktitle = {arXiv preprint arXiv:2605.26302},
   year      = {2026}

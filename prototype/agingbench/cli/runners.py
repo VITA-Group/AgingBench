@@ -1325,6 +1325,19 @@ def _run_s7(sut_cfg, scenario_cfg, output_dir, n_cycles, *,
         data = gen.generate(n_sessions=n_sessions)
         scenario_path.write_text(_json.dumps(data, indent=2))
 
+    # Data-driven pytest: when procedural blocks (>=10) emitted test specs,
+    # write them out and point the generated-tests module at them. Curriculum-
+    # only runs (n<=10) have no specs, so the env var stays unset and
+    # tests/test_generated.py contributes nothing.
+    import os as _os
+    _gen_tests = data.get("generated_tests")
+    if _gen_tests:
+        _gt_path = output_dir / "generated_tests.json"
+        _gt_path.write_text(_json.dumps(_gen_tests))
+        _os.environ["AGINGBENCH_S7_GENERATED_TESTS"] = str(_gt_path)
+    else:
+        _os.environ.pop("AGINGBENCH_S7_GENERATED_TESTS", None)
+
     tests_dir = _Path(__file__).parent.parent / "scenarios" / "s7_research_notes" / "tests"
 
     trace_path = output_dir / "trace.jsonl"

@@ -128,7 +128,8 @@
       "properties": {
         "agingbench_version": {"type": ["string", "null"]},
         "git_sha": {"type": ["string", "null"]},
-        "compute_environment": {"type": "string"}
+        "compute_environment": {"type": "string"},
+        "agent_cli_version": {"type": ["string", "null"]}
       },
       "additionalProperties": true
     },

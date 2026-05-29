@@ -294,8 +294,8 @@ class S3Runner(BaseRunner):
                     parent_span_id=sess_span,
                     model=self._model_id, provider=self._provider,
                     input_tokens=in_tok, output_tokens=out_tok,
-                    input_preview=interaction[:300],
-                    output_preview=(compressed or "")[:300],
+                    input_preview=interaction,
+                    output_preview=compressed or "",
                     thought=getattr(self.llm, "last_thought", ""),
                     cycle=t,
                 )

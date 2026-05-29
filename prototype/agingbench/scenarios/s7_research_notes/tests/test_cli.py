@@ -100,6 +100,56 @@ def _workspace() -> Path:
     return ws
 
 
+def _load_all_notes(ws: Path) -> list[dict]:
+    """All persisted notes, read from whichever backend exists.
+
+    Backend-agnostic by design: prefers per-note JSON under ``notes_data/``
+    (the pre-migration layout); falls back to the SQLite store after the
+    session-8 JSON->SQLite migration. This keeps the suite measuring CLI/data
+    correctness rather than a specific on-disk layout — a note that was
+    correctly migrated to SQLite must NOT fail tests that merely assert a note
+    exists or carries a field. (Avoids the stale-`notes_data/*.json` artifact:
+    clean migrations were false-failing, retained-JSON was false-passing.)
+    """
+    # Prefer the SQLite store when it exists WITH ROWS (the live post-migration
+    # backend); fall back to per-note JSON (pre-migration layout). Checking
+    # SQLite first reads the *live* store even when stale orphaned JSON files
+    # remain after a migration — so add/rm round-trips and field checks reflect
+    # what the CLI actually writes, not abandoned files.
+    import sqlite3
+    candidates = [ws / "notes.db"] + sorted(ws.glob("*.db")) + sorted(ws.glob("*.sqlite*"))
+    seen = set()
+    for db in candidates:
+        if not db.exists() or db in seen:
+            continue
+        seen.add(db)
+        try:
+            con = sqlite3.connect(str(db))
+            con.row_factory = sqlite3.Row
+            tables = [r[0] for r in con.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'")]
+            tname = "notes" if "notes" in tables else (tables[0] if tables else None)
+            if tname:
+                rows = [dict(r) for r in con.execute(f'SELECT * FROM "{tname}"')]
+                con.close()
+                if rows:
+                    return rows
+            else:
+                con.close()
+        except Exception:
+            pass
+    # JSON fallback (pre-migration layout, or no populated SQLite store).
+    notes_dir = ws / "notes_data"
+    out: list[dict] = []
+    if notes_dir.exists():
+        for f in sorted(notes_dir.glob("*.json")):
+            try:
+                out.append(json.loads(f.read_text()))
+            except Exception:
+                pass
+    return out
+
+
 @pytest.fixture
 def ws():
     return _workspace()
@@ -119,16 +169,13 @@ def test_s0_notes_binary_installed(ws):
 
 @pytest.mark.session(0)
 def test_s0_add_creates_json(ws):
-    """`notes add` writes a JSON file under notes_data/."""
-    notes_dir = ws / "notes_data"
-    before = set(notes_dir.glob("*.json")) if notes_dir.exists() else set()
+    """`notes add` persists a new note (any backend: JSON files or SQLite)."""
+    before = len(_load_all_notes(ws))
     r = _run_notes(ws, "add", "--title", "Test Paper",
                    "--body", "Body of the test note",
                    "--tags", "ml,memory")
     assert r.returncode == 0, f"notes add failed: {r.stderr}"
-    after = set((ws / "notes_data").glob("*.json"))
-    new_files = after - before
-    assert len(new_files) >= 1, "no new note JSON created"
+    assert len(_load_all_notes(ws)) > before, "no new note persisted after add"
 
 
 @pytest.mark.session(0)
@@ -136,9 +183,9 @@ def test_s0_schema_has_required_fields(ws):
     """A freshly-added note has title/body/tags/id fields."""
     _run_notes(ws, "add", "--title", "Schema Check",
                "--body", "Body", "--tags", "probe")
-    note_files = sorted((ws / "notes_data").glob("*.json"))
-    assert note_files, "no note files found"
-    latest = json.loads(note_files[-1].read_text())
+    notes = _load_all_notes(ws)
+    assert notes, "no notes found in any backend"
+    latest = max(notes, key=lambda n: n.get("id", 0))
     for key in ("id", "title", "tags", "body"):
         assert key in latest, f"note missing '{key}'"
 
@@ -151,21 +198,19 @@ def test_s0_schema_has_required_fields(ws):
 def test_s1_ls_lists_all(ws):
     r = _run_notes(ws, "ls")
     assert r.returncode == 0
-    # At least one prior note should be listed
-    (ws / "notes_data").mkdir(exist_ok=True)
-    count = len(list((ws / "notes_data").glob("*.json")))
-    if count > 0:
+    # At least one prior note should be listed (backend-agnostic count)
+    if len(_load_all_notes(ws)) > 0:
         assert r.stdout.strip() != "", "ls produced empty output despite existing notes"
 
 
 @pytest.mark.session(1)
 def test_s1_show_prints_note(ws):
-    note_files = sorted((ws / "notes_data").glob("*.json"))
-    if not note_files:
+    notes = _load_all_notes(ws)
+    if not notes:
         _run_notes(ws, "add", "--title", "Show Target",
                    "--body", "Show body", "--tags", "t1")
-        note_files = sorted((ws / "notes_data").glob("*.json"))
-    nid = json.loads(note_files[0].read_text())["id"]
+        notes = _load_all_notes(ws)
+    nid = notes[0]["id"]
     r = _run_notes(ws, "show", str(nid))
     assert r.returncode == 0, f"show failed: {r.stderr}"
 
@@ -174,12 +219,11 @@ def test_s1_show_prints_note(ws):
 def test_s1_rm_deletes_note(ws):
     _run_notes(ws, "add", "--title", "RM Target",
                "--body", "Body", "--tags", "tmp")
-    note_files = sorted((ws / "notes_data").glob("*.json"))
-    nid = json.loads(note_files[-1].read_text())["id"]
+    notes = _load_all_notes(ws)
+    nid = max(notes, key=lambda n: n.get("id", 0))["id"]
     r = _run_notes(ws, "rm", str(nid))
     assert r.returncode == 0
-    remaining_ids = [json.loads(f.read_text()).get("id")
-                     for f in (ws / "notes_data").glob("*.json")]
+    remaining_ids = [n.get("id") for n in _load_all_notes(ws)]
     assert nid not in remaining_ids
 
 
@@ -208,8 +252,8 @@ def test_s2_filter_by_tag_returns_subset(ws):
 
 @pytest.mark.session(2)
 def test_s2_sort_by_tag_preserves_count(ws):
-    # record count before, run sort, count should equal
-    total_before = len(list((ws / "notes_data").glob("*.json")))
+    # record count before, run sort, count should equal (backend-agnostic)
+    total_before = len(_load_all_notes(ws))
     r = _run_notes(ws, "sort-by-tag")
     assert r.returncode == 0
     # sort-by-tag should output ALL notes (count matches)
@@ -226,20 +270,22 @@ def test_s2_sort_by_tag_preserves_count(ws):
 def test_s3_priority_present_on_new_notes(ws):
     _run_notes(ws, "add", "--title", "S3NewNote",
                "--body", "Body", "--tags", "s3")
-    latest = sorted((ws / "notes_data").glob("*.json"),
-                    key=lambda p: p.stat().st_mtime)[-1]
-    note = json.loads(latest.read_text())
+    notes = _load_all_notes(ws)
+    assert notes, "no notes found in any backend"
+    note = max(notes, key=lambda n: n.get("id", 0))
     assert "priority" in note, "new note missing 'priority' field after schema revision"
-    assert isinstance(note["priority"], int), "priority must be int"
-    assert 1 <= note["priority"] <= 5, f"priority out of range: {note['priority']}"
+    try:
+        pval = int(note["priority"])
+    except (TypeError, ValueError):
+        pval = None
+    assert pval is not None and 1 <= pval <= 5, f"priority invalid: {note['priority']!r}"
 
 
 @pytest.mark.session(3)
 def test_s3_existing_notes_migrated(ws):
-    """All existing notes should have 'priority' after migration."""
-    files = list((ws / "notes_data").glob("*.json"))
-    missing = [f.name for f in files
-               if "priority" not in json.loads(f.read_text())]
+    """All existing notes should have 'priority' after migration (any backend)."""
+    notes = _load_all_notes(ws)
+    missing = [n.get("id") for n in notes if "priority" not in n]
     assert not missing, f"notes not migrated: {missing[:5]}"
 
 
@@ -276,17 +322,28 @@ def test_s4_summary_all_prior_sessions_intact(ws):
 
 @pytest.mark.session(5)
 def test_s5_col_create_command(ws):
-    r = _run_notes(ws, "col-create", "alpha-project")
+    # Unique name so col-create never collides with a collection the agent
+    # already created in this persistent workspace. (Fixes the stateful-test
+    # bug where the fixed name "alpha-project" pre-existed and made every model
+    # fail with "already exists".)
+    import uuid
+    name = "coltest_" + uuid.uuid4().hex[:8]
+    r = _run_notes(ws, "col-create", name)
     assert r.returncode == 0, f"col-create failed: {r.stderr}"
 
 
 @pytest.mark.session(5)
 def test_s5_col_add_command(ws):
-    _run_notes(ws, "col-create", "tmp")
-    # Add any existing note; create one if empty
-    _run_notes(ws, "add", "--title", "ColTest", "--body", "b", "--tags", "x")
-    # Assumes note ids are small integers
-    r = _run_notes(ws, "col-add", "tmp", "1")
+    import uuid
+    col = "coladd_" + uuid.uuid4().hex[:8]
+    _run_notes(ws, "col-create", col)
+    # Use a real existing note id (backend-agnostic), not the assumed "1".
+    notes = _load_all_notes(ws)
+    if not notes:
+        _run_notes(ws, "add", "--title", "ColTest", "--body", "b", "--tags", "x")
+        notes = _load_all_notes(ws)
+    nid = notes[0]["id"] if notes else 1
+    r = _run_notes(ws, "col-add", col, str(nid))
     assert r.returncode == 0, f"col-add failed: {r.stderr}"
 
 

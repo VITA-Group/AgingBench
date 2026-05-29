@@ -111,7 +111,7 @@ def build_aging_card(metrics: dict,
 
         "checkpoints": list(metrics.get("checkpoints") or []),
 
-        "provenance": _build_provenance_block(extra_provenance),
+        "provenance": _build_provenance_block(extra_provenance, sut_cfg),
 
         "warnings": warnings,
         "links": _build_links_block(extra_links),
@@ -485,14 +485,42 @@ def _percentile(values: list[float], p: float) -> float:
     return float(s[f] + (s[c] - s[f]) * (k - f))
 
 
-def _build_provenance_block(extra: dict) -> dict:
+def _build_provenance_block(extra: dict, sut_cfg: Optional[dict] = None) -> dict:
     prov: dict[str, Any] = {
         "agingbench_version": _read_agingbench_version(),
         "git_sha": _read_git_sha(),
         "compute_environment": os.environ.get("AGINGBENCH_ENV", "local"),
+        "agent_cli_version": _detect_agent_cli_version(sut_cfg or {}),
     }
     prov.update(extra)
     return prov
+
+
+def _detect_agent_cli_version(sut_cfg: dict) -> Optional[str]:
+    """Best-effort capture of the agent CLI version (e.g. Claude Code) for the
+    provenance block. The agent harness is a reproducibility-relevant variable,
+    so different CLI versions can change run outcomes. Returns None for non-CLI
+    (Tier-1) SUTs or on any failure; never raises (must not break card writing).
+
+    Note: detected at card-build time, which for the normal run-then-card flow
+    equals the run-time version. Post-hoc card regeneration reflects the CLI
+    version present at regeneration time.
+    """
+    try:
+        adapter = (sut_cfg or {}).get("adapter") or {}
+        cli_path = adapter.get("cli_path") or {
+            "claude_code": "claude", "cursor": "agent", "codex": "codex",
+        }.get(adapter.get("type"))
+        if not cli_path:
+            return None
+        import subprocess
+        out = subprocess.run(
+            [cli_path, "--version"], capture_output=True, text=True, timeout=15,
+        )
+        text = (out.stdout or out.stderr or "").strip()
+        return text.splitlines()[0].strip() if text else None
+    except Exception:
+        return None
 
 
 def _build_links_block(extra: dict) -> dict:

@@ -621,8 +621,8 @@ class S4Runner(BaseRunner):
                     parent_span_id=sess_span,
                     model=self._model_id, provider=self._provider,
                     input_tokens=in_tok, output_tokens=out_tok,
-                    input_preview=design_notes[:300],
-                    output_preview=(compressed or "")[:300],
+                    input_preview=design_notes,
+                    output_preview=compressed or "",
                     thought=getattr(self.llm, "last_thought", ""),
                     cycle=t,
                 )

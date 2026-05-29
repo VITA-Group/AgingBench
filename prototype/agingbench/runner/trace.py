@@ -26,10 +26,25 @@ Trace event types
 """
 
 import json
+import os
 import time
 import uuid
 from pathlib import Path
 from typing import Any, Optional
+
+
+def _trace_preview_chars() -> int:
+    """Max chars persisted for input.value/output.value previews.
+
+    Default 300 (unchanged historical behavior). Override with the env var
+    AGINGBENCH_TRACE_PREVIEW_CHARS — e.g. a large value to capture full
+    prompts/responses for a reference trace. Existing runs are unaffected
+    unless the env var is set.
+    """
+    try:
+        return int(os.environ.get("AGINGBENCH_TRACE_PREVIEW_CHARS", "300"))
+    except (TypeError, ValueError):
+        return 300
 
 
 def _span_id() -> str:
@@ -111,8 +126,8 @@ class TraceLogger:
             "gen_ai.request.model": model,
             "gen_ai.usage.input_tokens": input_tokens,
             "gen_ai.usage.output_tokens": output_tokens,
-            "input.value": input_preview[:300],
-            "output.value": output_preview[:300],
+            "input.value": input_preview[:_trace_preview_chars()],
+            "output.value": output_preview[:_trace_preview_chars()],
         }
         if duration_ms is not None:
             attrs["gen_ai.usage.duration_ms"] = float(duration_ms)

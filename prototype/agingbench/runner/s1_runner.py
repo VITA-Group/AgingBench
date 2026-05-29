@@ -457,8 +457,8 @@ class S1Runner(BaseRunner):
                     provider=self._provider,
                     input_tokens=in_tok,
                     output_tokens=out_tok,
-                    input_preview=eval_text[:200],
-                    output_preview=compressed[:200],
+                    input_preview=eval_text,
+                    output_preview=compressed,
                     thought=getattr(self.llm, "last_thought", ""),
                     cycle=cycle,
                 )

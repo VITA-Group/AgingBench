@@ -26,6 +26,11 @@ the Tier-2 SWE-bench analogue (real GitHub issues + Django) see
 - `pytest` provides functional ground-truth — not LLM-judged
 - The agent's only memory between sessions is what it wrote to files
 
+> **Tested agent CLI version:** Claude Code CLI **v2.1.89**. The agent harness
+> (CLI) version is a reproducibility-relevant variable — different versions can
+> change agent behavior across sessions — so it is recorded per run in each
+> AgingCard's `provenance.agent_cli_version`.
+
 ## File layout
 
 ```

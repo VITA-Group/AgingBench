@@ -882,8 +882,8 @@ class S2Runner(BaseRunner):
                     provider=self._provider,
                     input_tokens=in_tok,
                     output_tokens=out_tok,
-                    input_preview=written_payload[:200],
-                    output_preview=compressed[:200] if compressed else "",
+                    input_preview=written_payload,
+                    output_preview=compressed or "",
                     thought=getattr(self.llm, "last_thought", ""),
                     cycle=session_idx,
                 )

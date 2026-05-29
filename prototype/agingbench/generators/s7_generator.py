@@ -365,6 +365,280 @@ def _session_4():
     return task, probes
 
 
+import random as _random
+
+# ---------------------------------------------------------------------------
+# Procedural long-horizon extension (blocks >= 10)
+# ---------------------------------------------------------------------------
+# Reuses the five operation types the curriculum demonstrates — add-CRUD,
+# schema-revision, storage-migration, interference-pair, recall-checkpoint —
+# applied to FRESH targets in a varied, prerequisite-respecting schedule,
+# continuing from the curriculum's end-of-block-9 state. Probes + pytest specs
+# are derived from running state so ground truth stays exact. Curriculum
+# builders _session_0.._session_9 are NOT touched.
+
+_PROC_ENTITIES = [
+    "author", "citation", "reminder", "attachment", "label",
+    "folder", "template", "bookmark", "snapshot", "alias",
+]
+_PROC_FIELDS = [
+    ("archived", "bool", "false"), ("pinned", "bool", "false"),
+    ("color", "str", "none"), ("due_date", "str", "none"),
+    ("word_count", "int", "0"), ("starred", "bool", "false"),
+    ("language", "str", "en"), ("source_url", "str", "none"),
+]
+_PROC_BACKENDS = [
+    ("DuckDB", "notes.duckdb"), ("Parquet", "notes.parquet"),
+    ("LMDB", "notes.lmdb"), ("MessagePack", "notes.msgpack"),
+]
+_PROC_INTERFERENCE = [
+    ("export-tagged", "export-all", "export"),
+    ("archive-stale", "archive-all", "archive"),
+    ("pin-recent", "pin-all", "pin"),
+    ("link-related", "link-all", "link"),
+    ("merge-dupes", "merge-all", "merge"),
+    ("compact-old", "compact-all", "compact"),
+]
+
+# Varied, prerequisite-respecting cadence over the five reused operation types.
+_PROC_CADENCE = [
+    "add_crud", "interference", "recall", "schema_revision",
+    "add_crud", "add_crud", "recall", "storage_migration",
+    "add_crud", "interference", "schema_revision", "recall",
+]
+
+
+class _S7ProceduralExtender:
+    """Coherent S7 blocks for session_idx >= 10, continuing the curriculum's
+    terminal state. Records FactGraph ops, lifecycle events, and data-driven
+    pytest specs so runner/metrics see exact ground truth."""
+
+    # Curriculum end-of-block-9 state (must match _session_0.._session_9 output).
+    _BASE_COMMANDS = [
+        "add", "ls", "show", "rm", "search",
+        "filter-by-tag", "sort-by-tag",
+        "col-create", "col-add", "col-ls", "col-show", "col-rm",
+        "col-filter", "col-sort",
+    ]
+    _BASE_SCHEMA = ["id", "title", "tags", "body", "citation", "priority"]
+
+    def __init__(self, seed: int = 42):
+        rng = _random.Random(seed)
+        self.commands = list(self._BASE_COMMANDS)      # running command list (14)
+        self.schema = list(self._BASE_SCHEMA)          # running note schema
+        self.backend = ("SQLite", "notes.db")          # current storage backend
+        self.schema_fact_id = "f1_v2"                  # current schema fact version
+        self.storage_fact_id = "f2_v2"                 # current storage fact version
+        self._schema_ver = 2
+        self._storage_ver = 2
+        self._pf = 0
+        self.entities = list(_PROC_ENTITIES); rng.shuffle(self.entities)
+        self.fields = list(_PROC_FIELDS); rng.shuffle(self.fields)
+        self.backends = list(_PROC_BACKENDS); rng.shuffle(self.backends)
+        self.interf = list(_PROC_INTERFERENCE); rng.shuffle(self.interf)
+        self.removed_fields = []                       # for forbidden_keywords
+        self.event_log = []                            # (session, "kind:name") for provenance
+        self.fact_ops = []
+        self.lifecycle_events = []
+        self.test_specs = []
+
+    def _next_fact_id(self):
+        self._pf += 1
+        return f"pf{self._pf}"
+
+    def next_block(self, session_idx):
+        op = _PROC_CADENCE[(session_idx - 10) % len(_PROC_CADENCE)]
+        # Fall back to a recall checkpoint when the relevant pool is exhausted
+        # (keeps every emitted block coherent and ground-truth-exact).
+        if op == "add_crud" and not self.entities:
+            op = "recall"
+        elif op == "schema_revision" and not self.fields:
+            op = "recall"
+        elif op == "storage_migration" and not self.backends:
+            op = "recall"
+        elif op == "interference" and not self.interf:
+            op = "recall"
+        return getattr(self, f"_op_{op}")(session_idx)
+
+    # ---- operations -------------------------------------------------------
+    def _op_add_crud(self, i):
+        e = self.entities.pop(0)
+        cmds = [f"{e}-add", f"{e}-ls", f"{e}-show", f"{e}-rm"]
+        self.commands += cmds
+        self.event_log.append((i, f"entity:{e}"))
+        bname, bfile = self.backend
+        task = (
+            f"Add CRUD commands for a new `{e}` entity to the notes CLI: "
+            f"`{e}-add --name <n>`, `{e}-ls`, `{e}-show <id>`, `{e}-rm <id>`. "
+            f"Persist {e} records in the current {bname} backend ({bfile}, a new "
+            f"`{e}s` table/section). Do NOT break any existing commands. "
+            f"Update notes/plan.md with the new commands."
+        )
+        count = len(self.commands)
+        probes = [
+            S7Probe(id=f"s{i}_pcmd", session=i,
+                    prompt="How many CLI commands does the tool support in total now? "
+                           "Also list the names of the commands you just added.",
+                    expected_keywords=[str(count)] + cmds,
+                    probe_type="synthesize", chain_depth=2, metric_tag="accumulator"),
+            S7Probe(id=f"s{i}_prec", session=i,
+                    prompt=f"What does the `{e}-show` command do, and in which storage "
+                           f"backend are `{e}` records persisted?",
+                    expected_keywords=[f"{e}-show", bname.lower()],
+                    probe_type="standalone", chain_depth=1, metric_tag="recall"),
+        ]
+        fid = self._next_fact_id()
+        self.fact_ops.append({"kind": "register", "id": fid, "session": i,
+                              "domain": f"{e}_commands",
+                              "content": f"{e} commands = {', '.join(cmds)}",
+                              "keywords": list(cmds)})
+        for c in cmds:
+            self.test_specs.append({"session": i, "kind": "command_runs", "command": c})
+        self.test_specs.append({"session": i, "kind": "command_runs",
+                                "command": f"{e}-add", "args": ["--name", f"probe_{e}"]})
+        return task, probes
+
+    def _op_schema_revision(self, i):
+        field, ftype, default = self.fields.pop(0)
+        self.schema.append(field)
+        self._schema_ver += 1
+        self.event_log.append((i, f"field:{field}"))
+        task = (
+            f"Refactor the note schema: add a new field `{field}` ({ftype}, default "
+            f"{default}). Every NEW note must include it; migrate ALL existing notes "
+            f"to add `{field}={default}` if missing. Update notes/plan.md and run the "
+            f"test suite, fixing any regressions."
+        )
+        probes = [
+            S7Probe(id=f"s{i}_pver", session=i,
+                    prompt="List the CURRENT required fields of the note schema, exactly "
+                           "as they are NOW after all refactors (not as they were before).",
+                    expected_keywords=list(self.schema),
+                    forbidden_keywords=list(self.removed_fields),
+                    probe_type="synthesize", chain_depth=3, metric_tag="version_accuracy"),
+        ]
+        new_id = f"f1_v{self._schema_ver}"
+        self.fact_ops.append({"kind": "update", "old_id": self.schema_fact_id,
+                              "new_id": new_id, "session": i,
+                              "content": f"note schema = {{{', '.join(self.schema)}}}",
+                              "keywords": list(self.schema)})
+        self.schema_fact_id = new_id
+        self.lifecycle_events.append({
+            "session": i, "event_type": "schema_migration",
+            "description": f"added required {field} field; migrated existing notes"})
+        self.test_specs.append({"session": i, "kind": "schema_field", "field": field})
+        return task, probes
+
+    def _op_storage_migration(self, i):
+        new_name, new_file = self.backends.pop(0)
+        old_name, old_file = self.backend
+        self.backend = (new_name, new_file)
+        self._storage_ver += 1
+        self.event_log.append((i, f"backend:{new_name}"))
+        task = (
+            f"Perform a storage migration: move ALL data from {old_name} ({old_file}) "
+            f"to {new_name} at `{new_file}`. Migrate existing notes and any other "
+            f"entities. All CLI commands must continue to work identically. Update "
+            f"notes/plan.md to describe the new storage layer and retain all schema fields."
+        )
+        probes = [
+            S7Probe(id=f"s{i}_pbk", session=i,
+                    prompt="What is the CURRENT storage backend (name and file) for the "
+                           "notes tool, exactly as it is NOW?",
+                    expected_keywords=[new_name.lower(), new_file],
+                    forbidden_keywords=[old_name.lower(), old_file],
+                    probe_type="synthesize", chain_depth=3, metric_tag="version_accuracy"),
+        ]
+        new_id = f"f2_v{self._storage_ver}"
+        self.fact_ops.append({"kind": "update", "old_id": self.storage_fact_id,
+                              "new_id": new_id, "session": i,
+                              "content": f"storage backend = {new_name} at {new_file}",
+                              "keywords": [new_name.lower(), new_file]})
+        self.storage_fact_id = new_id
+        self.lifecycle_events.append({
+            "session": i, "event_type": "storage_migration",
+            "description": f"migrated storage {old_name} -> {new_name}"})
+        self.test_specs.append({"session": i, "kind": "backend_file", "file": new_file})
+        self.test_specs.append({"session": i, "kind": "smoke", "commands": ["ls"]})
+        return task, probes
+
+    def _op_interference(self, i):
+        a, b, shared = self.interf.pop(0)
+        self.commands += [a, b]
+        self.event_log.append((i, f"interference:{shared}"))
+        task = (
+            f"Add two commands that are easy to confuse: `{a}` — returns only the notes "
+            f"matching a {shared} criterion (a SUBSET); `{b}` — applies the {shared} "
+            f"operation to ALL notes (preserves the full set). Keep them clearly "
+            f"distinct. Do not break any existing commands."
+        )
+        probes = [
+            S7Probe(id=f"s{i}_pintf", session=i,
+                    prompt=f"You now have `{a}` and `{b}`. Which returns a SUBSET of notes, "
+                           f"and which operates on ALL notes? Name both explicitly.",
+                    expected_keywords=[a, "subset", b, "all"],
+                    probe_type="compare", chain_depth=1, metric_tag="interference"),
+        ]
+        ida, idb = self._next_fact_id(), self._next_fact_id()
+        self.fact_ops.append({"kind": "register", "id": ida, "session": i, "domain": shared,
+                              "content": f"{a} returns subset", "keywords": [a, "subset"]})
+        self.fact_ops.append({"kind": "register", "id": idb, "session": i, "domain": shared,
+                              "content": f"{b} returns all", "keywords": [b, "all"]})
+        self.fact_ops.append({"kind": "interference", "a": ida, "b": idb, "shared": shared})
+        self.test_specs.append({"session": i, "kind": "command_runs", "command": a})
+        self.test_specs.append({"session": i, "kind": "command_runs", "command": b})
+        return task, probes
+
+    def _op_recall(self, i):
+        task = (
+            "No new feature this session. Re-read your notes/plan.md and the code, then "
+            "answer the following questions using ONLY your workspace files. Do not guess."
+        )
+        count = len(self.commands)
+        probes = [
+            S7Probe(id=f"s{i}_rc_schema", session=i,
+                    prompt="List the CURRENT note schema fields exactly as they are NOW.",
+                    expected_keywords=list(self.schema),
+                    forbidden_keywords=list(self.removed_fields),
+                    probe_type="synthesize", chain_depth=4, metric_tag="version_accuracy"),
+            S7Probe(id=f"s{i}_rc_count", session=i,
+                    prompt="How many CLI commands exist in total right now?",
+                    expected_keywords=[str(count)],
+                    probe_type="synthesize", chain_depth=4, metric_tag="accumulator"),
+            S7Probe(id=f"s{i}_rc_backend", session=i,
+                    prompt="What is the current storage backend (name and file)?",
+                    expected_keywords=[self.backend[0].lower(), self.backend[1]],
+                    probe_type="standalone", chain_depth=3, metric_tag="recall"),
+        ]
+        if self.event_log:
+            sess, what = self.event_log[0]
+            kind, _, name = what.partition(":")
+            label = "entity" if kind == "entity" else kind
+            probes.append(S7Probe(
+                id=f"s{i}_rc_prov", session=i,
+                prompt=f"In which session did you first introduce the `{name}` {label}? "
+                       f"Reference the session index.",
+                expected_keywords=[str(sess)],
+                probe_type="standalone", chain_depth=max(1, i - sess), metric_tag="recall"))
+        self.test_specs.append({"session": i, "kind": "smoke", "commands": ["--help", "ls"]})
+        return task, probes
+
+    # ---- post-loop application -------------------------------------------
+    def apply_to_factgraph(self, fg):
+        for op in self.fact_ops:
+            if op["kind"] == "register":
+                fg.register_fact(op["session"], op["domain"], op["content"],
+                                 op["keywords"], fact_id=op["id"])
+            elif op["kind"] == "update":
+                if op["old_id"] in fg.facts:
+                    fg.update_fact(op["old_id"], new_content=op["content"],
+                                   new_keywords=op["keywords"], session=op["session"],
+                                   new_id=op["new_id"])
+            elif op["kind"] == "interference":
+                if op["a"] in fg.facts and op["b"] in fg.facts:
+                    fg.add_interference(op["a"], op["b"], shared_term=op["shared"])
+
+
 class S7Generator:
     """Fixed-script generator for the S7+ research-notes coding task."""
 
@@ -372,27 +646,34 @@ class S7Generator:
         self.seed = seed
         self.pressure = pressure or PressureConfig.medium()
 
-    def generate(self, n_sessions: int = 5) -> dict:
+    def generate(self, n_sessions: int = 5, extension_mode: str = "procedural") -> dict:
         if n_sessions < 1:
             raise ValueError("S7+ requires at least 1 session")
         # Scripted 10-session program: cycle 1 (notes CLI, sessions 0-4) and
-        # cycle 2 (collections + SQLite migration, sessions 5-9). For N > 10
-        # we add probe-only "long-horizon" sessions that re-sample probes
-        # from the accumulated pool to measure pure memory decay past the
-        # fully-built substrate.
+        # cycle 2 (collections + SQLite migration, sessions 5-9). For N > 10,
+        # extension_mode selects what the extra blocks are:
+        #   "procedural" (default) — genuinely new feature work via the reused
+        #       operation templates (add-CRUD / schema-revision / migration /
+        #       interference / recall), continuing from the block-9 state.
+        #   "holdout" — the original probe-only long-horizon re-sampler.
+        # Curriculum blocks 0-9 are byte-identical in both modes.
         builders = [
             _session_0, _session_1, _session_2, _session_3, _session_4,
             _session_5, _session_6, _session_7, _session_8, _session_9,
         ]
+        extender = _S7ProceduralExtender(seed=self.seed)
         sessions = []
         for i in range(n_sessions):
             if i < len(builders):
                 task, probes = builders[i]()
-            else:
+            elif extension_mode == "holdout":
                 # Long-horizon: probe-only session (no new task). Re-samples
                 # holdout probes from session 9's pool with depth incremented
                 # to reflect the longer temporal gap.
                 task, probes = _session_long_horizon(i, seed=self.seed + i)
+            else:
+                # Procedural: a genuinely new block continuing from block-9 state.
+                task, probes = extender.next_block(i)
             sessions.append({
                 "session_idx": i,
                 "task_prompt": task,
@@ -482,8 +763,16 @@ class S7Generator:
                            session=8, new_id="f8_v2")
             fg.add_delta("test_count", 3.0, 8)
 
-        # Emit dependency edges from probes
+        # Procedural blocks (>= 10) register their own facts/versions/interference.
+        if extension_mode != "holdout":
+            extender.apply_to_factgraph(fg)
+
+        # Emit dependency edges from curriculum probes (blocks 0-9). Procedural
+        # probes carry their own chain_depth; their edges are not routed through
+        # this hardcoded curriculum mapping.
         for s in sessions:
+            if s["session_idx"] >= len(builders):
+                continue
             for p in s["eval_probes"]:
                 # map probe metric_tag to relevant fact_ids
                 facts = []
@@ -506,7 +795,7 @@ class S7Generator:
                         dep_type=p["probe_type"],
                     )
 
-        return {
+        result = {
             "scenario": "s7_research_notes",
             "seed": self.seed,
             "n_sessions": len(sessions),
@@ -516,5 +805,10 @@ class S7Generator:
             "lifecycle_events": [
                 {"session": 3, "event_type": "schema_migration",
                  "description": "added required priority field; migrated existing notes"},
-            ],
+            ] + (extender.lifecycle_events if extension_mode != "holdout" else []),
         }
+        # Only attach data-driven pytest specs when procedural blocks were
+        # emitted, so curriculum-only runs (n <= 10) keep their exact output.
+        if extension_mode != "holdout" and extender.test_specs:
+            result["generated_tests"] = extender.test_specs
+        return result

@@ -66,7 +66,7 @@ Over time M_t loses facts → scores drop → AgingBench fits the aging curve.
 | **S4** | Software Engineering | T1 | 8–12 | Code planning with retractions |
 | **S5** | Self-Planning Notebook | T1 | 8–20 | Agent manages its own workspace files |
 | **S6** | Naturalistic | T1 | 10–15 | Multi-domain recall with corrections |
-| **S7** | Research-Notes Coding Task | T2 | 10–20 | Production CLI (OpenHands / Claude Code) building a notes-app codebase |
+| **S7** | Research-Notes Coding Task | T2 | 10 | Production CLI (OpenHands / Claude Code) building a notes-app codebase |
 | **S8** | SWE-bench-Aging *(newly added)* | T2 | 8 | Production CLI on a curated chain of real Django GitHub issues |
 
 Tier 1 = benchmark-driven loop; Tier 2 = external agent driving its own loop, wrapped via an adapter. Per-scenario READMEs at [`prototype/agingbench/scenarios/sN_*/README.md`](prototype/agingbench/scenarios/) cover data design, scoring pipeline, and example invocations.

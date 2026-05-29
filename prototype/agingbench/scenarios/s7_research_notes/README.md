@@ -3,7 +3,7 @@
 **Tier:** 2 (production-CLI agent: OpenHands, Claude Code)
 **Metric Group:** G1 + G2 + G3 (mixed)
 **Exposure Axis:** `t_steps`
-**Default Sessions:** 10–20
+**Default Sessions:** 10
 
 ## What it measures
 
@@ -57,7 +57,7 @@ OpenHands SUT:
 agingbench run \
   --scenario s7_research_notes \
   --sut agingbench/registry/suts/openhands/openhands_gpt4omini_s7.yaml \
-  --generated --sessions 12 \
+  --generated --sessions 10 \
   --card
 ```
 
@@ -67,7 +67,7 @@ Claude Code SUT:
 agingbench run \
   --scenario s7_research_notes \
   --sut agingbench/registry/suts/claude_code/claude_code_sonnet46_s7.yaml \
-  --generated --sessions 12 \
+  --generated --sessions 10 \
   --card
 ```
 

@@ -1,11 +1,11 @@
 {
   "scenario": "s7_research_notes",
   "sut_id": "openhands_gpt5mini_s7",
-  "n_sessions": 5,
+  "n_sessions": 6,
   "m0": 0.5,
-  "m_final": 0.6875,
-  "half_life": Infinity,
-  "decay_slope": 0.09464285714285714,
+  "m_final": 0.25,
+  "half_life": 5.0,
+  "decay_slope": 0.0007653061224489832,
   "checkpoints": [
     [
       0,
@@ -26,6 +26,10 @@
     [
       4,
       0.6875
+    ],
+    [
+      5,
+      0.25
     ]
   ],
   "headline_metric": "recall_accuracy",
@@ -49,6 +53,10 @@
     [
       4,
       0.6875
+    ],
+    [
+      5,
+      0.25
     ]
   ],
   "task_curve": [
@@ -70,6 +78,10 @@
     ],
     [
       4,
+      1.0
+    ],
+    [
+      5,
       1.0
     ]
   ],
@@ -93,6 +105,10 @@
     [
       4,
       0.23076923076923078
+    ],
+    [
+      5,
+      0.2
     ]
   ],
   "workspace_fidelity_curve": [
@@ -115,6 +131,10 @@
     [
       4,
       0.8888888888888888
+    ],
+    [
+      5,
+      0.9032258064516129
     ]
   ],
   "per_session": [
@@ -323,6 +343,47 @@
       "probe_turns_max": 6,
       "probe_turns_when_correct": 3.75,
       "probe_turns_when_wrong": null
+    },
+    {
+      "session": 5,
+      "task_prompt_tokens": 106522,
+      "task_score_coarse": 1.0,
+      "pytest_pass_rate": 0.2,
+      "pytest_passed": 3,
+      "pytest_failed": 12,
+      "pytest_total": 15,
+      "probe_recall": 0.25,
+      "workspace_fidelity": 0.9032258064516129,
+      "elapsed_s": 79.279705286026,
+      "probe_details": [
+        {
+          "id": "s5_p11",
+          "metric_tag": "recall",
+          "probe_type": "compare",
+          "chain_depth": 1,
+          "score": 0.0,
+          "num_turns": 1,
+          "response_text": "Which collection schema do you mean? Please specify the file, model, or repository (or paste the schema). I can then list and explain the fields."
+        },
+        {
+          "id": "s5_p12",
+          "metric_tag": "recall",
+          "probe_type": "standalone",
+          "chain_depth": 1,
+          "score": 0.5,
+          "num_turns": 3,
+          "response_text": "I\u2019m missing context \u2014 which \u201ccollections\u201d do you mean (project/repo/tool)? Examples:\n- Hugging Face Hub collections (stored on HF servers, JSON via API)\n- VS Code extension or browser \u201ccollections\u201d (tool-specific locations)\n- A specific repo\u2019s collections directory (on-disk path + file format)\n\nTell"
+        }
+      ],
+      "m_recall": 0.25,
+      "m_compression": 0.9032258064516129,
+      "m_interference": null,
+      "m_revision_explicit": null,
+      "m_revision_latent_abs_err": null,
+      "probe_turns_mean": 2.0,
+      "probe_turns_max": 3,
+      "probe_turns_when_correct": 3.0,
+      "probe_turns_when_wrong": 1.0
     }
   ],
   "factgraph_summary": {
@@ -335,22 +396,22 @@
     "total_interference_pairs": 2,
     "max_chain_depth": 2
   },
-  "m_compression_mean": 0.9439181286549708,
-  "m_compression_final": 0.8888888888888888,
+  "m_compression_mean": 0.9371360749544112,
+  "m_compression_final": 0.9032258064516129,
   "m_interference_mean": 0.625,
   "m_revision_explicit_mean": 1.0,
   "m_revision_latent_abs_err_mean": 0.0,
   "m_maintenance_delta": {
     "schema_migration_s3": {
       "pre_mean": 0.4642857142857143,
-      "post_mean": 0.6875,
-      "delta": 0.2232142857142857,
+      "post_mean": 0.46875,
+      "delta": 0.004464285714285698,
       "window_size": 2
     }
   },
-  "probe_turns_mean": 4.75,
-  "probe_turns_when_correct_mean": 5.35,
-  "probe_turns_when_wrong_mean": 2.0,
+  "probe_turns_mean": 4.291666666666667,
+  "probe_turns_when_correct_mean": 4.958333333333333,
+  "probe_turns_when_wrong_mean": 1.6666666666666667,
   "run_status": "partial",
   "expected_n_sessions": 10
 }

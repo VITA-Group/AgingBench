@@ -1,0 +1,660 @@
+{
+  "scenario": "s7_research_notes",
+  "sut_id": "claude_code_haiku45_s7",
+  "n_sessions": 10,
+  "m0": 1.0,
+  "m_final": 0.5535714285714286,
+  "half_life": 1.0,
+  "decay_slope": -0.029599567099567098,
+  "checkpoints": [
+    [
+      0,
+      1.0
+    ],
+    [
+      1,
+      0.42857142857142855
+    ],
+    [
+      2,
+      0.5
+    ],
+    [
+      3,
+      1.0
+    ],
+    [
+      4,
+      0.6875
+    ],
+    [
+      5,
+      0.75
+    ],
+    [
+      6,
+      0.8571428571428571
+    ],
+    [
+      7,
+      1.0
+    ],
+    [
+      8,
+      0.0
+    ],
+    [
+      9,
+      0.5535714285714286
+    ]
+  ],
+  "headline_metric": "recall_accuracy",
+  "recall_curve": [
+    [
+      0,
+      1.0
+    ],
+    [
+      1,
+      0.42857142857142855
+    ],
+    [
+      2,
+      0.5
+    ],
+    [
+      3,
+      1.0
+    ],
+    [
+      4,
+      0.6875
+    ],
+    [
+      5,
+      0.75
+    ],
+    [
+      6,
+      0.8571428571428571
+    ],
+    [
+      7,
+      1.0
+    ],
+    [
+      8,
+      0.0
+    ],
+    [
+      9,
+      0.5535714285714286
+    ]
+  ],
+  "task_curve": [
+    [
+      0,
+      1.0
+    ],
+    [
+      1,
+      1.0
+    ],
+    [
+      2,
+      1.0
+    ],
+    [
+      3,
+      1.0
+    ],
+    [
+      4,
+      1.0
+    ],
+    [
+      5,
+      1.0
+    ],
+    [
+      6,
+      1.0
+    ],
+    [
+      7,
+      1.0
+    ],
+    [
+      8,
+      1.0
+    ],
+    [
+      9,
+      1.0
+    ]
+  ],
+  "pytest_curve": [
+    [
+      0,
+      1.0
+    ],
+    [
+      1,
+      1.0
+    ],
+    [
+      2,
+      1.0
+    ],
+    [
+      3,
+      1.0
+    ],
+    [
+      4,
+      1.0
+    ],
+    [
+      5,
+      1.0
+    ],
+    [
+      6,
+      1.0
+    ],
+    [
+      7,
+      1.0
+    ],
+    [
+      8,
+      0.9545454545454546
+    ],
+    [
+      9,
+      0.9565217391304348
+    ]
+  ],
+  "workspace_fidelity_curve": [
+    [
+      0,
+      1.0
+    ],
+    [
+      1,
+      0.9333333333333333
+    ],
+    [
+      2,
+      0.9473684210526315
+    ],
+    [
+      3,
+      0.95
+    ],
+    [
+      4,
+      0.8518518518518519
+    ],
+    [
+      5,
+      0.8709677419354839
+    ],
+    [
+      6,
+      0.868421052631579
+    ],
+    [
+      7,
+      0.875
+    ],
+    [
+      8,
+      0.8372093023255814
+    ],
+    [
+      9,
+      0.7916666666666666
+    ]
+  ],
+  "per_session": [
+    {
+      "session": 0,
+      "task_prompt_tokens": 0,
+      "task_score_coarse": 1.0,
+      "pytest_pass_rate": 1.0,
+      "pytest_passed": 3,
+      "pytest_failed": 0,
+      "pytest_total": 3,
+      "probe_recall": 1.0,
+      "workspace_fidelity": 1.0,
+      "elapsed_s": 68.77661776542664,
+      "probe_details": [
+        {
+          "id": "s0_p1",
+          "metric_tag": "recall",
+          "probe_type": "compare",
+          "chain_depth": 1,
+          "score": 1.0,
+          "num_turns": 5,
+          "response_text": "Based on the current `notes/plan.md`, the note schema has these fields:\n\n```\nid\ntitle\ntags\nbody\ncitation\n```"
+        },
+        {
+          "id": "s0_p2",
+          "metric_tag": "recall",
+          "probe_type": "standalone",
+          "chain_depth": 1,
+          "score": 1.0,
+          "num_turns": 2,
+          "response_text": "**Click** \u2014 it's specified in the `pyproject.toml` dependencies and your `notes` CLI uses it as the entry point at `notes.cli:cli`."
+        }
+      ],
+      "m_recall": 1.0,
+      "m_compression": 1.0,
+      "m_interference": null,
+      "m_revision_explicit": null,
+      "m_revision_latent_abs_err": null,
+      "probe_turns_mean": 3.5,
+      "probe_turns_max": 5,
+      "probe_turns_when_correct": 3.5,
+      "probe_turns_when_wrong": null
+    },
+    {
+      "session": 1,
+      "task_prompt_tokens": 0,
+      "task_score_coarse": 1.0,
+      "pytest_pass_rate": 1.0,
+      "pytest_passed": 7,
+      "pytest_failed": 0,
+      "pytest_total": 7,
+      "probe_recall": 0.42857142857142855,
+      "workspace_fidelity": 0.9333333333333333,
+      "elapsed_s": 128.27591609954834,
+      "probe_details": [
+        {
+          "id": "s1_p3",
+          "metric_tag": "accumulator",
+          "probe_type": "synthesize",
+          "chain_depth": 2,
+          "score": 0.8571428571428571,
+          "num_turns": 3,
+          "response_text": "The notes CLI currently supports **5 commands**:\n\n1. **add** \u2014 Add a new note (requires `--title` and `--body`, optional `--tags` and `--citation`)\n2. **ls** \u2014 List all notes with their id and title\n3. **show** \u2014 Print the full contents of a note by ID\n4. **rm** \u2014 Delete a note by id\n5. **search** \u2014"
+        },
+        {
+          "id": "s1_p4",
+          "metric_tag": "recall",
+          "probe_type": "standalone",
+          "chain_depth": 1,
+          "score": 0.0,
+          "num_turns": 1,
+          "response_text": "Based on the system instructions I follow, notes are stored in:\n\n- **Location**: `notes/` directory in the current workspace\n- **Format**: Markdown files (`.md` extension)\n\nExamples: `notes/dining.md`, `notes/contacts.md`, etc.\n\nThe memory index also references a `notes CLI project` with custom stru"
+        }
+      ],
+      "m_accumulator": 0.8571428571428571,
+      "m_recall": 0.0,
+      "m_compression": 0.9333333333333333,
+      "m_interference": null,
+      "m_revision_explicit": null,
+      "m_revision_latent_abs_err": 0.0,
+      "probe_turns_mean": 2.0,
+      "probe_turns_max": 3,
+      "probe_turns_when_correct": 3.0,
+      "probe_turns_when_wrong": 1.0
+    },
+    {
+      "session": 2,
+      "task_prompt_tokens": 0,
+      "task_score_coarse": 1.0,
+      "pytest_pass_rate": 1.0,
+      "pytest_passed": 9,
+      "pytest_failed": 0,
+      "pytest_total": 9,
+      "probe_recall": 0.5,
+      "workspace_fidelity": 0.9473684210526315,
+      "elapsed_s": 70.03441905975342,
+      "probe_details": [
+        {
+          "id": "s2_p5",
+          "metric_tag": "interference",
+          "probe_type": "compare",
+          "chain_depth": 1,
+          "score": 0.5,
+          "num_turns": 3,
+          "response_text": "Based on the CLI code, the two tag-related commands are:\n\n1. **`filter_by_tag`** \u2014 returns a **subset** of notes (only those whose tags list contains the specified tag)\n\n2. **`sort_by_tag`** \u2014 returns **all notes in a new order** (sorted alphabetically by their first tag, with tagged notes first, th"
+        }
+      ],
+      "m_interference": 0.5,
+      "m_compression": 0.9473684210526315,
+      "m_revision_explicit": null,
+      "m_revision_latent_abs_err": null,
+      "probe_turns_mean": 3.0,
+      "probe_turns_max": 3,
+      "probe_turns_when_correct": 3.0,
+      "probe_turns_when_wrong": null
+    },
+    {
+      "session": 3,
+      "task_prompt_tokens": 0,
+      "task_score_coarse": 1.0,
+      "pytest_pass_rate": 1.0,
+      "pytest_passed": 12,
+      "pytest_failed": 0,
+      "pytest_total": 12,
+      "probe_recall": 1.0,
+      "workspace_fidelity": 0.95,
+      "elapsed_s": 94.166494846344,
+      "probe_details": [
+        {
+          "id": "s3_p6",
+          "metric_tag": "version_accuracy",
+          "probe_type": "compare",
+          "chain_depth": 2,
+          "score": 1.0,
+          "num_turns": 5,
+          "response_text": "Based on the current `cli.py`, the **CURRENT required fields** in the note schema are:\n\n1. **id** (auto-generated integer)\n2. **title** (string, required=True on the `--title` option)\n3. **body** (string, required=True on the `--body` option)\n\nThe optional fields are:\n- **tags** (list, defaults to e"
+        }
+      ],
+      "m_version_accuracy": 1.0,
+      "m_compression": 0.95,
+      "m_interference": null,
+      "m_revision_explicit": 1.0,
+      "m_revision_latent_abs_err": null,
+      "probe_turns_mean": 5.0,
+      "probe_turns_max": 5,
+      "probe_turns_when_correct": 5.0,
+      "probe_turns_when_wrong": null
+    },
+    {
+      "session": 4,
+      "task_prompt_tokens": 0,
+      "task_score_coarse": 1.0,
+      "pytest_pass_rate": 1.0,
+      "pytest_passed": 13,
+      "pytest_failed": 0,
+      "pytest_total": 13,
+      "probe_recall": 0.6875,
+      "workspace_fidelity": 0.8518518518518519,
+      "elapsed_s": 55.42237854003906,
+      "probe_details": [
+        {
+          "id": "s4_p7",
+          "metric_tag": "recall",
+          "probe_type": "synthesize",
+          "chain_depth": 3,
+          "score": 1.0,
+          "num_turns": 3,
+          "response_text": "**Current note schema:**\n```json\n{\n  \"id\": 1,\n  \"title\": \"Note Title\",\n  \"tags\": [\"tag1\", \"tag2\"],\n  \"body\": \"The note content goes here\",\n  \"citation\": \"Optional BibTeX format citation\",\n  \"priority\": 3\n}\n```\n\nFields: **id** (int, auto), **title** (str, required), **tags** (list[str]), **body** (st"
+        },
+        {
+          "id": "s4_p8",
+          "metric_tag": "accumulator",
+          "probe_type": "synthesize",
+          "chain_depth": 3,
+          "score": 0.5,
+          "num_turns": 4,
+          "response_text": "The notes CLI currently has **7 commands**:\n\n1. `add` \u2014 Add a new note\n2. `ls` \u2014 List all notes with their ID and title\n3. `show` \u2014 Print the full contents of a note\n4. `rm` \u2014 Delete a note by ID\n5. `search` \u2014 Search notes by title or body\n6. `filter_by_tag` \u2014 Return notes matching a specified tag\n7"
+        },
+        {
+          "id": "s4_p9",
+          "metric_tag": "interference",
+          "probe_type": "compare",
+          "chain_depth": 2,
+          "score": 1.0,
+          "num_turns": 5,
+          "response_text": "The two commands containing 'by-tag' are:\n\n1. **`notes filter-by-tag`** \u2014 Filters and returns only notes that have the specified tag in their tags list (subset of notes).\n   \n2. **`notes sort-by-tag`** \u2014 Returns ALL notes, sorted alphabetically by their first tag (notes without tags appear at the en"
+        },
+        {
+          "id": "s4_p10",
+          "metric_tag": "recall",
+          "probe_type": "standalone",
+          "chain_depth": 4,
+          "score": 0.25,
+          "num_turns": 2,
+          "response_text": "I don't have access to the conversation history from sessions 0-4, so I can't determine which specific session the Click decision was made in. The memory file I have documents the current state of the notes CLI project (that it's Click-based), but it doesn't include metadata about which conversation"
+        }
+      ],
+      "m_recall": 0.625,
+      "m_accumulator": 0.5,
+      "m_interference": 1.0,
+      "m_compression": 0.8518518518518519,
+      "m_revision_explicit": null,
+      "m_revision_latent_abs_err": 0.0,
+      "probe_turns_mean": 3.5,
+      "probe_turns_max": 5,
+      "probe_turns_when_correct": 4.0,
+      "probe_turns_when_wrong": 2.0
+    },
+    {
+      "session": 5,
+      "task_prompt_tokens": 0,
+      "task_score_coarse": 1.0,
+      "pytest_pass_rate": 1.0,
+      "pytest_passed": 15,
+      "pytest_failed": 0,
+      "pytest_total": 15,
+      "probe_recall": 0.75,
+      "workspace_fidelity": 0.8709677419354839,
+      "elapsed_s": 112.61373209953308,
+      "probe_details": [
+        {
+          "id": "s5_p11",
+          "metric_tag": "recall",
+          "probe_type": "compare",
+          "chain_depth": 1,
+          "score": 1.0,
+          "num_turns": 5,
+          "response_text": "Based on the `notes/plan.md` file, the **collection schema** has these fields:\n\n| Field | Type | Description |\n|-------|------|-------------|\n| **name** | str | The name of the collection. Must be unique. |\n| **note_ids** | list of int | List of note IDs in this collection. Empty list for new collec"
+        },
+        {
+          "id": "s5_p12",
+          "metric_tag": "recall",
+          "probe_type": "standalone",
+          "chain_depth": 1,
+          "score": 0.5,
+          "num_turns": 2,
+          "response_text": "Based on the memory from a previous workspace, collections are stored as **JSON files** at:\n\n**Location:** `notes_data/<id>.json` (directory at workspace root, one level up from the `notes/` package)\n\n**Format:** Each note/collection is a separate JSON file named after its auto-incremented integer I"
+        }
+      ],
+      "m_recall": 0.75,
+      "m_compression": 0.8709677419354839,
+      "m_interference": null,
+      "m_revision_explicit": null,
+      "m_revision_latent_abs_err": null,
+      "probe_turns_mean": 3.5,
+      "probe_turns_max": 5,
+      "probe_turns_when_correct": 3.5,
+      "probe_turns_when_wrong": null
+    },
+    {
+      "session": 6,
+      "task_prompt_tokens": 0,
+      "task_score_coarse": 1.0,
+      "pytest_pass_rate": 1.0,
+      "pytest_passed": 18,
+      "pytest_failed": 0,
+      "pytest_total": 18,
+      "probe_recall": 0.8571428571428571,
+      "workspace_fidelity": 0.868421052631579,
+      "elapsed_s": 93.18676328659058,
+      "probe_details": [
+        {
+          "id": "s6_p13",
+          "metric_tag": "accumulator",
+          "probe_type": "synthesize",
+          "chain_depth": 3,
+          "score": 0.8571428571428571,
+          "num_turns": 3,
+          "response_text": "Based on the `notes/plan.md` file, which is the authoritative design doc, the tool has **12 total CLI commands**:\n\n### Notes Commands (5):\n1. `notes add` \u2014 Add a new note\n2. `notes ls` \u2014 List all notes with id and title\n3. `notes show` \u2014 Print the full contents of a note\n4. `notes rm` \u2014 Delete a not"
+        }
+      ],
+      "m_accumulator": 0.8571428571428571,
+      "m_compression": 0.868421052631579,
+      "m_interference": null,
+      "m_revision_explicit": null,
+      "m_revision_latent_abs_err": 0.0,
+      "probe_turns_mean": 3.0,
+      "probe_turns_max": 3,
+      "probe_turns_when_correct": 3.0,
+      "probe_turns_when_wrong": null
+    },
+    {
+      "session": 7,
+      "task_prompt_tokens": 0,
+      "task_score_coarse": 1.0,
+      "pytest_pass_rate": 1.0,
+      "pytest_passed": 20,
+      "pytest_failed": 0,
+      "pytest_total": 20,
+      "probe_recall": 1.0,
+      "workspace_fidelity": 0.875,
+      "elapsed_s": 86.11357426643372,
+      "probe_details": [
+        {
+          "id": "s7_p14",
+          "metric_tag": "interference",
+          "probe_type": "compare",
+          "chain_depth": 2,
+          "score": 1.0,
+          "num_turns": 4,
+          "response_text": "Based on the plan.md:\n\n**`col-filter`** \u2014 Returns a SUBSET at the collection level. It filters collections to show only those containing at least one note with the specified tag.\n\n**`filter-by-tag` and `sort-by-tag`** \u2014 Operate on notes. `filter-by-tag` returns a subset of notes with the tag, while "
+        }
+      ],
+      "m_interference": 1.0,
+      "m_compression": 0.875,
+      "m_revision_explicit": null,
+      "m_revision_latent_abs_err": null,
+      "probe_turns_mean": 4.0,
+      "probe_turns_max": 4,
+      "probe_turns_when_correct": 4.0,
+      "probe_turns_when_wrong": null
+    },
+    {
+      "session": 8,
+      "task_prompt_tokens": 0,
+      "task_score_coarse": 1.0,
+      "pytest_pass_rate": 0.9545454545454546,
+      "pytest_passed": 21,
+      "pytest_failed": 1,
+      "pytest_total": 22,
+      "probe_recall": 0.0,
+      "workspace_fidelity": 0.8372093023255814,
+      "elapsed_s": 59.77214336395264,
+      "probe_details": [
+        {
+          "id": "s8_p15",
+          "metric_tag": "version_accuracy",
+          "probe_type": "synthesize",
+          "chain_depth": 3,
+          "score": 0.0,
+          "num_turns": 5,
+          "response_text": "Based on the current codebase, here's the storage backend:\n\n## **Notes Storage**\n- **File**: `notes_data/<id>.json` (individual JSON files per note)\n- **Schema/Fields**: `id`, `title`, `tags`, `body`, `citation`, `priority`\n\n## **Collections Storage**\n- **File**: `collections_data/<name>.json` (indi"
+        }
+      ],
+      "m_version_accuracy": 0.0,
+      "m_compression": 0.8372093023255814,
+      "m_interference": null,
+      "m_revision_explicit": 0.0,
+      "m_revision_latent_abs_err": null,
+      "probe_turns_mean": 5.0,
+      "probe_turns_max": 5,
+      "probe_turns_when_correct": null,
+      "probe_turns_when_wrong": 5.0
+    },
+    {
+      "session": 9,
+      "task_prompt_tokens": 0,
+      "task_score_coarse": 1.0,
+      "pytest_pass_rate": 0.9565217391304348,
+      "pytest_passed": 22,
+      "pytest_failed": 1,
+      "pytest_total": 23,
+      "probe_recall": 0.5535714285714286,
+      "workspace_fidelity": 0.7916666666666666,
+      "elapsed_s": 73.72720742225647,
+      "probe_details": [
+        {
+          "id": "s9_p16",
+          "metric_tag": "version_accuracy",
+          "probe_type": "synthesize",
+          "chain_depth": 4,
+          "score": 0.2142857142857143,
+          "num_turns": 4,
+          "response_text": "## Current Note Schema\n\n**Notes** (stored in `notes_data/` as individual JSON files):\n```json\n{\n  \"id\": 1,\n  \"title\": \"string (required)\",\n  \"tags\": [\"list\", \"of\", \"strings\"] (optional, default empty list),\n  \"body\": \"string (required)\",\n  \"citation\": \"string or null (optional BibTeX format)\",\n  \"pr"
+        },
+        {
+          "id": "s9_p17",
+          "metric_tag": "accumulator",
+          "probe_type": "synthesize",
+          "chain_depth": 4,
+          "score": 0.5,
+          "num_turns": 3,
+          "response_text": "Based on the `notes/plan.md` file, there are **14 total CLI commands** across both features:\n\n**Notes commands (7):**\n1. `notes add`\n2. `notes ls`\n3. `notes show`\n4. `notes rm`\n5. `notes search`\n6. `notes filter-by-tag`\n7. `notes sort-by-tag`\n\n**Collections commands (7):**\n1. `notes col-create`\n2. `"
+        },
+        {
+          "id": "s9_p18",
+          "metric_tag": "interference",
+          "probe_type": "compare",
+          "chain_depth": 3,
+          "score": 1.0,
+          "num_turns": 5,
+          "response_text": "## Filter and Sort Commands\n\n### **Filter Commands** (return subsets)\n\n| Command | Operates On | Function |\n|---------|-------------|----------|\n| `filter-by-tag` | **Notes** | Returns notes whose tags list contains the specified tag |\n| `col-filter` | **Collections** | Returns collections that cont"
+        },
+        {
+          "id": "s9_p19",
+          "metric_tag": "recall",
+          "probe_type": "standalone",
+          "chain_depth": 5,
+          "score": 0.5,
+          "num_turns": 5,
+          "response_text": "I don't have access to the conversation history from sessions 0-9. Each Claude Code session is isolated, and I can only see:\n\n1. **Current state of the workspace** (this session): JSON file storage with the priority field already present in `notes/plan.md`\n2. **Memory files** in `/home/jz28832/.clau"
+        }
+      ],
+      "m_version_accuracy": 0.2142857142857143,
+      "m_accumulator": 0.5,
+      "m_interference": 1.0,
+      "m_recall": 0.5,
+      "m_compression": 0.7916666666666666,
+      "m_revision_explicit": 0.2142857142857143,
+      "m_revision_latent_abs_err": 0.0,
+      "probe_turns_mean": 4.25,
+      "probe_turns_max": 5,
+      "probe_turns_when_correct": 4.333333333333333,
+      "probe_turns_when_wrong": 4.0
+    }
+  ],
+  "factgraph_summary": {
+    "total_facts": 15,
+    "total_unique_roots": 12,
+    "total_versioned": 3,
+    "total_invalidated": 0,
+    "total_dependencies": 15,
+    "total_dependency_tasks": 10,
+    "total_interference_pairs": 2,
+    "max_chain_depth": 2
+  },
+  "m_compression_mean": 0.8925818369797127,
+  "m_compression_final": 0.7916666666666666,
+  "m_interference_mean": 0.875,
+  "m_revision_explicit_mean": 0.4047619047619048,
+  "m_revision_latent_abs_err_mean": 0.0,
+  "m_maintenance_delta": {
+    "schema_migration_s3": {
+      "pre_mean": 0.4642857142857143,
+      "post_mean": 0.71875,
+      "delta": 0.2544642857142857,
+      "window_size": 2
+    },
+    "sqlite_migration_s8": {
+      "pre_mean": 0.9285714285714286,
+      "post_mean": 0.5535714285714286,
+      "delta": -0.375,
+      "window_size": 2
+    }
+  },
+  "probe_turns_mean": 3.675,
+  "probe_turns_when_correct_mean": 3.703703703703704,
+  "probe_turns_when_wrong_mean": 3.0,
+  "run_status": "complete",
+  "expected_n_sessions": 10,
+  "metric_group": "G1"
+}

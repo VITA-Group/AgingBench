@@ -1,0 +1,16 @@
+sut_id: claude_code_opus48_s7
+description: "Claude Code CLI + Opus 4.8 (premium reasoning) on S7+ Research-Notes CLI."
+
+model:
+  provider: litellm
+  model: claude-opus-4-8
+  max_tokens: 2048
+
+adapter:
+  type: claude_code
+  model: claude-opus-4-8
+  max_turns: 50
+  cli_path: claude
+  isolated_workspace: true
+
+seed: 42

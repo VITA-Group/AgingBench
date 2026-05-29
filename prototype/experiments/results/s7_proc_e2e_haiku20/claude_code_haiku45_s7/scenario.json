@@ -1,0 +1,2073 @@
+{
+  "scenario": "s7_research_notes",
+  "seed": 42,
+  "n_sessions": 20,
+  "sessions": [
+    {
+      "session_idx": 0,
+      "task_prompt": "Create a Python CLI called `notes` using Click. It should be installable via `pip install -e .`. Define a note schema with these fields: id (int, auto-increment starting from 1), title (str), tags (list of str), body (str), citation (str, optional, BibTeX format). Store each note as an individual JSON file under a `notes_data/` directory at the workspace root. Implement the `notes add` command with flags --title, --body, --tags, --citation. Save your design decisions and schema to `notes/plan.md`.",
+      "eval_probes": [
+        {
+          "id": "s0_p1",
+          "prompt": "List the fields in the current note schema (one per line).",
+          "expected_keywords": [
+            "id",
+            "title",
+            "tags",
+            "body",
+            "citation"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "compare",
+          "chain_depth": 1,
+          "metric_tag": "recall"
+        },
+        {
+          "id": "s0_p2",
+          "prompt": "What Python library did you choose for CLI command parsing?",
+          "expected_keywords": [
+            "click"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "standalone",
+          "chain_depth": 1,
+          "metric_tag": "recall"
+        }
+      ]
+    },
+    {
+      "session_idx": 1,
+      "task_prompt": "Add four new commands to the `notes` CLI: (1) `ls` \u2014 list all notes with their id and title; (2) `show <id>` \u2014 print the full contents of one note; (3) `rm <id>` \u2014 delete a note by id; (4) `search <query>` \u2014 substring match against title and body, case-insensitive. Make sure the existing `add` command still works. Update `notes/plan.md` with the new command list.",
+      "eval_probes": [
+        {
+          "id": "s1_p3",
+          "prompt": "How many CLI commands does the notes tool support so far? List them by name.",
+          "expected_keywords": [
+            "5",
+            "five",
+            "add",
+            "ls",
+            "show",
+            "rm",
+            "search"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "synthesize",
+          "chain_depth": 2,
+          "metric_tag": "accumulator"
+        },
+        {
+          "id": "s1_p4",
+          "prompt": "Where on disk are notes stored, and in what file format?",
+          "expected_keywords": [
+            "notes_data",
+            "json"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "standalone",
+          "chain_depth": 1,
+          "metric_tag": "recall"
+        }
+      ]
+    },
+    {
+      "session_idx": 2,
+      "task_prompt": "Add two commands that both involve tags: (1) `filter-by-tag <tag>` \u2014 returns only the notes whose tags list contains that tag (a SUBSET of notes); (2) `sort-by-tag` \u2014 returns ALL notes, sorted alphabetically by their first tag (preserves the full count). These two are easy to confuse \u2014 keep them distinct. Do not break any existing tests.",
+      "eval_probes": [
+        {
+          "id": "s2_p5",
+          "prompt": "Which of your two tag-related commands returns a subset of notes, and which returns all notes in a new order? Name both explicitly.",
+          "expected_keywords": [
+            "filter-by-tag",
+            "subset",
+            "sort-by-tag",
+            "all"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "compare",
+          "chain_depth": 1,
+          "metric_tag": "interference"
+        }
+      ]
+    },
+    {
+      "session_idx": 3,
+      "task_prompt": "Refactor the note schema: add a new field `priority` (int, range 1 through 5, default 3). Every NEW note must have a priority. All EXISTING notes in `notes_data/` must be migrated: if a note's JSON file is missing `priority`, add it with value 3. Update `notes/plan.md` to describe the new schema. Then run the test suite and fix any regressions.",
+      "eval_probes": [
+        {
+          "id": "s3_p6",
+          "prompt": "What are the CURRENT required fields in the note schema? List them exactly as they are NOW, not as they were before any refactors.",
+          "expected_keywords": [
+            "id",
+            "title",
+            "tags",
+            "body",
+            "priority"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "compare",
+          "chain_depth": 2,
+          "metric_tag": "version_accuracy"
+        }
+      ]
+    },
+    {
+      "session_idx": 4,
+      "task_prompt": "No new feature this session. Answer the following questions using only your workspace files (notes/plan.md and the code you've written). Do not guess. If a fact is in plan.md or the code, read it and report it accurately.",
+      "eval_probes": [
+        {
+          "id": "s4_p7",
+          "prompt": "What is the CURRENT note schema, and which command returns ONLY the notes that match a specific tag?",
+          "expected_keywords": [
+            "id",
+            "title",
+            "tags",
+            "body",
+            "priority",
+            "filter-by-tag"
+          ],
+          "forbidden_keywords": [
+            "sort-by-tag"
+          ],
+          "probe_type": "synthesize",
+          "chain_depth": 3,
+          "metric_tag": "recall"
+        },
+        {
+          "id": "s4_p8",
+          "prompt": "How many CLI commands does the notes tool have in total right now? Count them from the current command list.",
+          "expected_keywords": [
+            "7",
+            "seven"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "synthesize",
+          "chain_depth": 3,
+          "metric_tag": "accumulator"
+        },
+        {
+          "id": "s4_p9",
+          "prompt": "Which two commands in the CLI contain 'by-tag' in their name, and what does each one do?",
+          "expected_keywords": [
+            "filter-by-tag",
+            "sort-by-tag",
+            "subset",
+            "sort"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "compare",
+          "chain_depth": 2,
+          "metric_tag": "interference"
+        },
+        {
+          "id": "s4_p10",
+          "prompt": "In which session (0, 1, 2, 3, or 4) did you originally decide to use Click for CLI parsing?",
+          "expected_keywords": [
+            "0",
+            "zero",
+            "first",
+            "session 0"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "standalone",
+          "chain_depth": 4,
+          "metric_tag": "recall"
+        }
+      ]
+    },
+    {
+      "session_idx": 5,
+      "task_prompt": "Add a new `collections` feature to the notes CLI. A collection groups several notes under a named label (e.g., 'project-alpha', 'reading-list'). Store each collection as a JSON file under `collections_data/`. Implement: (1) `notes col-create <name>` \u2014 create an empty collection; (2) `notes col-add <collection_name> <note_id>` \u2014 add a note to a collection. Update `notes/plan.md` with the collection schema: {name (str), note_ids (list of int), created (str, ISO timestamp)}.",
+      "eval_probes": [
+        {
+          "id": "s5_p11",
+          "prompt": "What are the fields in the collection schema?",
+          "expected_keywords": [
+            "name",
+            "note_ids",
+            "created"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "compare",
+          "chain_depth": 1,
+          "metric_tag": "recall"
+        },
+        {
+          "id": "s5_p12",
+          "prompt": "Where on disk are collections stored, and in what format?",
+          "expected_keywords": [
+            "collections_data",
+            "json"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "standalone",
+          "chain_depth": 1,
+          "metric_tag": "recall"
+        }
+      ]
+    },
+    {
+      "session_idx": 6,
+      "task_prompt": "Add three more collection commands: (1) `col-ls` \u2014 list all collections with their sizes; (2) `col-show <name>` \u2014 print the notes in a collection; (3) `col-rm <name>` \u2014 delete a collection (but NOT the underlying notes). Do not break any prior commands. Update `notes/plan.md`.",
+      "eval_probes": [
+        {
+          "id": "s6_p13",
+          "prompt": "How many total CLI commands does the tool now have (counting ALL commands across the notes and collections features)? List them.",
+          "expected_keywords": [
+            "12",
+            "twelve",
+            "col-create",
+            "col-add",
+            "col-ls",
+            "col-show",
+            "col-rm"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "synthesize",
+          "chain_depth": 3,
+          "metric_tag": "accumulator"
+        }
+      ]
+    },
+    {
+      "session_idx": 7,
+      "task_prompt": "Add two collection filter/sort commands: (1) `col-filter <tag>` \u2014 return only collections that contain at least one note with that tag (a SUBSET of collections); (2) `col-sort <by>` \u2014 sort ALL collections by field (name|size|created). These pair with the earlier `filter-by-tag` / `sort-by-tag` at the note level. Keep collection-level and note-level commands distinct.",
+      "eval_probes": [
+        {
+          "id": "s7_p14",
+          "prompt": "You now have TWO 'filter' commands (one at the note level, one at the collection level) and TWO 'sort' commands. Which returns a SUBSET at the collection level, and which operates on notes?",
+          "expected_keywords": [
+            "col-filter",
+            "subset",
+            "filter-by-tag",
+            "notes"
+          ],
+          "forbidden_keywords": [
+            "col-sort returns subset"
+          ],
+          "probe_type": "compare",
+          "chain_depth": 2,
+          "metric_tag": "interference"
+        }
+      ]
+    },
+    {
+      "session_idx": 8,
+      "task_prompt": "Perform a major refactor: migrate ALL storage from individual JSON files (both `notes_data/` and `collections_data/`) to a single SQLite database at `notes.db`. Create two tables: `notes` and `collections`. Migrate all existing data into the database. The CLI commands should continue to work identically from the user's perspective. Update `notes/plan.md` to describe the new storage layer and retain the priority field from the earlier schema revision.",
+      "eval_probes": [
+        {
+          "id": "s8_p15",
+          "prompt": "What is the CURRENT storage backend for both notes and collections? State both the file name and the tables.",
+          "expected_keywords": [
+            "sqlite",
+            "notes.db",
+            "notes",
+            "collections"
+          ],
+          "forbidden_keywords": [
+            "notes_data",
+            "collections_data"
+          ],
+          "probe_type": "synthesize",
+          "chain_depth": 3,
+          "metric_tag": "version_accuracy"
+        }
+      ]
+    },
+    {
+      "session_idx": 9,
+      "task_prompt": "No new feature this session. Answer the following questions using ONLY your workspace files (notes/plan.md, the code, and the database schema). Do not guess.",
+      "eval_probes": [
+        {
+          "id": "s9_p16",
+          "prompt": "What is the CURRENT note schema, and what is the CURRENT storage backend? Provide both exactly as they are NOW.",
+          "expected_keywords": [
+            "id",
+            "title",
+            "tags",
+            "body",
+            "priority",
+            "sqlite",
+            "notes.db"
+          ],
+          "forbidden_keywords": [
+            "notes_data",
+            "json files"
+          ],
+          "probe_type": "synthesize",
+          "chain_depth": 4,
+          "metric_tag": "version_accuracy"
+        },
+        {
+          "id": "s9_p17",
+          "prompt": "How many total CLI commands exist across BOTH the notes and collections features?",
+          "expected_keywords": [
+            "14",
+            "fourteen"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "synthesize",
+          "chain_depth": 4,
+          "metric_tag": "accumulator"
+        },
+        {
+          "id": "s9_p18",
+          "prompt": "List ALL 'filter' commands and ALL 'sort' commands you have built, and state which operate on notes vs collections.",
+          "expected_keywords": [
+            "filter-by-tag",
+            "sort-by-tag",
+            "col-filter",
+            "col-sort",
+            "notes",
+            "collections"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "compare",
+          "chain_depth": 3,
+          "metric_tag": "interference"
+        },
+        {
+          "id": "s9_p19",
+          "prompt": "Which came first in your development history \u2014 the notes schema with priority field, or the SQLite migration? Reference the relevant sessions (0\u20139).",
+          "expected_keywords": [
+            "priority",
+            "session 3",
+            "sqlite",
+            "session 8"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "standalone",
+          "chain_depth": 5,
+          "metric_tag": "recall"
+        }
+      ]
+    },
+    {
+      "session_idx": 10,
+      "task_prompt": "No new feature work this session. Please briefly re-read your notes/plan.md to refresh yourself on the current state of the project, then answer the following questions using only your workspace files. Do not guess.",
+      "eval_probes": [
+        {
+          "id": "s10_lh_s9_p18",
+          "prompt": "List ALL 'filter' commands and ALL 'sort' commands you have built, and state which operate on notes vs collections.",
+          "expected_keywords": [
+            "filter-by-tag",
+            "sort-by-tag",
+            "col-filter",
+            "col-sort",
+            "notes",
+            "collections"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "compare",
+          "chain_depth": 4,
+          "metric_tag": "interference"
+        },
+        {
+          "id": "s10_lh_s9_p16",
+          "prompt": "What is the CURRENT note schema, and what is the CURRENT storage backend? Provide both exactly as they are NOW.",
+          "expected_keywords": [
+            "id",
+            "title",
+            "tags",
+            "body",
+            "priority",
+            "sqlite",
+            "notes.db"
+          ],
+          "forbidden_keywords": [
+            "notes_data",
+            "json files"
+          ],
+          "probe_type": "synthesize",
+          "chain_depth": 5,
+          "metric_tag": "version_accuracy"
+        },
+        {
+          "id": "s10_lh_s9_p17",
+          "prompt": "How many total CLI commands exist across BOTH the notes and collections features?",
+          "expected_keywords": [
+            "14",
+            "fourteen"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "synthesize",
+          "chain_depth": 5,
+          "metric_tag": "accumulator"
+        }
+      ]
+    },
+    {
+      "session_idx": 11,
+      "task_prompt": "No new feature work this session. Please briefly re-read your notes/plan.md to refresh yourself on the current state of the project, then answer the following questions using only your workspace files. Do not guess.",
+      "eval_probes": [
+        {
+          "id": "s11_lh_s9_p17",
+          "prompt": "How many total CLI commands exist across BOTH the notes and collections features?",
+          "expected_keywords": [
+            "14",
+            "fourteen"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "synthesize",
+          "chain_depth": 6,
+          "metric_tag": "accumulator"
+        },
+        {
+          "id": "s11_lh_s9_p19",
+          "prompt": "Which came first in your development history \u2014 the notes schema with priority field, or the SQLite migration? Reference the relevant sessions (0\u20139).",
+          "expected_keywords": [
+            "priority",
+            "session 3",
+            "sqlite",
+            "session 8"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "standalone",
+          "chain_depth": 7,
+          "metric_tag": "recall"
+        },
+        {
+          "id": "s11_lh_s9_p18",
+          "prompt": "List ALL 'filter' commands and ALL 'sort' commands you have built, and state which operate on notes vs collections.",
+          "expected_keywords": [
+            "filter-by-tag",
+            "sort-by-tag",
+            "col-filter",
+            "col-sort",
+            "notes",
+            "collections"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "compare",
+          "chain_depth": 5,
+          "metric_tag": "interference"
+        }
+      ]
+    },
+    {
+      "session_idx": 12,
+      "task_prompt": "No new feature work this session. Please briefly re-read your notes/plan.md to refresh yourself on the current state of the project, then answer the following questions using only your workspace files. Do not guess.",
+      "eval_probes": [
+        {
+          "id": "s12_lh_s9_p17",
+          "prompt": "How many total CLI commands exist across BOTH the notes and collections features?",
+          "expected_keywords": [
+            "14",
+            "fourteen"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "synthesize",
+          "chain_depth": 7,
+          "metric_tag": "accumulator"
+        },
+        {
+          "id": "s12_lh_s9_p19",
+          "prompt": "Which came first in your development history \u2014 the notes schema with priority field, or the SQLite migration? Reference the relevant sessions (0\u20139).",
+          "expected_keywords": [
+            "priority",
+            "session 3",
+            "sqlite",
+            "session 8"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "standalone",
+          "chain_depth": 8,
+          "metric_tag": "recall"
+        },
+        {
+          "id": "s12_lh_s9_p18",
+          "prompt": "List ALL 'filter' commands and ALL 'sort' commands you have built, and state which operate on notes vs collections.",
+          "expected_keywords": [
+            "filter-by-tag",
+            "sort-by-tag",
+            "col-filter",
+            "col-sort",
+            "notes",
+            "collections"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "compare",
+          "chain_depth": 6,
+          "metric_tag": "interference"
+        }
+      ]
+    },
+    {
+      "session_idx": 13,
+      "task_prompt": "No new feature work this session. Please briefly re-read your notes/plan.md to refresh yourself on the current state of the project, then answer the following questions using only your workspace files. Do not guess.",
+      "eval_probes": [
+        {
+          "id": "s13_lh_s9_p16",
+          "prompt": "What is the CURRENT note schema, and what is the CURRENT storage backend? Provide both exactly as they are NOW.",
+          "expected_keywords": [
+            "id",
+            "title",
+            "tags",
+            "body",
+            "priority",
+            "sqlite",
+            "notes.db"
+          ],
+          "forbidden_keywords": [
+            "notes_data",
+            "json files"
+          ],
+          "probe_type": "synthesize",
+          "chain_depth": 8,
+          "metric_tag": "version_accuracy"
+        },
+        {
+          "id": "s13_lh_s9_p19",
+          "prompt": "Which came first in your development history \u2014 the notes schema with priority field, or the SQLite migration? Reference the relevant sessions (0\u20139).",
+          "expected_keywords": [
+            "priority",
+            "session 3",
+            "sqlite",
+            "session 8"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "standalone",
+          "chain_depth": 9,
+          "metric_tag": "recall"
+        },
+        {
+          "id": "s13_lh_s9_p18",
+          "prompt": "List ALL 'filter' commands and ALL 'sort' commands you have built, and state which operate on notes vs collections.",
+          "expected_keywords": [
+            "filter-by-tag",
+            "sort-by-tag",
+            "col-filter",
+            "col-sort",
+            "notes",
+            "collections"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "compare",
+          "chain_depth": 7,
+          "metric_tag": "interference"
+        }
+      ]
+    },
+    {
+      "session_idx": 14,
+      "task_prompt": "No new feature work this session. Please briefly re-read your notes/plan.md to refresh yourself on the current state of the project, then answer the following questions using only your workspace files. Do not guess.",
+      "eval_probes": [
+        {
+          "id": "s14_lh_s9_p16",
+          "prompt": "What is the CURRENT note schema, and what is the CURRENT storage backend? Provide both exactly as they are NOW.",
+          "expected_keywords": [
+            "id",
+            "title",
+            "tags",
+            "body",
+            "priority",
+            "sqlite",
+            "notes.db"
+          ],
+          "forbidden_keywords": [
+            "notes_data",
+            "json files"
+          ],
+          "probe_type": "synthesize",
+          "chain_depth": 9,
+          "metric_tag": "version_accuracy"
+        },
+        {
+          "id": "s14_lh_s9_p17",
+          "prompt": "How many total CLI commands exist across BOTH the notes and collections features?",
+          "expected_keywords": [
+            "14",
+            "fourteen"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "synthesize",
+          "chain_depth": 9,
+          "metric_tag": "accumulator"
+        },
+        {
+          "id": "s14_lh_s9_p18",
+          "prompt": "List ALL 'filter' commands and ALL 'sort' commands you have built, and state which operate on notes vs collections.",
+          "expected_keywords": [
+            "filter-by-tag",
+            "sort-by-tag",
+            "col-filter",
+            "col-sort",
+            "notes",
+            "collections"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "compare",
+          "chain_depth": 8,
+          "metric_tag": "interference"
+        }
+      ]
+    },
+    {
+      "session_idx": 15,
+      "task_prompt": "No new feature work this session. Please briefly re-read your notes/plan.md to refresh yourself on the current state of the project, then answer the following questions using only your workspace files. Do not guess.",
+      "eval_probes": [
+        {
+          "id": "s15_lh_s9_p16",
+          "prompt": "What is the CURRENT note schema, and what is the CURRENT storage backend? Provide both exactly as they are NOW.",
+          "expected_keywords": [
+            "id",
+            "title",
+            "tags",
+            "body",
+            "priority",
+            "sqlite",
+            "notes.db"
+          ],
+          "forbidden_keywords": [
+            "notes_data",
+            "json files"
+          ],
+          "probe_type": "synthesize",
+          "chain_depth": 10,
+          "metric_tag": "version_accuracy"
+        },
+        {
+          "id": "s15_lh_s9_p17",
+          "prompt": "How many total CLI commands exist across BOTH the notes and collections features?",
+          "expected_keywords": [
+            "14",
+            "fourteen"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "synthesize",
+          "chain_depth": 10,
+          "metric_tag": "accumulator"
+        },
+        {
+          "id": "s15_lh_s9_p19",
+          "prompt": "Which came first in your development history \u2014 the notes schema with priority field, or the SQLite migration? Reference the relevant sessions (0\u20139).",
+          "expected_keywords": [
+            "priority",
+            "session 3",
+            "sqlite",
+            "session 8"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "standalone",
+          "chain_depth": 11,
+          "metric_tag": "recall"
+        }
+      ]
+    },
+    {
+      "session_idx": 16,
+      "task_prompt": "No new feature work this session. Please briefly re-read your notes/plan.md to refresh yourself on the current state of the project, then answer the following questions using only your workspace files. Do not guess.",
+      "eval_probes": [
+        {
+          "id": "s16_lh_s9_p17",
+          "prompt": "How many total CLI commands exist across BOTH the notes and collections features?",
+          "expected_keywords": [
+            "14",
+            "fourteen"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "synthesize",
+          "chain_depth": 11,
+          "metric_tag": "accumulator"
+        },
+        {
+          "id": "s16_lh_s9_p16",
+          "prompt": "What is the CURRENT note schema, and what is the CURRENT storage backend? Provide both exactly as they are NOW.",
+          "expected_keywords": [
+            "id",
+            "title",
+            "tags",
+            "body",
+            "priority",
+            "sqlite",
+            "notes.db"
+          ],
+          "forbidden_keywords": [
+            "notes_data",
+            "json files"
+          ],
+          "probe_type": "synthesize",
+          "chain_depth": 11,
+          "metric_tag": "version_accuracy"
+        },
+        {
+          "id": "s16_lh_s9_p18",
+          "prompt": "List ALL 'filter' commands and ALL 'sort' commands you have built, and state which operate on notes vs collections.",
+          "expected_keywords": [
+            "filter-by-tag",
+            "sort-by-tag",
+            "col-filter",
+            "col-sort",
+            "notes",
+            "collections"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "compare",
+          "chain_depth": 10,
+          "metric_tag": "interference"
+        }
+      ]
+    },
+    {
+      "session_idx": 17,
+      "task_prompt": "No new feature work this session. Please briefly re-read your notes/plan.md to refresh yourself on the current state of the project, then answer the following questions using only your workspace files. Do not guess.",
+      "eval_probes": [
+        {
+          "id": "s17_lh_s9_p17",
+          "prompt": "How many total CLI commands exist across BOTH the notes and collections features?",
+          "expected_keywords": [
+            "14",
+            "fourteen"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "synthesize",
+          "chain_depth": 12,
+          "metric_tag": "accumulator"
+        },
+        {
+          "id": "s17_lh_s9_p16",
+          "prompt": "What is the CURRENT note schema, and what is the CURRENT storage backend? Provide both exactly as they are NOW.",
+          "expected_keywords": [
+            "id",
+            "title",
+            "tags",
+            "body",
+            "priority",
+            "sqlite",
+            "notes.db"
+          ],
+          "forbidden_keywords": [
+            "notes_data",
+            "json files"
+          ],
+          "probe_type": "synthesize",
+          "chain_depth": 12,
+          "metric_tag": "version_accuracy"
+        },
+        {
+          "id": "s17_lh_s9_p19",
+          "prompt": "Which came first in your development history \u2014 the notes schema with priority field, or the SQLite migration? Reference the relevant sessions (0\u20139).",
+          "expected_keywords": [
+            "priority",
+            "session 3",
+            "sqlite",
+            "session 8"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "standalone",
+          "chain_depth": 13,
+          "metric_tag": "recall"
+        }
+      ]
+    },
+    {
+      "session_idx": 18,
+      "task_prompt": "No new feature work this session. Please briefly re-read your notes/plan.md to refresh yourself on the current state of the project, then answer the following questions using only your workspace files. Do not guess.",
+      "eval_probes": [
+        {
+          "id": "s18_lh_s9_p18",
+          "prompt": "List ALL 'filter' commands and ALL 'sort' commands you have built, and state which operate on notes vs collections.",
+          "expected_keywords": [
+            "filter-by-tag",
+            "sort-by-tag",
+            "col-filter",
+            "col-sort",
+            "notes",
+            "collections"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "compare",
+          "chain_depth": 12,
+          "metric_tag": "interference"
+        },
+        {
+          "id": "s18_lh_s9_p17",
+          "prompt": "How many total CLI commands exist across BOTH the notes and collections features?",
+          "expected_keywords": [
+            "14",
+            "fourteen"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "synthesize",
+          "chain_depth": 13,
+          "metric_tag": "accumulator"
+        },
+        {
+          "id": "s18_lh_s9_p16",
+          "prompt": "What is the CURRENT note schema, and what is the CURRENT storage backend? Provide both exactly as they are NOW.",
+          "expected_keywords": [
+            "id",
+            "title",
+            "tags",
+            "body",
+            "priority",
+            "sqlite",
+            "notes.db"
+          ],
+          "forbidden_keywords": [
+            "notes_data",
+            "json files"
+          ],
+          "probe_type": "synthesize",
+          "chain_depth": 13,
+          "metric_tag": "version_accuracy"
+        }
+      ]
+    },
+    {
+      "session_idx": 19,
+      "task_prompt": "No new feature work this session. Please briefly re-read your notes/plan.md to refresh yourself on the current state of the project, then answer the following questions using only your workspace files. Do not guess.",
+      "eval_probes": [
+        {
+          "id": "s19_lh_s9_p19",
+          "prompt": "Which came first in your development history \u2014 the notes schema with priority field, or the SQLite migration? Reference the relevant sessions (0\u20139).",
+          "expected_keywords": [
+            "priority",
+            "session 3",
+            "sqlite",
+            "session 8"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "standalone",
+          "chain_depth": 15,
+          "metric_tag": "recall"
+        },
+        {
+          "id": "s19_lh_s9_p16",
+          "prompt": "What is the CURRENT note schema, and what is the CURRENT storage backend? Provide both exactly as they are NOW.",
+          "expected_keywords": [
+            "id",
+            "title",
+            "tags",
+            "body",
+            "priority",
+            "sqlite",
+            "notes.db"
+          ],
+          "forbidden_keywords": [
+            "notes_data",
+            "json files"
+          ],
+          "probe_type": "synthesize",
+          "chain_depth": 14,
+          "metric_tag": "version_accuracy"
+        },
+        {
+          "id": "s19_lh_s9_p18",
+          "prompt": "List ALL 'filter' commands and ALL 'sort' commands you have built, and state which operate on notes vs collections.",
+          "expected_keywords": [
+            "filter-by-tag",
+            "sort-by-tag",
+            "col-filter",
+            "col-sort",
+            "notes",
+            "collections"
+          ],
+          "forbidden_keywords": [],
+          "probe_type": "compare",
+          "chain_depth": 13,
+          "metric_tag": "interference"
+        }
+      ]
+    }
+  ],
+  "dependency_graph": {
+    "tasks": {
+      "s0_p1": {
+        "session": 0,
+        "depends_on_facts": [
+          "f1_v2",
+          "f2",
+          "f3",
+          "f5",
+          "f6a"
+        ],
+        "depends_on_sessions": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "dependency_type": "compare",
+        "chain_depth": 2,
+        "fact_versions_required": {
+          "f1_v2": 2,
+          "f2": 2,
+          "f3": 1,
+          "f5": 1,
+          "f6a": 1
+        }
+      },
+      "s0_p2": {
+        "session": 0,
+        "depends_on_facts": [
+          "f1_v2",
+          "f2",
+          "f3",
+          "f5",
+          "f6a"
+        ],
+        "depends_on_sessions": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "dependency_type": "standalone",
+        "chain_depth": 2,
+        "fact_versions_required": {
+          "f1_v2": 2,
+          "f2": 2,
+          "f3": 1,
+          "f5": 1,
+          "f6a": 1
+        }
+      },
+      "s1_p4": {
+        "session": 1,
+        "depends_on_facts": [
+          "f1_v2",
+          "f2",
+          "f3",
+          "f5",
+          "f6a"
+        ],
+        "depends_on_sessions": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "dependency_type": "standalone",
+        "chain_depth": 2,
+        "fact_versions_required": {
+          "f1_v2": 2,
+          "f2": 2,
+          "f3": 1,
+          "f5": 1,
+          "f6a": 1
+        }
+      },
+      "s2_p5": {
+        "session": 2,
+        "depends_on_facts": [
+          "f6a",
+          "f6b"
+        ],
+        "depends_on_sessions": [
+          2
+        ],
+        "dependency_type": "compare",
+        "chain_depth": 1,
+        "fact_versions_required": {
+          "f6a": 1,
+          "f6b": 1
+        }
+      },
+      "s3_p6": {
+        "session": 3,
+        "depends_on_facts": [
+          "f1_v2"
+        ],
+        "depends_on_sessions": [
+          3
+        ],
+        "dependency_type": "compare",
+        "chain_depth": 2,
+        "fact_versions_required": {
+          "f1_v2": 2
+        }
+      },
+      "s4_p7": {
+        "session": 4,
+        "depends_on_facts": [
+          "f1_v2",
+          "f2",
+          "f3",
+          "f5",
+          "f6a"
+        ],
+        "depends_on_sessions": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "dependency_type": "synthesize",
+        "chain_depth": 2,
+        "fact_versions_required": {
+          "f1_v2": 2,
+          "f2": 2,
+          "f3": 1,
+          "f5": 1,
+          "f6a": 1
+        }
+      },
+      "s4_p9": {
+        "session": 4,
+        "depends_on_facts": [
+          "f6a",
+          "f6b"
+        ],
+        "depends_on_sessions": [
+          2
+        ],
+        "dependency_type": "compare",
+        "chain_depth": 1,
+        "fact_versions_required": {
+          "f6a": 1,
+          "f6b": 1
+        }
+      },
+      "s4_p10": {
+        "session": 4,
+        "depends_on_facts": [
+          "f1_v2",
+          "f2",
+          "f3",
+          "f5",
+          "f6a"
+        ],
+        "depends_on_sessions": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "dependency_type": "standalone",
+        "chain_depth": 2,
+        "fact_versions_required": {
+          "f1_v2": 2,
+          "f2": 2,
+          "f3": 1,
+          "f5": 1,
+          "f6a": 1
+        }
+      },
+      "s5_p11": {
+        "session": 5,
+        "depends_on_facts": [
+          "f1_v2",
+          "f2",
+          "f3",
+          "f5",
+          "f6a"
+        ],
+        "depends_on_sessions": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "dependency_type": "compare",
+        "chain_depth": 2,
+        "fact_versions_required": {
+          "f1_v2": 2,
+          "f2": 2,
+          "f3": 1,
+          "f5": 1,
+          "f6a": 1
+        }
+      },
+      "s5_p12": {
+        "session": 5,
+        "depends_on_facts": [
+          "f1_v2",
+          "f2",
+          "f3",
+          "f5",
+          "f6a"
+        ],
+        "depends_on_sessions": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "dependency_type": "standalone",
+        "chain_depth": 2,
+        "fact_versions_required": {
+          "f1_v2": 2,
+          "f2": 2,
+          "f3": 1,
+          "f5": 1,
+          "f6a": 1
+        }
+      },
+      "s7_p14": {
+        "session": 7,
+        "depends_on_facts": [
+          "f6a",
+          "f6b"
+        ],
+        "depends_on_sessions": [
+          2
+        ],
+        "dependency_type": "compare",
+        "chain_depth": 1,
+        "fact_versions_required": {
+          "f6a": 1,
+          "f6b": 1
+        }
+      },
+      "s8_p15": {
+        "session": 8,
+        "depends_on_facts": [
+          "f1_v2"
+        ],
+        "depends_on_sessions": [
+          3
+        ],
+        "dependency_type": "synthesize",
+        "chain_depth": 2,
+        "fact_versions_required": {
+          "f1_v2": 2
+        }
+      },
+      "s9_p16": {
+        "session": 9,
+        "depends_on_facts": [
+          "f1_v2"
+        ],
+        "depends_on_sessions": [
+          3
+        ],
+        "dependency_type": "synthesize",
+        "chain_depth": 2,
+        "fact_versions_required": {
+          "f1_v2": 2
+        }
+      },
+      "s9_p18": {
+        "session": 9,
+        "depends_on_facts": [
+          "f6a",
+          "f6b"
+        ],
+        "depends_on_sessions": [
+          2
+        ],
+        "dependency_type": "compare",
+        "chain_depth": 1,
+        "fact_versions_required": {
+          "f6a": 1,
+          "f6b": 1
+        }
+      },
+      "s9_p19": {
+        "session": 9,
+        "depends_on_facts": [
+          "f1_v2",
+          "f2",
+          "f3",
+          "f5",
+          "f6a"
+        ],
+        "depends_on_sessions": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "dependency_type": "standalone",
+        "chain_depth": 2,
+        "fact_versions_required": {
+          "f1_v2": 2,
+          "f2": 2,
+          "f3": 1,
+          "f5": 1,
+          "f6a": 1
+        }
+      },
+      "s10_lh_s9_p18": {
+        "session": 10,
+        "depends_on_facts": [
+          "f6a",
+          "f6b"
+        ],
+        "depends_on_sessions": [
+          2
+        ],
+        "dependency_type": "compare",
+        "chain_depth": 1,
+        "fact_versions_required": {
+          "f6a": 1,
+          "f6b": 1
+        }
+      },
+      "s10_lh_s9_p16": {
+        "session": 10,
+        "depends_on_facts": [
+          "f1_v2"
+        ],
+        "depends_on_sessions": [
+          3
+        ],
+        "dependency_type": "synthesize",
+        "chain_depth": 2,
+        "fact_versions_required": {
+          "f1_v2": 2
+        }
+      },
+      "s11_lh_s9_p19": {
+        "session": 11,
+        "depends_on_facts": [
+          "f1_v2",
+          "f2",
+          "f3",
+          "f5",
+          "f6a"
+        ],
+        "depends_on_sessions": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "dependency_type": "standalone",
+        "chain_depth": 2,
+        "fact_versions_required": {
+          "f1_v2": 2,
+          "f2": 2,
+          "f3": 1,
+          "f5": 1,
+          "f6a": 1
+        }
+      },
+      "s11_lh_s9_p18": {
+        "session": 11,
+        "depends_on_facts": [
+          "f6a",
+          "f6b"
+        ],
+        "depends_on_sessions": [
+          2
+        ],
+        "dependency_type": "compare",
+        "chain_depth": 1,
+        "fact_versions_required": {
+          "f6a": 1,
+          "f6b": 1
+        }
+      },
+      "s12_lh_s9_p19": {
+        "session": 12,
+        "depends_on_facts": [
+          "f1_v2",
+          "f2",
+          "f3",
+          "f5",
+          "f6a"
+        ],
+        "depends_on_sessions": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "dependency_type": "standalone",
+        "chain_depth": 2,
+        "fact_versions_required": {
+          "f1_v2": 2,
+          "f2": 2,
+          "f3": 1,
+          "f5": 1,
+          "f6a": 1
+        }
+      },
+      "s12_lh_s9_p18": {
+        "session": 12,
+        "depends_on_facts": [
+          "f6a",
+          "f6b"
+        ],
+        "depends_on_sessions": [
+          2
+        ],
+        "dependency_type": "compare",
+        "chain_depth": 1,
+        "fact_versions_required": {
+          "f6a": 1,
+          "f6b": 1
+        }
+      },
+      "s13_lh_s9_p16": {
+        "session": 13,
+        "depends_on_facts": [
+          "f1_v2"
+        ],
+        "depends_on_sessions": [
+          3
+        ],
+        "dependency_type": "synthesize",
+        "chain_depth": 2,
+        "fact_versions_required": {
+          "f1_v2": 2
+        }
+      },
+      "s13_lh_s9_p19": {
+        "session": 13,
+        "depends_on_facts": [
+          "f1_v2",
+          "f2",
+          "f3",
+          "f5",
+          "f6a"
+        ],
+        "depends_on_sessions": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "dependency_type": "standalone",
+        "chain_depth": 2,
+        "fact_versions_required": {
+          "f1_v2": 2,
+          "f2": 2,
+          "f3": 1,
+          "f5": 1,
+          "f6a": 1
+        }
+      },
+      "s13_lh_s9_p18": {
+        "session": 13,
+        "depends_on_facts": [
+          "f6a",
+          "f6b"
+        ],
+        "depends_on_sessions": [
+          2
+        ],
+        "dependency_type": "compare",
+        "chain_depth": 1,
+        "fact_versions_required": {
+          "f6a": 1,
+          "f6b": 1
+        }
+      },
+      "s14_lh_s9_p16": {
+        "session": 14,
+        "depends_on_facts": [
+          "f1_v2"
+        ],
+        "depends_on_sessions": [
+          3
+        ],
+        "dependency_type": "synthesize",
+        "chain_depth": 2,
+        "fact_versions_required": {
+          "f1_v2": 2
+        }
+      },
+      "s14_lh_s9_p18": {
+        "session": 14,
+        "depends_on_facts": [
+          "f6a",
+          "f6b"
+        ],
+        "depends_on_sessions": [
+          2
+        ],
+        "dependency_type": "compare",
+        "chain_depth": 1,
+        "fact_versions_required": {
+          "f6a": 1,
+          "f6b": 1
+        }
+      },
+      "s15_lh_s9_p16": {
+        "session": 15,
+        "depends_on_facts": [
+          "f1_v2"
+        ],
+        "depends_on_sessions": [
+          3
+        ],
+        "dependency_type": "synthesize",
+        "chain_depth": 2,
+        "fact_versions_required": {
+          "f1_v2": 2
+        }
+      },
+      "s15_lh_s9_p19": {
+        "session": 15,
+        "depends_on_facts": [
+          "f1_v2",
+          "f2",
+          "f3",
+          "f5",
+          "f6a"
+        ],
+        "depends_on_sessions": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "dependency_type": "standalone",
+        "chain_depth": 2,
+        "fact_versions_required": {
+          "f1_v2": 2,
+          "f2": 2,
+          "f3": 1,
+          "f5": 1,
+          "f6a": 1
+        }
+      },
+      "s16_lh_s9_p16": {
+        "session": 16,
+        "depends_on_facts": [
+          "f1_v2"
+        ],
+        "depends_on_sessions": [
+          3
+        ],
+        "dependency_type": "synthesize",
+        "chain_depth": 2,
+        "fact_versions_required": {
+          "f1_v2": 2
+        }
+      },
+      "s16_lh_s9_p18": {
+        "session": 16,
+        "depends_on_facts": [
+          "f6a",
+          "f6b"
+        ],
+        "depends_on_sessions": [
+          2
+        ],
+        "dependency_type": "compare",
+        "chain_depth": 1,
+        "fact_versions_required": {
+          "f6a": 1,
+          "f6b": 1
+        }
+      },
+      "s17_lh_s9_p16": {
+        "session": 17,
+        "depends_on_facts": [
+          "f1_v2"
+        ],
+        "depends_on_sessions": [
+          3
+        ],
+        "dependency_type": "synthesize",
+        "chain_depth": 2,
+        "fact_versions_required": {
+          "f1_v2": 2
+        }
+      },
+      "s17_lh_s9_p19": {
+        "session": 17,
+        "depends_on_facts": [
+          "f1_v2",
+          "f2",
+          "f3",
+          "f5",
+          "f6a"
+        ],
+        "depends_on_sessions": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "dependency_type": "standalone",
+        "chain_depth": 2,
+        "fact_versions_required": {
+          "f1_v2": 2,
+          "f2": 2,
+          "f3": 1,
+          "f5": 1,
+          "f6a": 1
+        }
+      },
+      "s18_lh_s9_p18": {
+        "session": 18,
+        "depends_on_facts": [
+          "f6a",
+          "f6b"
+        ],
+        "depends_on_sessions": [
+          2
+        ],
+        "dependency_type": "compare",
+        "chain_depth": 1,
+        "fact_versions_required": {
+          "f6a": 1,
+          "f6b": 1
+        }
+      },
+      "s18_lh_s9_p16": {
+        "session": 18,
+        "depends_on_facts": [
+          "f1_v2"
+        ],
+        "depends_on_sessions": [
+          3
+        ],
+        "dependency_type": "synthesize",
+        "chain_depth": 2,
+        "fact_versions_required": {
+          "f1_v2": 2
+        }
+      },
+      "s19_lh_s9_p19": {
+        "session": 19,
+        "depends_on_facts": [
+          "f1_v2",
+          "f2",
+          "f3",
+          "f5",
+          "f6a"
+        ],
+        "depends_on_sessions": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "dependency_type": "standalone",
+        "chain_depth": 2,
+        "fact_versions_required": {
+          "f1_v2": 2,
+          "f2": 2,
+          "f3": 1,
+          "f5": 1,
+          "f6a": 1
+        }
+      },
+      "s19_lh_s9_p16": {
+        "session": 19,
+        "depends_on_facts": [
+          "f1_v2"
+        ],
+        "depends_on_sessions": [
+          3
+        ],
+        "dependency_type": "synthesize",
+        "chain_depth": 2,
+        "fact_versions_required": {
+          "f1_v2": 2
+        }
+      },
+      "s19_lh_s9_p18": {
+        "session": 19,
+        "depends_on_facts": [
+          "f6a",
+          "f6b"
+        ],
+        "depends_on_sessions": [
+          2
+        ],
+        "dependency_type": "compare",
+        "chain_depth": 1,
+        "fact_versions_required": {
+          "f6a": 1,
+          "f6b": 1
+        }
+      }
+    },
+    "facts": {
+      "f1": {
+        "introduced_session": 0,
+        "domain": "schema",
+        "versions": [
+          {
+            "version": 1,
+            "session": 0,
+            "keywords": [
+              "id",
+              "title",
+              "tags",
+              "body",
+              "citation"
+            ],
+            "content": "note schema = {id, title, tags, body, citation}",
+            "fact_id": "f1",
+            "current": false,
+            "invalidated_at": null
+          },
+          {
+            "version": 2,
+            "session": 3,
+            "keywords": [
+              "id",
+              "title",
+              "tags",
+              "body",
+              "citation",
+              "priority"
+            ],
+            "content": "note schema = {id, title, tags, body, citation, priority}",
+            "fact_id": "f1_v2",
+            "current": true,
+            "invalidated_at": null
+          }
+        ],
+        "referenced_by_tasks": [
+          "s0_p1",
+          "s0_p2",
+          "s1_p4",
+          "s3_p6",
+          "s4_p7",
+          "s4_p10",
+          "s5_p11",
+          "s5_p12",
+          "s8_p15",
+          "s9_p16",
+          "s9_p19",
+          "s10_lh_s9_p16",
+          "s11_lh_s9_p19",
+          "s12_lh_s9_p19",
+          "s13_lh_s9_p16",
+          "s13_lh_s9_p19",
+          "s14_lh_s9_p16",
+          "s15_lh_s9_p16",
+          "s15_lh_s9_p19",
+          "s16_lh_s9_p16",
+          "s17_lh_s9_p16",
+          "s17_lh_s9_p19",
+          "s18_lh_s9_p16",
+          "s19_lh_s9_p19",
+          "s19_lh_s9_p16"
+        ]
+      },
+      "f2": {
+        "introduced_session": 0,
+        "domain": "storage",
+        "versions": [
+          {
+            "version": 1,
+            "session": 0,
+            "keywords": [
+              "notes_data",
+              "json"
+            ],
+            "content": "notes stored as per-note JSON under notes_data/",
+            "fact_id": "f2",
+            "current": false,
+            "invalidated_at": null
+          },
+          {
+            "version": 2,
+            "session": 8,
+            "keywords": [
+              "sqlite",
+              "notes.db",
+              "notes"
+            ],
+            "content": "notes stored in SQLite at notes.db (notes table)",
+            "fact_id": "f2_v2",
+            "current": true,
+            "invalidated_at": null
+          }
+        ],
+        "referenced_by_tasks": [
+          "s0_p1",
+          "s0_p2",
+          "s1_p4",
+          "s4_p7",
+          "s4_p10",
+          "s5_p11",
+          "s5_p12",
+          "s9_p19",
+          "s11_lh_s9_p19",
+          "s12_lh_s9_p19",
+          "s13_lh_s9_p19",
+          "s15_lh_s9_p19",
+          "s17_lh_s9_p19",
+          "s19_lh_s9_p19"
+        ]
+      },
+      "f3": {
+        "introduced_session": 0,
+        "domain": "framework",
+        "versions": [
+          {
+            "version": 1,
+            "session": 0,
+            "keywords": [
+              "click"
+            ],
+            "content": "CLI = Click",
+            "fact_id": "f3",
+            "current": true,
+            "invalidated_at": null
+          }
+        ],
+        "referenced_by_tasks": [
+          "s0_p1",
+          "s0_p2",
+          "s1_p4",
+          "s4_p7",
+          "s4_p10",
+          "s5_p11",
+          "s5_p12",
+          "s9_p19",
+          "s11_lh_s9_p19",
+          "s12_lh_s9_p19",
+          "s13_lh_s9_p19",
+          "s15_lh_s9_p19",
+          "s17_lh_s9_p19",
+          "s19_lh_s9_p19"
+        ]
+      },
+      "f4": {
+        "introduced_session": 1,
+        "domain": "search",
+        "versions": [
+          {
+            "version": 1,
+            "session": 1,
+            "keywords": [
+              "substring",
+              "title",
+              "body"
+            ],
+            "content": "search = case-insensitive substring on title + body",
+            "fact_id": "f4",
+            "current": true,
+            "invalidated_at": null
+          }
+        ],
+        "referenced_by_tasks": []
+      },
+      "f5": {
+        "introduced_session": 1,
+        "domain": "commands",
+        "versions": [
+          {
+            "version": 1,
+            "session": 1,
+            "keywords": [
+              "add",
+              "ls",
+              "show",
+              "rm",
+              "search"
+            ],
+            "content": "CLI commands = {add, ls, show, rm, search}",
+            "fact_id": "f5",
+            "current": true,
+            "invalidated_at": null
+          }
+        ],
+        "referenced_by_tasks": [
+          "s0_p1",
+          "s0_p2",
+          "s1_p4",
+          "s4_p7",
+          "s4_p10",
+          "s5_p11",
+          "s5_p12",
+          "s9_p19",
+          "s11_lh_s9_p19",
+          "s12_lh_s9_p19",
+          "s13_lh_s9_p19",
+          "s15_lh_s9_p19",
+          "s17_lh_s9_p19",
+          "s19_lh_s9_p19"
+        ]
+      },
+      "f6a": {
+        "introduced_session": 2,
+        "domain": "filter",
+        "versions": [
+          {
+            "version": 1,
+            "session": 2,
+            "keywords": [
+              "filter-by-tag",
+              "subset"
+            ],
+            "content": "filter-by-tag returns subset of notes matching tag",
+            "fact_id": "f6a",
+            "current": true,
+            "invalidated_at": null
+          }
+        ],
+        "referenced_by_tasks": [
+          "s0_p1",
+          "s0_p2",
+          "s1_p4",
+          "s2_p5",
+          "s4_p7",
+          "s4_p9",
+          "s4_p10",
+          "s5_p11",
+          "s5_p12",
+          "s7_p14",
+          "s9_p18",
+          "s9_p19",
+          "s10_lh_s9_p18",
+          "s11_lh_s9_p19",
+          "s11_lh_s9_p18",
+          "s12_lh_s9_p19",
+          "s12_lh_s9_p18",
+          "s13_lh_s9_p19",
+          "s13_lh_s9_p18",
+          "s14_lh_s9_p18",
+          "s15_lh_s9_p19",
+          "s16_lh_s9_p18",
+          "s17_lh_s9_p19",
+          "s18_lh_s9_p18",
+          "s19_lh_s9_p19",
+          "s19_lh_s9_p18"
+        ]
+      },
+      "f6b": {
+        "introduced_session": 2,
+        "domain": "sort",
+        "versions": [
+          {
+            "version": 1,
+            "session": 2,
+            "keywords": [
+              "sort-by-tag",
+              "all",
+              "reorder"
+            ],
+            "content": "sort-by-tag returns ALL notes reordered by first tag",
+            "fact_id": "f6b",
+            "current": true,
+            "invalidated_at": null
+          }
+        ],
+        "referenced_by_tasks": [
+          "s2_p5",
+          "s4_p9",
+          "s7_p14",
+          "s9_p18",
+          "s10_lh_s9_p18",
+          "s11_lh_s9_p18",
+          "s12_lh_s9_p18",
+          "s13_lh_s9_p18",
+          "s14_lh_s9_p18",
+          "s16_lh_s9_p18",
+          "s18_lh_s9_p18",
+          "s19_lh_s9_p18"
+        ]
+      },
+      "f7": {
+        "introduced_session": 5,
+        "domain": "collections_schema",
+        "versions": [
+          {
+            "version": 1,
+            "session": 5,
+            "keywords": [
+              "name",
+              "note_ids",
+              "created"
+            ],
+            "content": "collection = {name, note_ids, created}",
+            "fact_id": "f7",
+            "current": true,
+            "invalidated_at": null
+          }
+        ],
+        "referenced_by_tasks": []
+      },
+      "f8": {
+        "introduced_session": 5,
+        "domain": "collections_storage",
+        "versions": [
+          {
+            "version": 1,
+            "session": 5,
+            "keywords": [
+              "collections_data",
+              "json"
+            ],
+            "content": "collections stored as JSON under collections_data/",
+            "fact_id": "f8",
+            "current": false,
+            "invalidated_at": null
+          },
+          {
+            "version": 2,
+            "session": 8,
+            "keywords": [
+              "sqlite",
+              "notes.db",
+              "collections"
+            ],
+            "content": "collections stored in SQLite at notes.db (collections table)",
+            "fact_id": "f8_v2",
+            "current": true,
+            "invalidated_at": null
+          }
+        ],
+        "referenced_by_tasks": []
+      },
+      "f9": {
+        "introduced_session": 6,
+        "domain": "col_commands",
+        "versions": [
+          {
+            "version": 1,
+            "session": 6,
+            "keywords": [
+              "col-create",
+              "col-add",
+              "col-ls",
+              "col-show",
+              "col-rm"
+            ],
+            "content": "collection commands = col-create, col-add, col-ls, col-show, col-rm",
+            "fact_id": "f9",
+            "current": true,
+            "invalidated_at": null
+          }
+        ],
+        "referenced_by_tasks": []
+      },
+      "f10a": {
+        "introduced_session": 7,
+        "domain": "col_filter",
+        "versions": [
+          {
+            "version": 1,
+            "session": 7,
+            "keywords": [
+              "col-filter",
+              "subset"
+            ],
+            "content": "col-filter returns subset of collections",
+            "fact_id": "f10a",
+            "current": true,
+            "invalidated_at": null
+          }
+        ],
+        "referenced_by_tasks": []
+      },
+      "f10b": {
+        "introduced_session": 7,
+        "domain": "col_sort",
+        "versions": [
+          {
+            "version": 1,
+            "session": 7,
+            "keywords": [
+              "col-sort",
+              "all",
+              "sort"
+            ],
+            "content": "col-sort returns ALL collections sorted",
+            "fact_id": "f10b",
+            "current": true,
+            "invalidated_at": null
+          }
+        ],
+        "referenced_by_tasks": []
+      }
+    },
+    "interference_map": [
+      {
+        "shared_term": "by-tag",
+        "fact_ids": [
+          "f6a",
+          "f6b"
+        ],
+        "domains": [
+          "filter",
+          "sort"
+        ],
+        "values": [
+          "filter-by-tag",
+          "sort-by-tag"
+        ]
+      },
+      {
+        "shared_term": "col-",
+        "fact_ids": [
+          "f10a",
+          "f10b"
+        ],
+        "domains": [
+          "col_filter",
+          "col_sort"
+        ],
+        "values": [
+          "col-filter",
+          "col-sort"
+        ]
+      }
+    ],
+    "summary": {
+      "total_facts": 15,
+      "total_unique_roots": 12,
+      "total_versioned": 3,
+      "total_invalidated": 0,
+      "total_dependencies": 37,
+      "total_dependency_tasks": 26,
+      "total_interference_pairs": 2,
+      "max_chain_depth": 2
+    },
+    "accumulators": {
+      "test_count": {
+        "initial_value": 3.0,
+        "domain": "meta",
+        "session": 0,
+        "deltas": [
+          {
+            "session": 1,
+            "amount": 4.0,
+            "description": "session 1 tests"
+          },
+          {
+            "session": 2,
+            "amount": 2.0,
+            "description": ""
+          },
+          {
+            "session": 3,
+            "amount": 2.0,
+            "description": ""
+          },
+          {
+            "session": 5,
+            "amount": 2.0,
+            "description": ""
+          },
+          {
+            "session": 6,
+            "amount": 3.0,
+            "description": ""
+          },
+          {
+            "session": 7,
+            "amount": 2.0,
+            "description": ""
+          },
+          {
+            "session": 8,
+            "amount": 3.0,
+            "description": ""
+          }
+        ],
+        "final_value": 21.0
+      }
+    }
+  },
+  "pressure_config": {
+    "tokens_per_session": 2000,
+    "dependency_density": 0.5,
+    "update_rate": 0.2,
+    "max_chain_depth": 3,
+    "n_confusable_pairs": 3,
+    "confusable_start_session": 5,
+    "warmup_sessions": 3,
+    "forget_rate": 0.1
+  },
+  "lifecycle_events": [
+    {
+      "session": 3,
+      "event_type": "schema_migration",
+      "description": "added required priority field; migrated existing notes"
+    }
+  ]
+}

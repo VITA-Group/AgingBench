@@ -186,6 +186,11 @@ class S5Generator(BaseGenerator, DependencyMixin):
             # 5-6 new_info tasks
             n_info = self.rng.randint(5, 6)
             for i in range(n_info):
+                # Pull fact_counter ahead of any ids the mixin minted via
+                # graph._counter so new_info doesn't overwrite a previously
+                # registered fact (e.g., a version-update fact from
+                # version_random_facts).
+                fact_counter = max(fact_counter, graph._counter)
                 fact = self._generate_info_fact(fact_counter, block)
                 facts_registry.append(fact)
 
@@ -246,8 +251,26 @@ class S5Generator(BaseGenerator, DependencyMixin):
                     update = self._generate_update(old_fact, block)
                     old_fact["updated"] = True
                     block_tasks.append(update)
-                    # Update the fact registry with new values
-                    new_fact_id = f"fact_{fact_counter}"
+                    # Let the FactGraph allocate the new id. Hand-rolling
+                    # `fact_{fact_counter}` here collides with ids the mixin
+                    # already minted via graph._counter (version_random_facts,
+                    # inject_interference), which produces dangling
+                    # replaces/replaced_by pointers.
+                    if old_fact["id"] in graph.facts:
+                        new_fact = graph.update_fact(
+                            old_id=old_fact["id"],
+                            new_content=update["prompt"],
+                            new_keywords=update["new_keywords"],
+                            session=block,
+                        )
+                    else:
+                        new_fact = graph.register_fact(
+                            session=block,
+                            domain=self.domain,
+                            content=update["prompt"],
+                            keywords=update["new_keywords"],
+                        )
+                    new_fact_id = new_fact.id
                     facts_registry.append({
                         "id": new_fact_id,
                         "session_block": block,
@@ -256,25 +279,7 @@ class S5Generator(BaseGenerator, DependencyMixin):
                         "prompt": update["prompt"],
                         "replaces": old_fact["id"],
                     })
-                    # Also update in the FactGraph if the old fact was registered
-                    if old_fact["id"] in graph.facts:
-                        graph.update_fact(
-                            old_id=old_fact["id"],
-                            new_content=update["prompt"],
-                            new_keywords=update["new_keywords"],
-                            session=block,
-                            new_id=new_fact_id,
-                        )
-                    else:
-                        graph.register_fact(
-                            session=block,
-                            domain=self.domain,
-                            content=update["prompt"],
-                            keywords=update["new_keywords"],
-                            fact_id=new_fact_id,
-                        )
-                    fact_counter += 1
-                    graph._counter = max(graph._counter, fact_counter)
+                    fact_counter = max(fact_counter, graph._counter)
 
             # 1 cross_reference task (if enough facts)
             if block >= 1 and len(facts_registry) >= 4:

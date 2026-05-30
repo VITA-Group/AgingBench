@@ -10,6 +10,8 @@ main.py
 # We keep source READMEs (top-level, scenario dirs, examples) but drop
 # the noise from runs.
 prototype/experiments/**/README.md
+prototype/experiments/results/
+prototype/experiments/fig1_queue_logs/
 
 # pytest cache — auto-generated; safe to delete, regenerates on next run.
 .pytest_cache/

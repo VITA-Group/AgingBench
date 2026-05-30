@@ -53,10 +53,11 @@ _SPECS = _load_specs()
 # ---------------------------------------------------------------------------
 
 def _notes_cmd(workspace: Path) -> list[str]:
+    """Prefer workspace-local CLI discovery; see test_cli._notes_cmd."""
     import shutil as _sh
     py = os.environ.get("OPENHANDS_BRIDGE_PYTHON", sys.executable)
-    if _sh.which("notes"):
-        return ["notes"]
+    ws = workspace.resolve()
+
     for mod in ("notes", "notes_cli", "notescli"):
         probe = subprocess.run(
             [py, "-m", mod, "--help"], cwd=workspace,
@@ -70,6 +71,15 @@ def _notes_cmd(workspace: Path) -> list[str]:
             return [py, str(p)]
     for pkg in workspace.glob("*/__main__.py"):
         return [py, "-m", pkg.parent.name]
+
+    notes_bin = _sh.which("notes")
+    if notes_bin:
+        try:
+            Path(notes_bin).resolve().relative_to(ws)
+        except ValueError:
+            pass
+        else:
+            return ["notes"]
     return ["notes"]
 
 

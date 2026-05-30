@@ -52,17 +52,15 @@ import pytest
 
 def _notes_cmd(workspace: Path) -> list[str]:
     """Discover how the agent made the CLI invokable.
-    Priority: (1) pip-installed `notes` on PATH; (2) `python -m notes`;
-    (3) any `notes.py`, `cli.py`, or `main.py` in the workspace root;
-    (4) any `main.py` inside a package directory."""
-    import shutil as _sh
-    # Allow override; fall back to the python on PATH for portability.
-    # On the test author's machine this happens to live in a conda env;
-    # users can point OPENHANDS_BRIDGE_PYTHON at their own openhands env.
-    py = os.environ.get("OPENHANDS_BRIDGE_PYTHON", sys.executable)
 
-    if _sh.which("notes"):
-        return ["notes"]
+    Prefer workspace-local entry points first. A global ``notes`` on PATH
+    (typically ``~/.local/bin/notes`` from a prior run's ``pip install -e .``)
+    can point at stale code from another workspace and false-fail pytest.
+    """
+    import shutil as _sh
+    py = os.environ.get("OPENHANDS_BRIDGE_PYTHON", sys.executable)
+    ws = workspace.resolve()
+
     for mod in ("notes", "notes_cli", "notescli"):
         probe = subprocess.run(
             [py, "-m", mod, "--help"], cwd=workspace,
@@ -76,6 +74,15 @@ def _notes_cmd(workspace: Path) -> list[str]:
             return [py, str(p)]
     for pkg in workspace.glob("*/__main__.py"):
         return [py, "-m", pkg.parent.name]
+
+    notes_bin = _sh.which("notes")
+    if notes_bin:
+        try:
+            Path(notes_bin).resolve().relative_to(ws)
+        except ValueError:
+            pass
+        else:
+            return ["notes"]
     return ["notes"]
 
 

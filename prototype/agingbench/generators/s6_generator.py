@@ -82,6 +82,7 @@ class S6Generator(BaseGenerator, DependencyMixin):
             if updates:
                 update_text = "\n".join(u["text"] for u in updates)
                 session["environment_data"] = session.get("environment_data", "") + "\n\n" + update_text
+                self._sync_probes_after_revisions(sessions, all_facts, graph, updates)
 
             # Apply selective forgetting (revision aging)
             invalidations = self.invalidate_random_facts(graph, i, self.rng, self.pressure)
@@ -447,6 +448,54 @@ class S6Generator(BaseGenerator, DependencyMixin):
     # ------------------------------------------------------------------
     # Cross-reference session
     # ------------------------------------------------------------------
+
+    def _sync_probes_after_revisions(
+        self,
+        sessions: list[dict],
+        all_facts: list[dict],
+        graph: FactGraph,
+        updates: list[dict],
+    ) -> None:
+        """Propagate `version_random_facts` updates to the originating
+        session's `recall_probes` and `all_facts` registry entry, so the
+        probe expects the current (post-revision) keywords.
+
+        Mapping is position-aligned with `version_random_facts`. A probe is
+        only updated when its keyword set is a subset of the fact's old
+        keywords, to avoid cross-fact mutation when two facts share a token.
+        """
+        for upd in updates:
+            old_fact = graph.facts.get(upd["old_fact_id"])
+            if old_fact is None:
+                continue
+            origin = old_fact.session
+            if not (0 <= origin < len(sessions)):
+                continue
+            old_kws = list(upd["old_keywords"])
+            new_kws = list(upd["new_keywords"])
+            kw_map = {o: n for o, n in zip(old_kws, new_kws) if o != n}
+            if not kw_map:
+                continue
+            old_set = set(old_kws)
+
+            def _remap(seq: list[str]) -> list[str]:
+                return [kw_map.get(k, k) for k in seq]
+
+            for probe in sessions[origin].get("recall_probes", []):
+                pkws = probe.get("keywords") or []
+                if pkws and set(pkws) <= old_set:
+                    probe["keywords"] = _remap(pkws)
+            for fact in all_facts:
+                if fact.get("session_id") != origin:
+                    continue
+                fkws = fact.get("keywords") or []
+                if fkws and set(fkws) <= old_set:
+                    fact["keywords"] = _remap(fkws)
+                    kf = fact.get("key_fact", "")
+                    for old_kw, new_kw in zip(old_kws, new_kws):
+                        if old_kw != new_kw and old_kw in kf:
+                            kf = kf.replace(old_kw, new_kw)
+                    fact["key_fact"] = kf
 
     def _generate_xref_session(self, sid: int, all_facts: list[dict]) -> dict:
         """Generate a cross-reference session requiring synthesis from memory."""

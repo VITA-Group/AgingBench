@@ -17,16 +17,18 @@ from pathlib import Path
 from typing import Optional
 
 
-# Category → constraint IDs mapping
+# Category → constraint IDs, sourced from the `category` field of each
+# constraint in source_profile.json.
 _CATEGORY_CONSTRAINTS = {
-    "dining": ["C1", "C4", "C5"],
+    "dining": ["C1", "C5"],
     "shopping": ["C2"],
-    "subscriptions": ["C3", "C10"],
-    "dietary": ["C4", "C5"],
-    "communication": ["C6"],
-    "scheduling": ["C7"],
-    "privacy": ["C8", "C9"],
-    "financial": ["C2", "C3", "C10"],
+    "subscriptions": ["C3"],
+    "dietary": ["C4"],
+    "scheduling": ["C6"],
+    "transport": ["C7"],
+    "communication": ["C8"],
+    "financial": ["C9"],
+    "gifting": ["C10"],
 }
 
 
@@ -169,7 +171,7 @@ def _fuzzy_rule_match(rule: str, memory_text: str) -> float:
 # Tool spec for registration with ToolRegistry
 TOOL_SPEC = {
     "name": "check_constraints",
-    "description": "Look up the user's constraints and rules for a given category (dining, shopping, subscriptions, dietary, communication, scheduling, privacy, financial). Returns the active rules the agent should follow.",
+    "description": "Look up the user's constraints and rules for a given category (dining, shopping, subscriptions, dietary, scheduling, transport, communication, financial, gifting). Returns the active rules the agent should follow.",
     "input_schema": {
         "type": "object",
         "properties": {

@@ -1,0 +1,26 @@
+sut_id: llama3_lossy_compress_heavy_revision
+description: >
+  Llama-3.1-8B-Instruct + lossy compaction, with pressure overridden so that
+  every prior fact is versioned each session. Used as a probe to measure how
+  much the S6 probe-key revision-sync fix moves recall numbers (the bug it
+  patches inverts the revision signal whenever update_rate > 0).
+
+model:
+  provider: local_hf
+  model_id: NousResearch/Meta-Llama-3.1-8B-Instruct
+  max_new_tokens: 1024
+  temperature: 0.0
+
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+  word_budget: 300
+
+pressure:
+  preset: heavy
+  update_rate: 1.0
+  warmup_sessions: 0
+  dependency_density: 0.3
+  n_confusable_pairs: 2
+
+seed: 42

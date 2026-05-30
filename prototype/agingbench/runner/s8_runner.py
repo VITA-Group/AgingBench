@@ -681,14 +681,23 @@ class S8SweBenchRunner:
         the mounted memory dir directly).
         """
         if event.event_type == "workspace_flush":
-            aging_dir = (self.workspace_root / "agentmemory" / ".aging")
+            # Flush ALL of the agent's persistent memory dir, regardless of
+            # which internal layout it chose; a narrower flush (e.g. only
+            # `.aging/`) leaves agents with non-default layouts immune to the
+            # maintenance shock.
+            memory_root = self.workspace_root / "agentmemory"
             bytes_freed = 0
-            if aging_dir.exists():
-                for f in aging_dir.rglob("*"):
-                    if f.is_file():
-                        bytes_freed += f.stat().st_size
-                import shutil
-                shutil.rmtree(aging_dir)
+            import shutil
+            if memory_root.exists():
+                for child in memory_root.iterdir():
+                    if child.is_file():
+                        bytes_freed += child.stat().st_size
+                        child.unlink()
+                    elif child.is_dir():
+                        for f in child.rglob("*"):
+                            if f.is_file():
+                                bytes_freed += f.stat().st_size
+                        shutil.rmtree(child)
             return {
                 "event_type": "workspace_flush",
                 "session": event.session,

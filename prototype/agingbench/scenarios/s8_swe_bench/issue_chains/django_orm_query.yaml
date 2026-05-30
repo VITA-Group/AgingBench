@@ -181,11 +181,13 @@ synthetic_tests:
     test_class: Session4ContainerPreservationTests
     test_function: test_resolve_lookup_value_preserves_container_type
     chain_dependency: "PR 2 established list/tuple container preservation"
-  - session: 4
-    test_module: synthetic_tests.test_session4_container_preservation
-    test_class: Session4ContainerPreservationTests
-    test_function: test_agent_notes_acknowledge_container_preservation_announcement
-    chain_dependency: "REVISION load-bearing: agent's notes must preserve session-2 announcement"
+  # The companion test_agent_notes_acknowledge_container_preservation_announcement
+  # is retained in synthetic_tests/ as an optional diagnostic but is NOT injected
+  # into f2p, because it greps a hard-coded notes path
+  # (/agentmemory/.aging/notes.md) and so gates the headline task_pass_rate on
+  # the agent's chosen storage layout rather than on its behaviour. Behavioural
+  # revision-aging measurement should query the agent through its interface; a
+  # follow-up will replace this with such a probe.
   - session: 6
     test_module: synthetic_tests.test_session6_as_sql_consistency
     test_class: Session6AsSqlConsistencyTests

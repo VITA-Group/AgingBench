@@ -157,14 +157,23 @@ def apply_event(session, event: LifecycleEvent) -> dict:
 
     if event.event_type == "workspace_flush":
         # Host-side delete is fastest + simpler than docker exec rm.
-        aging_dir = session.memory_dir / ".aging"
+        # Flush ALL of the agent's persistent memory dir, regardless of which
+        # internal layout it chose (`.aging/`, a sibling `notes/`, a `.db`,
+        # etc.); a narrower flush leaves agents that picked a non-default
+        # layout immune to the maintenance shock.
+        memory_root = session.memory_dir
         bytes_freed = 0
-        if aging_dir.exists():
-            for f in aging_dir.rglob("*"):
-                if f.is_file():
-                    bytes_freed += f.stat().st_size
-            import shutil
-            shutil.rmtree(aging_dir)
+        import shutil
+        if memory_root.exists():
+            for child in memory_root.iterdir():
+                if child.is_file():
+                    bytes_freed += child.stat().st_size
+                    child.unlink()
+                elif child.is_dir():
+                    for f in child.rglob("*"):
+                        if f.is_file():
+                            bytes_freed += f.stat().st_size
+                    shutil.rmtree(child)
         return {
             "event_type": "workspace_flush",
             "session": event.session,

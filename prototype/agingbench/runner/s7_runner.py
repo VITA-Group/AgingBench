@@ -178,24 +178,11 @@ _fix_literal_newlines = _fix_escape_artifacts
 
 
 def _pip_install_workspace(workspace: Path, py: str) -> dict:
-    """Try `pip install -e .` in the workspace. Returns status dict.
-
-    Uninstalls any existing `notes` / `notes_cli` / `notescli` package in the
-    target env first, so a prior run's editable install can't pollute this
-    one's pytest. Without this, `python -m notes` in test_cli.py's discovery
-    can resolve to a leftover package from another workspace and produce
-    arbitrary pass/fail uncorrelated with the current agent's code.
-    """
+    """Try `pip install -e .` in the workspace. Returns status dict."""
     setup_exists = (workspace / "setup.py").exists() or (workspace / "pyproject.toml").exists()
     if not setup_exists:
         return {"installed": False, "reason": "no setup.py or pyproject.toml"}
     try:
-        # 1. Clear any stale notes-family packages from this env.
-        subprocess.run(
-            [py, "-m", "pip", "uninstall", "-y", "notes", "notes_cli", "notescli", "--quiet"],
-            capture_output=True, text=True, timeout=30,
-        )
-        # 2. Fresh install of the current workspace.
         r = subprocess.run([py, "-m", "pip", "install", "-e", ".", "--quiet"],
                            cwd=workspace, capture_output=True, text=True, timeout=60)
         return {"installed": r.returncode == 0,

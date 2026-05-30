@@ -81,8 +81,12 @@ class S1Generator(BaseGenerator, DependencyMixin):
             title = tmpl_title.format(**vals)
             content = tmpl_content.format(**vals)
 
-            # Extract 4-6 unique keywords (numbers/names not used before)
-            keywords = self._extract_unique_keywords(vals, used_keywords)
+            # Extract 4-6 unique keywords (numbers/names not used before).
+            # Only return values that actually appear in the rendered content —
+            # different batch templates fill different subsets of `vals`, and
+            # the prior implementation extracted unconditionally, producing
+            # phantom keywords that could never be recalled (m0=0.5 floor).
+            keywords = self._extract_unique_keywords(vals, used_keywords, content=content)
             used_keywords.update(keywords)
 
             batches.append({
@@ -127,13 +131,23 @@ class S1Generator(BaseGenerator, DependencyMixin):
             if cycle >= self.pressure.warmup_sessions and self.rng.random() < self.pressure.dependency_density:
                 dep_task = self.build_dependency_task(graph, cycle, self.rng, self.pressure)
                 if dep_task:
-                    all_probes.append({
+                    meta = dep_task.get("dependency_meta", {})
+                    probe_entry = {
                         "probe_id": f"s1_c{cycle}_dep",
                         "constraint_id": f"dep_{cycle}",
                         "question": dep_task["text"],
                         "canonical_answer": dep_task["reference_answer"],
                         "keywords": dep_task["eval_keywords"],
-                    })
+                        "dep_type": meta.get("dep_type"),
+                    }
+                    # Trend probes test revision-via-DAG: the agent should cite
+                    # the CURRENT version (keywords) and NOT the pre-revision
+                    # value (common_error). Surfacing both lets the validator
+                    # score the probe faithfully instead of falling back to a
+                    # session-wide keyword_m proxy.
+                    if meta.get("dep_type") == "trend" and meta.get("common_error"):
+                        probe_entry["forbidden_keywords"] = [meta["common_error"]]
+                    all_probes.append(probe_entry)
 
             # Apply version updates
             updates = self.version_random_facts(graph, cycle, self.rng, self.pressure)
@@ -205,17 +219,29 @@ class S1Generator(BaseGenerator, DependencyMixin):
             "milestone_date": random_date(self.rng),
         }
 
-    def _extract_unique_keywords(self, vals: dict, used: set) -> list[str]:
-        """Extract 4-6 keywords that haven't been used before."""
+    def _extract_unique_keywords(self, vals: dict, used: set,
+                                  content: str = "") -> list[str]:
+        """Extract 4-6 keywords that haven't been used before.
+
+        When `content` is provided, only values that actually appear in the
+        rendered template are returned. This prevents phantom keywords (values
+        present in `vals` but not used by the chosen template) from inflating
+        the denominator of cumulative keyword recall scoring.
+        """
+        content_lower = content.lower() if content else ""
+        def _in_content(val: str) -> bool:
+            return (not content) or (val.lower() in content_lower)
+
         candidates = []
         for key in ["percent", "latency", "memory", "throughput", "spent",
                      "remaining", "vuln_count", "downtime"]:
             val = vals.get(key, "")
-            if val and val not in used:
+            if val and val not in used and _in_content(val):
                 candidates.append(val)
-        # Also add component name
+        # Also add component name (always rendered into title at minimum,
+        # but most templates also mention it in the body).
         comp = vals.get("component", "")
-        if comp and comp not in used:
+        if comp and comp not in used and _in_content(comp):
             candidates.insert(0, comp)
         return candidates[:6]
 

@@ -62,6 +62,7 @@ class S1Runner(BaseRunner):
         incontext_ceiling: bool = False,
         ceiling_max_tokens: int = 100_000,
         generated_data: dict | None = None,
+        score_via_response: bool = False,
     ):
         # Back-compat alias: legacy oracle_mode -> oracle_store under the
         # new clean attribution framework (§5.2). In S1 the behavioral
@@ -87,6 +88,7 @@ class S1Runner(BaseRunner):
         self.oracle_store = oracle_store           # C3
         self.incontext_ceiling = incontext_ceiling # C4
         self.ceiling_max_tokens = ceiling_max_tokens
+        self.score_via_response = score_via_response
 
         # Infer model info for trace logging
         self._model_id = getattr(llm, "model_id", None) or getattr(llm, "model", "unknown")
@@ -291,6 +293,68 @@ class S1Runner(BaseRunner):
             # score per probe, averaged.
             probe_scores, m_snapshot = self.validator_fn(eval_text, self.probes)
 
+            # ---- Faithful trend-probe scoring for revision-via-DAG.
+            # The cumulative snapshot mixes recall and trend-probe scores.
+            # Break out the trend-tagged probes so dependency_scorer can
+            # compute version_accuracy from per-probe outcomes instead of
+            # falling back to the session-wide keyword_m proxy. Probes carry
+            # dep_type="trend" and forbidden_keywords=[<pre-revision value>];
+            # the validator already penalizes those, so reusing probe_scores
+            # here gives the faithful per-probe verdict.
+            trend_probe_results = []
+            trend_probes_this_cycle = []
+            for probe, score in zip(self.probes, probe_scores):
+                if probe.get("dep_type") == "trend":
+                    trend_probe_results.append({
+                        "probe_id": probe.get("probe_id"),
+                        "score": float(score),
+                        "score_memory": float(score),
+                        "expected_keywords": probe.get("keywords", []),
+                        "forbidden_keywords": probe.get("forbidden_keywords", []),
+                    })
+                    trend_probes_this_cycle.append(probe)
+
+            # Response-based keyword scoring (opt-in): ask the agent each
+            # non-trend probe and score the response. Memory-based keyword_m
+            # above isolates W+R; this captures W+R+U end-to-end.
+            keyword_response_results = []
+            keyword_m_response = None
+            if self.score_via_response:
+                kw_probes = [p for p in self.probes if not p.get("dep_type")]
+                if kw_probes:
+                    from agingbench.scenarios.s1_research_literature.task_validator import (
+                        run_keyword_probes as _run_keyword_probes,
+                    )
+                    k_scores, k_details = _run_keyword_probes(
+                        kw_probes, eval_text, self.llm,
+                    )
+                    for probe, score, detail in zip(kw_probes, k_scores, k_details):
+                        keyword_response_results.append({
+                            "probe_id": probe["probe_id"],
+                            "score_response": float(score),
+                            "response_preview": detail["response"],
+                        })
+                    keyword_m_response = sum(k_scores) / len(k_scores) if k_scores else 0.0
+
+            # Response-based trend scoring (opt-in): actually ask the agent
+            # each trend probe with the current memory as context. Faithfully
+            # measures revision behavior; memory-based score above is the
+            # cheap fallback.
+            if self.score_via_response and trend_probes_this_cycle:
+                from agingbench.scenarios.s1_research_literature.task_validator import (
+                    run_trend_probes as _run_trend_probes,
+                )
+                r_scores, r_details = _run_trend_probes(
+                    trend_probes_this_cycle, eval_text, self.llm,
+                )
+                by_id = {d["probe_id"]: d for d in r_details}
+                for tr in trend_probe_results:
+                    d = by_id.get(tr["probe_id"])
+                    if d:
+                        tr["score"] = float(d["score"])
+                        tr["score_response"] = float(d["score"])
+                        tr["response_preview"] = d["response"]
+
             # ---- Longitudinal metric: fraction of *every* keyword ever
             # introduced across batches [0..cycle] that is still findable.
             # Denominator grows with sessions, so this tracks cumulative
@@ -386,6 +450,16 @@ class S1Runner(BaseRunner):
                 "keyword_m_snapshot": round(m_snapshot, 4),
                 "probe_based_passed": int(sum(probe_scores)),
                 "probe_based_total": len(probe_scores),
+                # Per-probe trend results: each entry is the faithful
+                # revision-via-DAG verdict for one trend probe in this
+                # cycle. Empty list when no trend probes fired. Consumed
+                # by dependency_scorer.version_accuracy.
+                "trend_probe_results": trend_probe_results,
+                # End-to-end W+R+U keyword recall (None when not enabled).
+                "keyword_m_response": (
+                    round(keyword_m_response, 4) if keyword_m_response is not None else None
+                ),
+                "keyword_response_results": keyword_response_results,
                 # Longitudinal: cumulative cohort-keyword survival (None
                 # when paper_batches is off).
                 "keyword_m_longitudinal": (

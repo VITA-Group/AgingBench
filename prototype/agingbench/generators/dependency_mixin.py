@@ -185,11 +185,26 @@ class DependencyMixin:
         old_fact = rng.choice(versioned)
         current = graph.get_current_version(old_fact.id)
 
+        # The stale value the agent must NOT cite is the keyword from the
+        # OLD version that is no longer present in the current version's
+        # keyword set. version_random_facts preserves non-numeric keywords
+        # (e.g. component names) verbatim and only mutates numeric ones, so
+        # this set difference cleanly isolates the values that changed.
+        # Using old_fact.keywords[0] (the first entry, often a component
+        # name shared by both versions) produced a false-positive forbidden
+        # keyword that overlapped with eval_keywords and made the probe
+        # unscoreable.
+        new_kw_set = set(current.keywords)
+        stale_values = [kw for kw in old_fact.keywords if kw not in new_kw_set]
+        common_error = stale_values[0] if stale_values else None
+
         template = rng.choice(TREND_TEMPLATES)
         text = template.format(
             entity=old_fact.content.split(".")[0][:50],
             metric="value",
-            old_value=old_fact.keywords[0] if old_fact.keywords else "N/A",
+            old_value=common_error if common_error else (
+                old_fact.keywords[0] if old_fact.keywords else "N/A"
+            ),
         )
 
         # Must cite the CURRENT value, not the original
@@ -212,7 +227,7 @@ class DependencyMixin:
                 "depends_on": dep_facts,
                 "depends_on_sessions": sorted(set([old_fact.session, current.session])),
                 "chain_depth": edge.chain_depth,
-                "common_error": old_fact.keywords[0] if old_fact.keywords else None,
+                "common_error": common_error,
             },
         }
 

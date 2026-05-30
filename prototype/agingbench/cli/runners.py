@@ -165,7 +165,8 @@ def _run_s1(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
             oracle_store: bool = False, incontext_ceiling: bool = False,
             ceiling_max_tokens: int = 100_000,
             agent_class=None,
-            generated: bool = False, gen_sessions: int = 0) -> dict:
+            generated: bool = False, gen_sessions: int = 0,
+            score_via_response: bool = False) -> dict:
     """Execute S1 scenario (Research Literature Agent) and return metrics dict."""
     # SUT YAML can force oracle mode via top-level `oracle_mode: true` /
     # `oracle_retrieval: true`, letting users define a reusable "oracle source"
@@ -175,6 +176,8 @@ def _run_s1(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
     oracle_retrieval = oracle_retrieval or sut_cfg.get("oracle_retrieval", False)
     oracle_store = oracle_store or sut_cfg.get("oracle_store", False)
     incontext_ceiling = incontext_ceiling or sut_cfg.get("incontext_ceiling", False)
+    score_via_response = score_via_response or sut_cfg.get(
+        "score_via_response", False)
     from agingbench.core.llm import load_llm
     from agingbench.core.memory.base import build_memory_policy
     from agingbench.runner.s1_runner import S1Runner
@@ -229,6 +232,7 @@ def _run_s1(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
             incontext_ceiling=incontext_ceiling,
             ceiling_max_tokens=ceiling_max_tokens,
             generated_data=gen_data,  # pass full generator output so runner uses seed-dependent paper_batches + session_facts
+            score_via_response=score_via_response,
         )
         result = runner.run(
             n_cycles=n_cycles,

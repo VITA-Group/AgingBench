@@ -97,6 +97,10 @@ def score_dependency_chain(
         result["accumulator_metrics"] = score_accumulator(
             session_results, dependency_graph
         )
+    # Forced-answer interference binding (correct vs confused vs miss). Unlike
+    # interference_resistance (which reuses the session headline score), this
+    # measures actual confusable mis-binding from dedicated probes.
+    result["interference_binding"] = score_interference_binding(session_results)
     return result
 
 
@@ -204,9 +208,22 @@ def version_accuracy(
 
     A version-test query is a "trend" dependency where a fact has been updated.
     The agent should cite the current value, not the original.
+
+    Preferred scoring path (faithful):
+      When session_lookup[s]["trend_probe_results"] exists, each entry is the
+      per-probe verdict from the validator — already accounting for forbidden
+      pre-revision keywords. We aggregate those binary scores directly.
+
+    Fallback scoring path (proxy, pre-2026-05 behavior):
+      When trend_probe_results is absent, we use _extract_score(result) as a
+      session-wide correctness proxy. This was the original implementation;
+      it conflates revision accuracy with general keyword recall and is kept
+      only so older runners (and runs without per-probe data) keep producing
+      a number. Faithful path is preferred whenever available.
     """
     n_version_tests = 0
     n_correct = 0
+    used_faithful = False
 
     for task_id, task in tasks.items():
         if task.get("dependency_type") != "trend":
@@ -223,9 +240,20 @@ def version_accuracy(
         if not has_version_test:
             continue
 
+        # Preferred: per-probe faithful score
+        trend_results = result.get("trend_probe_results") or []
+        if trend_results:
+            used_faithful = True
+            for tr in trend_results:
+                n_version_tests += 1
+                if tr.get("score", 0.0) > 0.5:
+                    n_correct += 1
+            continue
+
+        # Fallback: session-wide proxy (legacy behavior)
         n_version_tests += 1
         score = _extract_score(result)
-        if score > 0.5:  # at least partial credit
+        if score > 0.5:
             n_correct += 1
 
     if n_version_tests == 0:
@@ -241,10 +269,9 @@ def version_accuracy_per_session(
 ) -> dict[int, float]:
     """Per-session version_accuracy trajectory.
 
-    For each session that contains at least one version-test query
-    (trend dependency with a required version > 1), compute the fraction
-    of such queries the agent answered with the latest value.
-    Sessions with no version tests are omitted from the trajectory.
+    Mirrors the priority order of ``version_accuracy``:
+      1. session has trend_probe_results → aggregate those per-probe verdicts
+      2. otherwise → fall back to the session-wide _extract_score proxy
     """
     by_session_tot: dict[int, int] = {}
     by_session_cor: dict[int, int] = {}
@@ -259,6 +286,15 @@ def version_accuracy_per_session(
         result = session_lookup.get(session)
         if result is None:
             continue
+
+        trend_results = result.get("trend_probe_results") or []
+        if trend_results:
+            for tr in trend_results:
+                by_session_tot[session] = by_session_tot.get(session, 0) + 1
+                if tr.get("score", 0.0) > 0.5:
+                    by_session_cor[session] = by_session_cor.get(session, 0) + 1
+            continue
+
         by_session_tot[session] = by_session_tot.get(session, 0) + 1
         if _extract_score(result) > 0.5:
             by_session_cor[session] = by_session_cor.get(session, 0) + 1
@@ -765,6 +801,62 @@ def score_accumulator(
         "compounding_detected": compounding,
         "mean_error": round(mean_err, 2),
     }
+
+def score_interference_binding(session_results: list[dict]) -> dict:
+    """Forced-choice interference binding from dedicated probes.
+
+    Each ``interference_probe`` asks for one confusable entity's value (gold),
+    with the partner entity's value as the distractor. The agent's answer is
+    classified:
+      - correct  : contains the gold value (right entity)  — resisted interference
+      - confused : contains the distractor only            — TRUE interference
+      - both     : contains both values                    — ambiguous dump
+      - miss     : contains neither                         — omission / recall failure
+
+    This separates genuine confusable mis-binding (``confusion_rate``) from
+    omission (``miss_rate``) — a distinction ``interference_resistance`` cannot
+    make, since it reuses the session's generic headline score.
+    """
+    import re
+
+    def _digits(v):
+        return re.sub(r"[^\d]", "", str(v)) if v is not None else ""
+
+    correct = confused = both = miss = 0
+    per_session: dict[int, list[str]] = {}
+    detail: list[dict] = []
+    for sr in session_results:
+        for p in sr.get("interference_probes", []) or []:
+            sess = p.get("session", sr.get("session", -1))
+            resp = _digits(p.get("response_text", ""))
+            gd, dd = _digits(p.get("gold_value")), _digits(p.get("distractor_value"))
+            has_g = len(gd) >= 2 and gd in resp
+            has_d = len(dd) >= 2 and dd in resp
+            cls = ("both" if (has_g and has_d) else "correct" if has_g
+                   else "confused" if has_d else "miss")
+            if cls == "correct":
+                correct += 1
+            elif cls == "confused":
+                confused += 1
+            elif cls == "both":
+                both += 1
+            else:
+                miss += 1
+            per_session.setdefault(sess, []).append(cls)
+            detail.append({"session": sess, "task_id": p.get("task_id"),
+                           "gold": p.get("gold_value"),
+                           "distractor": p.get("distractor_value"), "class": cls})
+    total = correct + confused + both + miss
+    return {
+        "binding_accuracy": round(correct / total, 4) if total else None,
+        "confusion_rate": round(confused / total, 4) if total else None,
+        "miss_rate": round(miss / total, 4) if total else None,
+        "both_rate": round(both / total, 4) if total else None,
+        "n_probes": total,
+        "per_session": {s: cs for s, cs in sorted(per_session.items())},
+        "detail": detail,
+    }
+
 
 # NOTE: attribution_report() has been removed. Error partitioning is now
 # handled by agingbench.diagnostics.partitioner.partition_errors() using the

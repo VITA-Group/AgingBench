@@ -116,6 +116,64 @@ def run_tasks(
     return scores, task_m, details
 
 
+_TREND_PROBE_SYSTEM = """You are answering questions about a series of engineering reports stored in your memory:
+
+{memory}
+
+Answer each question concisely using the information in memory. If a value has been updated, cite the latest value, not the original."""
+
+
+def run_keyword_probes(
+    probes: list[dict],
+    memory_text: str,
+    llm,
+) -> tuple[list[int], list[dict]]:
+    from .validator import score_probe
+    system_msg = _TREND_PROBE_SYSTEM.format(memory=memory_text or "(empty)")
+    scores, details = [], []
+    for probe in probes:
+        messages = [
+            {"role": "system", "content": system_msg},
+            {"role": "user", "content": probe["question"]},
+        ]
+        response = llm.chat(messages)
+        s = score_probe(response, probe)
+        scores.append(s)
+        details.append({
+            "probe_id": probe["probe_id"],
+            "response": response[:300],
+            "score": s,
+            "expected": probe["keywords"],
+        })
+    return scores, details
+
+
+def run_trend_probes(
+    trend_probes: list[dict],
+    memory_text: str,
+    llm,
+) -> tuple[list[int], list[dict]]:
+    from .validator import score_probe
+    system_msg = _TREND_PROBE_SYSTEM.format(memory=memory_text or "(empty)")
+    scores, details = [], []
+    for probe in trend_probes:
+        messages = [
+            {"role": "system", "content": system_msg},
+            {"role": "user", "content": probe["question"]},
+        ]
+        response = llm.chat(messages)
+        s = score_probe(response, probe)
+        scores.append(s)
+        details.append({
+            "probe_id": probe["probe_id"],
+            "response": response[:300],
+            "score": s,
+            "expected": probe["keywords"],
+            "forbidden": probe.get("forbidden_keywords", []),
+        })
+    return scores, details
+
+
 def report(details: list[dict], task_m: float) -> None:
     """Pretty-print task results for one cycle."""
     print(f"\n  Task compliance: {sum(d['score'] for d in details)}/{len(details)}  (task_m = {task_m:.3f})")

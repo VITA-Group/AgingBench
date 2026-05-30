@@ -385,6 +385,14 @@ class S2Generator(BaseGenerator, DependencyMixin):
         # Generate compounding probes
         compounding = self._generate_compounding_probes(facts)
 
+        # Forced-answer interference probes (direct "what is X?" questions that
+        # require stating the value, so the scorer can distinguish confusion
+        # (partner value) from omission/miss — unlike interference_resistance,
+        # which reuses the session headline score). Collected during injection,
+        # injected after the loop (probed a couple sessions later, under memory
+        # pressure). Additive: empty when n_confusable_pairs == 0.
+        interference_probes: list[dict] = []
+
         # Apply dependency tasks and version updates per session
         for t in range(n_sessions):
             if t >= self.pressure.warmup_sessions and self.rng.random() < self.pressure.dependency_density:
@@ -428,6 +436,21 @@ class S2Generator(BaseGenerator, DependencyMixin):
                         "constraints_tested": [],
                         "category": "interference",
                     })
+                    # Schedule a forced-answer binding probe a couple sessions
+                    # later: ask for one domain's value (gold), with the
+                    # partner domain's value as the confusable distractor.
+                    interference_probes.append({
+                        "session": min(t + 2, n_sessions - 1),
+                        "shared_term": pair["shared_term"],
+                        "domain": pair["fact_a"]["domain"],
+                        "question": (
+                            f"What is the exact {pair['fact_a']['domain']} "
+                            f"{pair['shared_term']}? Reply with the exact "
+                            f"dollar amount only."
+                        ),
+                        "gold_value": pair["fact_a"]["value"],
+                        "distractor_value": pair["fact_b"]["value"],
+                    })
 
         # Generate accumulator track (Ledger-QA pattern for revision aging)
         accumulator_probes = self._generate_accumulator_track(
@@ -447,6 +470,19 @@ class S2Generator(BaseGenerator, DependencyMixin):
                     "eval_keywords": probe["eval_keywords"],
                 })
 
+        # Inject forced-answer interference probes (unique ids per session)
+        for i, probe in enumerate(interference_probes):
+            t = probe["session"]
+            if 0 <= t < len(sessions):
+                sessions[t]["tasks"].append({
+                    "id": f"s{t}_interf_probe_{i}",
+                    "text": probe["question"],
+                    "constraints_tested": [],
+                    "category": "interference_probe",
+                    "gold_value": probe["gold_value"],
+                    "distractor_value": probe["distractor_value"],
+                })
+
         result = {
             "source_profile": profile,
             "session_tasks": {"description": f"{n_sessions} sessions generated", "sessions": sessions},
@@ -455,6 +491,7 @@ class S2Generator(BaseGenerator, DependencyMixin):
             "session_facts": {"description": "Generated facts", "facts": facts},
             "compounding_probes": {"description": "Generated compounding", "probes": compounding},
             "accumulator_probes": accumulator_probes,
+            "interference_probes": interference_probes,
         }
         result["dependency_graph"] = graph.export()
         return result

@@ -107,7 +107,8 @@ def compare_mode(metrics_paths: list[str]) -> None:
 
 # ------------------------------------------------------------------ main run
 
-def run(sut_path: str, cycles: int, output_dir: Path, generated: bool = False) -> None:
+def run(sut_path: str, cycles: int, output_dir: Path, generated: bool = False,
+        score_via_response: bool = False) -> None:
     project_root = Path(__file__).parent.parent
     sut_cfg = load_sut(sut_path)
     sut_id = sut_cfg["sut_id"]
@@ -126,8 +127,9 @@ def run(sut_path: str, cycles: int, output_dir: Path, generated: bool = False) -
     gen_data = None
     if generated:
         from agingbench.generators.s1_generator import S1Generator
-        from agingbench.generators.pressure_config import PressureConfig
-        gen_data = S1Generator(seed=seed, pressure=PressureConfig.medium()).generate(n_cycles)
+        from agingbench.cli.loaders import _resolve_pressure
+        pressure = _resolve_pressure(sut_cfg=sut_cfg)
+        gen_data = S1Generator(seed=seed, pressure=pressure).generate(n_cycles)
         source_doc = gen_data["source_doc"]
         probes = gen_data["probes"]
     else:
@@ -184,12 +186,17 @@ def run(sut_path: str, cycles: int, output_dir: Path, generated: bool = False) -
             sut_id=sut_id,
             tasks=tasks,
             generated_data=gen_data,
+            score_via_response=(
+                score_via_response
+                or sut_cfg.get("score_via_response", False)
+            ),
         )
         result = runner.run(n_cycles=n_cycles, seed=seed)
         keyword_curve = result["keyword_curve"]
         task_curve = result["task_curve"]
         lag_recall_curve = result.get("lag_recall_curve")
         recall_matrix = result.get("recall_matrix")
+        session_results = result.get("session_results", [])
 
     # Metrics
     stats = summarize(keyword_curve)
@@ -204,6 +211,14 @@ def run(sut_path: str, cycles: int, output_dir: Path, generated: bool = False) -
         stats["task_decay_slope"] = round(compute_decay_slope(task_curve), 5)
         stats["task_checkpoints"] = list(zip(task_curve.exposures, task_curve.scores))
 
+    if session_results:
+        stats["session_results"] = session_results
+    if gen_data and "dependency_graph" in gen_data and session_results:
+        from agingbench.metrics.dependency_scorer import score_dependency_chain
+        dep_metrics = score_dependency_chain(session_results, gen_data["dependency_graph"])
+        stats["dependency_metrics"] = dep_metrics
+        with open(output_dir / "dependency_metrics.json", "w") as f:
+            json.dump(dep_metrics, f, indent=2)
     metrics_path = output_dir / "metrics.json"
     with open(metrics_path, "w") as f:
         json.dump(stats, f, indent=2)
@@ -237,10 +252,17 @@ def run(sut_path: str, cycles: int, output_dir: Path, generated: bool = False) -
 def main():
     parser = argparse.ArgumentParser(description="AgingBench P2 — Summarization Drift")
     parser.add_argument("--sut", help="Path to SUT YAML config")
-    parser.add_argument("--cycles", type=int, default=0,
-                        help="Override n_cycles from YAML (0 = use YAML value)")
+    parser.add_argument("--cycles", "--sessions", dest="cycles", type=int, default=8,
+                        help="Number of S1 cycles/sessions (default: 8). "
+                             "S1 historically used 'cycles' while S2-S6 use 'sessions' "
+                             "— both flag names are accepted.")
     parser.add_argument("--output", default="",
                         help="Output directory (default: experiments/results/<sut_id>)")
+    parser.add_argument("--score-via-response", action="store_true",
+                        help="Ask the LLM each probe (keyword + trend) with current memory "
+                             "as context and score the response. End-to-end W+R+U; "
+                             "default is memory-based substring check (W+R only). "
+                             "Adds ~(N_kw_probes * N_cycles + N_trend_probes) LLM calls.")
     parser.add_argument("--generated", action="store_true",
                         help="Use S1Generator (seed-dependent) instead of curated disk data")
     parser.add_argument("--compare", nargs="+", metavar="METRICS_JSON",
@@ -258,7 +280,9 @@ def main():
     output_dir = Path(args.output) if args.output else (
         Path("experiments/results") / Path(args.sut).stem
     )
-    run(sut_path=args.sut, cycles=args.cycles, output_dir=output_dir, generated=args.generated)
+    run(sut_path=args.sut, cycles=args.cycles, output_dir=output_dir,
+        generated=args.generated,
+        score_via_response=args.score_via_response)
 
 
 if __name__ == "__main__":

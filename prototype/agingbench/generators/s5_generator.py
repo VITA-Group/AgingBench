@@ -175,6 +175,7 @@ class S5Generator(BaseGenerator, DependencyMixin):
         tasks = []
         facts_registry = []
         recall_probes = []
+        binding_probes = []  # forced-choice gold-vs-distractor probes (interference binding)
         fact_counter = 0
         baseline_tasks = []  # tasks from session 0, re-asked later for fatigue measurement
         output_dependency_pairs: list[dict] = []
@@ -279,6 +280,23 @@ class S5Generator(BaseGenerator, DependencyMixin):
                         "prompt": update["prompt"],
                         "replaces": old_fact["id"],
                     })
+                    # --- Revision sync (faithfulness) ---
+                    # Flip the superseded fact's recall probe to the NEW value
+                    # from this block onward via keywords_history. Without this
+                    # the probe keeps the OLD keywords and recall_accuracy
+                    # rewards citing the STALE value (and penalizes a correct
+                    # update) — the S5 revision gap. Mirrors S3's keywords_history
+                    # and S6's _sync_probes_after_revisions; the runner scores
+                    # the active value for the block (old before update, new after).
+                    for rp in recall_probes:
+                        if rp.get("source_fact_id") == old_fact["id"]:
+                            hist = rp.get("keywords_history") or [
+                                (rp["available_after_block"], list(rp["keywords"]))
+                            ]
+                            hist.append((block, list(update["new_keywords"])))
+                            rp["keywords_history"] = hist
+                            rp["keywords"] = list(update["new_keywords"])
+                            break
                     fact_counter = max(fact_counter, graph._counter)
 
             # 1 cross_reference task (if enough facts)
@@ -351,6 +369,30 @@ class S5Generator(BaseGenerator, DependencyMixin):
                         "session_block": block,
                         "prompt": f"Please remember: {pair['text_a']} Also: {pair['text_b']}",
                         "eval_keywords": [pair["fact_a"]["value"], pair["fact_b"]["value"]],
+                    })
+                    # Forced binding probe (gold = fact_a, distractor = fact_b),
+                    # emitted by default for EVERY injected pair so interference
+                    # is measured under medium pressure (not only the explicit
+                    # similar-name / high-similarity modes). The runner re-asks
+                    # these from a later block so the agent must recover the gold
+                    # value from its own workspace files; citing the distractor
+                    # is a binding failure. These do NOT touch recall_accuracy —
+                    # they live in a separate `binding_probes` list and feed only
+                    # score_interference_binding.
+                    gold = pair["fact_a"]["value"]
+                    distractor = pair["fact_b"]["value"]
+                    question = pair.get("probe_question") or (
+                        f"What is the exact {pair['fact_a']['domain']} "
+                        f"{pair.get('shared_term', 'value')}? "
+                        f"Reply with the exact value only."
+                    )
+                    binding_probes.append({
+                        "probe_id": f"b{block}_binding_{pi}",
+                        "available_after_block": block,
+                        "question": question,
+                        "keywords": [str(gold)],
+                        "gold_value": gold,
+                        "distractor_value": distractor,
                     })
 
             # Schedule output dependency producer — tests plan-execution drift
@@ -425,8 +467,18 @@ class S5Generator(BaseGenerator, DependencyMixin):
             "recall_probes": {
                 "probes": recall_probes,
             },
+            "binding_probes": binding_probes,
             "facts_registry": facts_registry,
         }
+        # Interference-binding source for the runner. "topic" reuses the
+        # same-category competitor probe (S5's own personal facts) the runner
+        # already asks each block — semantically coherent and per-block dense,
+        # at no extra agent cost. "generic" (default) keeps the business-pool
+        # binding probes for bit-for-bit reproducibility of prior runs.
+        result["interference_binding_source"] = (
+            "topic" if getattr(self.pressure, "confusable_topic_matched", False)
+            else "generic"
+        )
         result["dependency_graph"] = graph.export()
         result["output_dependency_pairs"] = output_dependency_pairs
         return result

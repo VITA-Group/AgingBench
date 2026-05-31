@@ -1,0 +1,23 @@
+sut_id: llama3_s6_recompact
+description: >
+  S6 naturalistic + a mid-run recompaction MAINTENANCE shock. At session 5 the
+  memory store is recompacted (re-runs the lossy compaction prompt, dropping
+  detail). Exercises the "Maintenance = Recompact" coverage tick for S6
+  (Table 1): re-probed prior facts after the shock surface the maintenance-aging
+  cliff in recall_rate. Pair with a no-shock control (same config minus the
+  maintenance block) to compute shock_delta = m_F(shock) - m_F(control).
+model:
+  provider: local_hf
+  model_id: NousResearch/Meta-Llama-3.1-8B-Instruct
+  max_new_tokens: 700
+  temperature: 0.0
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+pressure:
+  preset: medium
+maintenance:
+  shocks:
+    - type: recompact
+      session: 5
+seed: 42

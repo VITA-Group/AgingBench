@@ -18,6 +18,7 @@ from .base import BaseRunner, RunResult
 from .trace import TraceLogger
 from ..metrics.aging import AgingCurve, compute_half_life, compute_decay_slope
 from ..metrics.g3_metrics import compute_memory_bloat
+from ..metrics.dependency_scorer import _kw_in_text
 from ..core.memory.base import MemoryPolicy
 from ..core.memory.summarize_store import SummarizeStorePolicy
 from ..scenarios.s1_research_literature.task_validator import run_tasks
@@ -438,7 +439,11 @@ class S1Runner(BaseRunner):
                 for c in range(cycle + 1):
                     for kw in cohort_keywords[c]:
                         cohort_total += 1
-                        if kw.lower() in eval_lower:
+                        # Digit-flank-safe: a short numeric keyword like "201"
+                        # must not match inside a longer number ("2013"), which
+                        # would inflate cumulative survival. Word keywords keep
+                        # plain substring semantics (guards are no-ops for them).
+                        if _kw_in_text(kw.lower(), eval_lower):
                             cohort_survived += 1
                 if cohort_total > 0:
                     m_longitudinal = cohort_survived / cohort_total

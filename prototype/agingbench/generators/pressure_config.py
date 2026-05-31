@@ -73,6 +73,16 @@ class PressureConfig:
     # grows gives a context-DENSITY gradient for interference. None → single
     # probe at +2 (backward compatible).
     confusable_probe_lags: Optional[list] = None
+    # Topic-matched interference binding (opt-in; default off → reproducible).
+    # When True, scenarios that have a domain-native confusable source use it
+    # for the forced-choice binding probe instead of the generic business
+    # CONFUSABLE_TERMS pool: S5 reuses its same-category competitor probe
+    # (two personal facts in one category), and S4 draws confusable code
+    # entities (near-twin libraries/APIs) from a code-domain pool. This makes
+    # the binding probe semantically coherent with the scenario AND denser
+    # (per-session competitors), at no extra agent cost for S5. Default off so
+    # existing generic-pool runs remain bit-for-bit reproducible.
+    confusable_topic_matched: bool = False
 
     def __post_init__(self) -> None:
         """Validate cross-knob compatibility.

@@ -312,7 +312,16 @@ class S6Runner(BaseRunner, DiagnosticMixin):
             # run_session calls).  This means the minimum meaningful lag is 1.
             all_probes = []
             for s in range(session_idx):
-                all_probes.extend(self.sessions[s].get("recall_probes", []))
+                for probe in self.sessions[s].get("recall_probes", []):
+                    # Skip probes whose target fact was invalidated at or before
+                    # this session: a retracted fact is no longer a valid recall
+                    # target, so it must leave the recall_rate pool (otherwise
+                    # the headline rewards citing the retracted value). It is
+                    # still scored in the sessions before the retraction.
+                    inv_at = probe.get("invalidated_at_session")
+                    if inv_at is not None and session_idx >= inv_at:
+                        continue
+                    all_probes.append(probe)
 
             probe_results = []
             # Forced binding probes (confusable names): capture response with

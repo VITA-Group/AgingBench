@@ -59,9 +59,15 @@ class S1Generator(BaseGenerator, DependencyMixin):
 
     SCENARIO_ID = "s1_research_literature"
 
-    def __init__(self, seed: int = 42, pressure: PressureConfig | None = None):
+    def __init__(
+        self,
+        seed: int = 42,
+        pressure: PressureConfig | None = None,
+        dense_revision: bool = False,
+    ):
         super().__init__(seed)
         self.pressure = pressure or PressureConfig.none()
+        self.dense_revision = dense_revision
 
     def generate(self, n_sessions: int = 8) -> dict[str, Any]:
         graph = FactGraph()
@@ -154,6 +160,50 @@ class S1Generator(BaseGenerator, DependencyMixin):
             if updates:
                 for u in updates:
                     batches[-1]["content"] += f"\n{u['text']}"
+
+            # Dense revision: emit one trend probe per fact updated this cycle,
+            # so version_accuracy gets dense per-session coverage instead of
+            # depending on the sparse dependency_density-gated build_dependency_task path.
+            if self.dense_revision and updates:
+                for u in updates:
+                    new_kws = list(u.get("new_keywords") or [])
+                    old_kws = list(u.get("old_keywords") or [])
+                    # The discriminating tokens — keywords unique to one version.
+                    # Entity names ("Search Engine") survive the revision unchanged
+                    # and would match in any memory state if used; the changed
+                    # values are what actually distinguish the two versions.
+                    novel_only = [k for k in new_kws if k not in old_kws]
+                    stale_only = [k for k in old_kws if k not in new_kws]
+                    if not novel_only:
+                        # Defensive: no actual value change → probe is unscorable.
+                        continue
+                    anchor = old_kws[0] if old_kws else "the value"
+                    task_id = f"s1_c{cycle}_rev_{u['new_fact_id']}"
+                    # Register a dependency edge so the probe surfaces in
+                    # dependency_graph.tasks. Without this, version_accuracy /
+                    # chain_recall_by_version_depth / per-session variants
+                    # iterate over tasks and silently skip the dense probes
+                    # (the runtime self.probes path scores them into kw_m but
+                    # the metric layer reads from graph.tasks).
+                    graph.add_dependency(
+                        task_id=task_id,
+                        session=cycle,
+                        fact_ids=[u["old_fact_id"], u["new_fact_id"]],
+                        dep_type="trend",
+                    )
+                    all_probes.append({
+                        "probe_id": task_id,
+                        "constraint_id": u["new_fact_id"],
+                        "question": (
+                            f"You previously recorded a value associated with {anchor!r}. "
+                            f"It has been revised. What is the CURRENT value? "
+                            f"Reply with the updated value, not the original."
+                        ),
+                        "canonical_answer": " / ".join(novel_only),
+                        "keywords": novel_only,
+                        "forbidden_keywords": stale_only,
+                        "dep_type": "trend",
+                    })
 
             # Apply selective forgetting (revision aging)
             invalidations = self.invalidate_random_facts(graph, cycle, self.rng, self.pressure)

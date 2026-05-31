@@ -96,6 +96,14 @@ class S6Generator(BaseGenerator, DependencyMixin):
             if invalidations:
                 inv_text = "\n".join(inv["text"] for inv in invalidations)
                 session["environment_data"] = session.get("environment_data", "") + "\n\n" + inv_text
+                # Retire the invalidated fact's recall probe from session `i`
+                # onward. Otherwise the headline recall_rate keeps re-asking it
+                # with the RETRACTED keywords as gold, rewarding an agent that
+                # cites the now-invalid value and penalizing correct forgetting
+                # (the "penalizes correct revision" bug). forget_accuracy still
+                # measures the retraction separately. Recall before invalidation
+                # is preserved — the probe is only skipped for sessions >= i.
+                self._sync_probes_after_invalidations(sessions, graph, invalidations, i)
 
             # Inject interference facts (confusable cross-domain pairs)
             if i >= self.pressure.confusable_start_session:
@@ -105,28 +113,32 @@ class S6Generator(BaseGenerator, DependencyMixin):
                         f"{p['text_a']}\n{p['text_b']}" for p in pairs
                     )
                     session["environment_data"] = session.get("environment_data", "") + "\n\n" + interf_text
-                    # Forced binding probes (gold+distractor) are emitted ONLY
-                    # for the explicit binding-test modes (similar-name /
-                    # high-similarity), so default value-confusable runs are
-                    # unchanged — no binding probes leak into recall. S6 re-asks
-                    # all prior probes every session → free lag/density sweep.
-                    if (getattr(self.pressure, "confusable_similar_names", False)
-                            or getattr(self.pressure, "confusable_high_similarity", False)):
-                        probes = session.setdefault("recall_probes", [])
-                        for j, p in enumerate(pairs):
-                            q = p.get("probe_question") or (
-                                f"What is the exact {p['fact_a']['domain']} "
-                                f"{p['shared_term']}? Reply with the exact value only."
-                            )
-                            probes.append({
-                                "probe_id": f"s{i}_interf_{j}",
-                                "question": q,
-                                "keywords": [str(p["fact_a"]["value"])],
-                                "canonical_answer": str(p["fact_a"]["value"]),
-                                "gold_value": p["fact_a"]["value"],
-                                "distractor_value": p["fact_b"]["value"],
-                                "probe_type": "interference_binding",
-                            })
+                    # Forced binding probes (gold+distractor) are emitted for
+                    # EVERY injected pair — including the default value-confusable
+                    # pairs — so interference is measured by default, not only in
+                    # the explicit similar-name / high-similarity modes. A binding
+                    # probe is a legitimate recall probe (citing the gold value =
+                    # recalled; citing the distractor = recall failure), so it
+                    # counts toward recall_rate AND feeds score_interference_binding
+                    # (correct/confused/miss). recall_rate_excl_binding stays as the
+                    # binding-free series for apples-to-apples config comparison.
+                    # S6 re-asks all prior probes every session → free lag/density
+                    # gradient at no extra agent calls.
+                    probes = session.setdefault("recall_probes", [])
+                    for j, p in enumerate(pairs):
+                        q = p.get("probe_question") or (
+                            f"What is the exact {p['fact_a']['domain']} "
+                            f"{p['shared_term']}? Reply with the exact value only."
+                        )
+                        probes.append({
+                            "probe_id": f"s{i}_interf_{j}",
+                            "question": q,
+                            "keywords": [str(p["fact_a"]["value"])],
+                            "canonical_answer": str(p["fact_a"]["value"]),
+                            "gold_value": p["fact_a"]["value"],
+                            "distractor_value": p["fact_b"]["value"],
+                            "probe_type": "interference_binding",
+                        })
 
             sessions.append(session)
 
@@ -539,6 +551,40 @@ class S6Generator(BaseGenerator, DependencyMixin):
                         if old_kw != new_kw and old_kw in kf:
                             kf = kf.replace(old_kw, new_kw)
                     fact["key_fact"] = kf
+
+    def _sync_probes_after_invalidations(
+        self,
+        sessions: list[dict],
+        graph: FactGraph,
+        invalidations: list[dict],
+        session: int,
+    ) -> None:
+        """Mark the originating session's recall probes for an invalidated fact
+        as retired from ``session`` onward (``invalidated_at_session``). The
+        runner skips probes whose ``invalidated_at_session <= current session``,
+        so a retracted fact is recalled-scored only while it was still valid and
+        is then dropped from the recall pool — instead of the headline rewarding
+        citations of the retracted value.
+
+        A probe is matched only when its keyword set is a subset of the
+        invalidated keywords, to avoid retiring a sibling probe that shares a
+        token. The earliest invalidation session wins (probes are visited in
+        increasing session order, so we never overwrite with a later one)."""
+        for inv in invalidations:
+            fact = graph.facts.get(inv["fact_id"])
+            if fact is None:
+                continue
+            origin = fact.session
+            if not (0 <= origin < len(sessions)):
+                continue
+            inv_set = set(inv.get("invalidated_keywords") or [])
+            if not inv_set:
+                continue
+            for probe in sessions[origin].get("recall_probes", []):
+                pkws = probe.get("keywords") or []
+                if pkws and set(pkws) <= inv_set:
+                    if probe.get("invalidated_at_session") is None:
+                        probe["invalidated_at_session"] = session
 
     def _generate_xref_session(self, sid: int, all_facts: list[dict]) -> dict:
         """Generate a cross-reference session requiring synthesis from memory.

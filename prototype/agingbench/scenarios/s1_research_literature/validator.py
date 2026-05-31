@@ -20,6 +20,17 @@ from __future__ import annotations
 import re
 
 
+def _present(needle: str, haystack: str) -> bool:
+    """Substring presence with a digit-flank guard so a short numeric keyword
+    (e.g. ``201``) does not match inside a longer number (``2013``), which
+    would inflate keyword_m. For word keywords the guards are no-ops, so plain
+    substring semantics (the paper's definition) are preserved. Inputs are
+    expected to be already normalized via ``_normalize_for_match``."""
+    if not needle:
+        return False
+    return re.search(r"(?<!\d)" + re.escape(needle) + r"(?!\d)", haystack) is not None
+
+
 def _normalize_for_match(text: str) -> str:
     """Format-tolerant normalization so that ``73.9%`` matches ``73.9 percent``,
     ``40,922`` matches ``40922``, ``156ms`` matches ``156 milliseconds`` etc.
@@ -37,34 +48,43 @@ def _normalize_for_match(text: str) -> str:
     return t
 
 
-def score_probe(summary_text: str, probe: dict) -> int:
+def score_probe(summary_text: str, probe: dict, enforce_forbidden: bool = True) -> int:
     """
     Returns 1 if any keyword from probe["keywords"] is found in summary_text
     after format normalization (% ↔ percent, $ ↔ dollars, commas in numbers,
     common unit suffixes), else 0.
 
-    If the probe carries ``forbidden_keywords`` (e.g. trend dep probes whose
-    pre-revision value the agent must NOT cite), the score is forced to 0 when
-    any forbidden keyword appears, regardless of whether expected keywords are
-    present.
+    When ``enforce_forbidden`` is True (default; appropriate for scoring agent
+    responses where citing the stale value is a real failure), the score is
+    forced to 0 if any keyword in ``probe["forbidden_keywords"]`` appears.
+
+    When ``enforce_forbidden`` is False (appropriate for scoring raw memory
+    text, where the stale value being present alongside the new value is
+    informational, not a citation failure), only positive presence is required.
     """
     norm_text = _normalize_for_match(summary_text)
-    forbidden = probe.get("forbidden_keywords") or []
-    if forbidden and any(_normalize_for_match(fk) in norm_text for fk in forbidden):
-        return 0
-    return int(any(_normalize_for_match(kw) in norm_text for kw in probe["keywords"]))
+    if enforce_forbidden:
+        forbidden = probe.get("forbidden_keywords") or []
+        if forbidden and any(_present(_normalize_for_match(fk), norm_text) for fk in forbidden):
+            return 0
+    return int(any(_present(_normalize_for_match(kw), norm_text) for kw in probe["keywords"]))
 
 
 def score_all(summary_text: str, probes: list[dict]) -> tuple[list[int], float]:
     """
     Score all probes against summary_text.
 
+    Memory-text scoring path: trend-probe forbidden_keywords are NOT enforced
+    here, since the stale value's mere presence in M_t is not a failure (only
+    citing it in a response is). Run trend probes through ``run_trend_probes``
+    (response mode) for the full enforce-forbidden scoring.
+
     Returns
     -------
     probe_scores : list[int]  — 0 or 1 per probe
     m            : float      — fraction correct in [0, 1]
     """
-    scores = [score_probe(summary_text, p) for p in probes]
+    scores = [score_probe(summary_text, p, enforce_forbidden=False) for p in probes]
     m = sum(scores) / len(scores) if scores else 0.0
     return scores, m
 

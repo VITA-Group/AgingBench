@@ -547,6 +547,13 @@ class DependencyMixin:
                 "fact_b": {"id": f2.id, "domain": d2, "value": f"${v2:,}"},
                 "text_a": f1.content,
                 "text_b": f2.content,
+                # Forced-choice binding probe: ask for fact_a's value with
+                # fact_b's value as the confusable distractor (shared term, two
+                # domains). Lets score_interference_binding classify
+                # correct/confused/miss instead of the resistance proxy.
+                "probe_question": (
+                    f"What is the {term} for {d1}? Reply with the exact value only."
+                ),
             })
 
         return results

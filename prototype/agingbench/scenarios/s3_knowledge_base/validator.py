@@ -10,6 +10,16 @@ import re
 from typing import Optional
 
 
+def _present(needle: str, haystack_lower: str) -> bool:
+    """Digit-flank-safe substring presence so a short numeric keyword ("73")
+    does not match inside a longer number ("731"). ``haystack_lower`` must be
+    lowercased; word keywords keep plain substring semantics."""
+    if not needle:
+        return False
+    return re.search(r"(?<!\d)" + re.escape(needle.lower()) + r"(?!\d)",
+                     haystack_lower) is not None
+
+
 def _active_keywords(decision: dict, at_session: Optional[int] = None) -> list[str]:
     """Pick the keywords valid at session ``at_session``.
 
@@ -85,7 +95,7 @@ def compute_fidelity(
     for d in gold_decisions:
         active = _active_keywords(d, at_session)
         for kw in active:
-            if kw.lower() in text:
+            if _present(kw, text):
                 survived += 1
                 break
     return survived / len(gold_decisions) if gold_decisions else 1.0
@@ -119,7 +129,7 @@ def compute_fidelity_detailed(
         if use_semantic:
             score = score_fact_survival(memory_text, d["fact"], active)
         else:
-            score = 1.0 if any(kw.lower() in text for kw in active) else 0.0
+            score = 1.0 if any(_present(kw, text) for kw in active) else 0.0
 
         per_decision[d["id"]] = score
         cat = d.get("category", "other")
@@ -287,18 +297,251 @@ def compute_contradiction_count(memory_text: str, gold_decisions: list[dict]) ->
     return len(contradicted_ids)
 
 
+# ---------------------------------------------------------------------------
+# Revision-aging trident (G3-M3+): three concepts × {rate, count}.
+#
+# General fidelity decay conflates revision failure with compression and
+# interference. These signals isolate the revision component:
+#
+#   (1) fidelity excess  — paired control (revised vs never-revised). Cancels
+#       compression/interference because both populations are exposed to the
+#       same summarisation pressure; the residual is revision-specific decay.
+#
+#   (2) stale residue    — old kw present AND new kw absent. Pattern
+#       compression cannot produce (compression removes both); interference
+#       cannot either (no selective preservation of obsoleted values).
+#
+# Each is exposed in rate AND count form. Rates are useful for per-session
+# human readability but DILUTE as the revision pool grows; counts are stable
+# and belong in aging curves. Mirrors the existing contradiction_rate /
+# contradiction_count split — same reason.
+# ---------------------------------------------------------------------------
+
+
+def _was_revised_by(decision: dict, at_session: int) -> bool:
+    """True iff the decision had at least one revision applied at session
+    ≤ ``at_session``. The generator appends a ``(session, new_keywords)``
+    tuple to ``keywords_history`` on every revision; the first entry is the
+    initial-creation snapshot, entries beyond index 0 are revisions."""
+    history = decision.get("keywords_history") or []
+    if len(history) <= 1:
+        return False
+    return history[1][0] <= at_session
+
+
+def _partition_by_revision(
+    gold_decisions: list[dict], at_session: int
+) -> tuple[list[dict], list[dict]]:
+    """Split into (revised_by_t, never_revised_by_t)."""
+    R: list[dict] = []
+    U: list[dict] = []
+    for d in gold_decisions:
+        (R if _was_revised_by(d, at_session) else U).append(d)
+    return R, U
+
+
+def _fidelity_on_subset(
+    memory_text_lower: str, subset: list[dict], at_session: int
+) -> tuple[int, int]:
+    """(n_survived, n_total) over a subset using each decision's active
+    keywords at ``at_session``."""
+    if not subset:
+        return 0, 0
+    survived = 0
+    for d in subset:
+        active = _active_keywords(d, at_session)
+        if any(_present(kw, memory_text_lower) for kw in active):
+            survived += 1
+    return survived, len(subset)
+
+
+def compute_revision_fidelity_excess(
+    memory_text: str,
+    gold_decisions: list[dict],
+    at_session: int,
+    min_unrevised_for_signal: int = 5,
+) -> Optional[float]:
+    """Rate form. ``fidelity_unrevised - fidelity_revised``.
+
+    Positive and rising = revised facts decay faster than never-revised
+    baseline = revision-specific aging above general drift. Returns None
+    when undersampled (no revisions yet or |unrevised| below threshold).
+    """
+    R, U = _partition_by_revision(gold_decisions, at_session)
+    if not R or len(U) < min_unrevised_for_signal:
+        return None
+    text = memory_text.lower()
+    surv_R, n_R = _fidelity_on_subset(text, R, at_session)
+    surv_U, n_U = _fidelity_on_subset(text, U, at_session)
+    return (surv_U / n_U) - (surv_R / n_R)
+
+
+def compute_revision_fidelity_excess_count(
+    memory_text: str,
+    gold_decisions: list[dict],
+    at_session: int,
+) -> Optional[int]:
+    """Count form. ``actual_R_failures - expected_R_failures_at_baseline_rate``.
+
+    Excess revision-attributable failures over and above what compression
+    alone would predict from the never-revised baseline. Does not dilute
+    as the revision pool grows. Returns None when there's no baseline
+    (no unrevised decisions yet) or no revisions to score.
+    """
+    R, U = _partition_by_revision(gold_decisions, at_session)
+    if not R or not U:
+        return None
+    text = memory_text.lower()
+    surv_R, n_R = _fidelity_on_subset(text, R, at_session)
+    surv_U, n_U = _fidelity_on_subset(text, U, at_session)
+    baseline_failure_rate = (n_U - surv_U) / n_U
+    actual_failures = n_R - surv_R
+    expected_failures = baseline_failure_rate * n_R
+    return round(actual_failures - expected_failures)
+
+
+def _stale_residue_decisions(
+    memory_text_lower: str,
+    revised_decisions: list[dict],
+    at_session: int,
+) -> int:
+    """Count revised decisions exhibiting the stale-residue pattern:
+    a superseded keyword present in memory AND none of the currently-active
+    keywords present."""
+    stale = 0
+    for d in revised_decisions:
+        history = d.get("keywords_history") or []
+        if len(history) <= 1:
+            continue
+        original_kws = history[0][1] or []
+        active_kws = _active_keywords(d, at_session)
+        active_set = {k for k in active_kws}
+        purely_old = [k for k in original_kws if k and k not in active_set]
+        if not purely_old:
+            continue
+        old_present = any(_present(k, memory_text_lower) for k in purely_old)
+        new_present = any(_present(k, memory_text_lower) for k in active_kws)
+        if old_present and not new_present:
+            stale += 1
+    return stale
+
+
+def compute_stale_residue_rate(
+    memory_text: str,
+    gold_decisions: list[dict],
+    at_session: int,
+) -> Optional[float]:
+    """Rate form. Fraction of revised-by-t decisions where a superseded
+    value lingers in memory while the current value is absent.
+
+    Pure revision-failure signal — compression cannot produce this pattern.
+    Returns None before any revision has occurred."""
+    R, _ = _partition_by_revision(gold_decisions, at_session)
+    if not R:
+        return None
+    return _stale_residue_decisions(memory_text.lower(), R, at_session) / len(R)
+
+
+def compute_stale_residue_count(
+    memory_text: str,
+    gold_decisions: list[dict],
+    at_session: int,
+) -> int:
+    """Count form. Absolute number of revised decisions exhibiting stale
+    residue. Use for aging curves — does not dilute as more revisions land."""
+    R, _ = _partition_by_revision(gold_decisions, at_session)
+    if not R:
+        return 0
+    return _stale_residue_decisions(memory_text.lower(), R, at_session)
+
+
+def score_revision_aging(
+    memory_text: str,
+    gold_decisions: list[dict],
+    at_session: int,
+) -> dict:
+    """Combined revision-aging snapshot at session ``at_session``.
+
+    Returns both rate and count forms of each trident signal, plus
+    partition sizes and a coverage verdict so downstream consumers can
+    honestly degrade when the signal is underpowered.
+
+    coverage_verdict:
+      ``"no_revisions"``  — no revisions applied yet; rates are None
+      ``"underpowered"``  — |R| < 3 or |U| < 5; differential noisy
+      ``"adequate"``      — |R| ≥ 3 and |U| ≥ 5
+      ``"strong"``        — |R| ≥ 8 and |U| ≥ 5
+    """
+    R, U = _partition_by_revision(gold_decisions, at_session)
+    n_R, n_U = len(R), len(U)
+
+    if n_R == 0:
+        verdict = "no_revisions"
+    elif n_R < 3 or n_U < 5:
+        verdict = "underpowered"
+    elif n_R < 8:
+        verdict = "adequate"
+    else:
+        verdict = "strong"
+
+    return {
+        "revision_fidelity_excess": compute_revision_fidelity_excess(
+            memory_text, gold_decisions, at_session
+        ),
+        "revision_fidelity_excess_count": compute_revision_fidelity_excess_count(
+            memory_text, gold_decisions, at_session
+        ),
+        "stale_residue_rate": compute_stale_residue_rate(
+            memory_text, gold_decisions, at_session
+        ),
+        "stale_residue_count": compute_stale_residue_count(
+            memory_text, gold_decisions, at_session
+        ),
+        "n_revised": n_R,
+        "n_unrevised": n_U,
+        "coverage_verdict": verdict,
+    }
+
+
 def score_session(
     memory_text: str,
     query_responses: list[str],
     queries: list[dict],
     gold_decisions_so_far: list[dict],
+    at_session: Optional[int] = None,
 ) -> dict:
     """
-    Score one session: query accuracy + fidelity + bloat + contradiction.
+    Score one session: query accuracy + fidelity + bloat + contradiction +
+    revision-aging trident.
+
+    ``at_session`` is required for the time-versioned signals (fidelity's
+    ``_active_keywords`` selector and the revision-aging trident's
+    partition). Pass the integer session index. For back-compat with
+    callers that don't yet pass it, the time-versioned signals fall back
+    to original-keyword scoring and the revision_aging block reports
+    ``coverage_verdict="no_revisions"``.
     """
     query_scores, query_acc = score_queries(query_responses, queries)
-    fidelity_detail = compute_fidelity_detailed(memory_text, gold_decisions_so_far)
+    fidelity_detail = compute_fidelity_detailed(
+        memory_text, gold_decisions_so_far, at_session=at_session
+    )
     contradiction_rate = compute_contradiction_rate(memory_text, gold_decisions_so_far)
+    contradiction_count = compute_contradiction_count(memory_text, gold_decisions_so_far)
+    # Revision-aging trident — None coverage when no at_session passed.
+    if at_session is not None:
+        revision_aging = score_revision_aging(
+            memory_text, gold_decisions_so_far, at_session=at_session
+        )
+    else:
+        revision_aging = {
+            "revision_fidelity_excess": None,
+            "revision_fidelity_excess_count": None,
+            "stale_residue_rate": None,
+            "stale_residue_count": 0,
+            "n_revised": 0,
+            "n_unrevised": len(gold_decisions_so_far),
+            "coverage_verdict": "no_revisions",
+        }
 
     # Memory bloat: simple character count (token count deferred to runner)
     bloat = len(memory_text)
@@ -309,5 +552,7 @@ def score_session(
         "fidelity": fidelity_detail["fidelity"],
         "category_fidelity": fidelity_detail["category_fidelity"],
         "contradiction_rate": contradiction_rate,
+        "contradiction_count": contradiction_count,
+        "revision_aging": revision_aging,
         "memory_bloat_chars": bloat,
     }

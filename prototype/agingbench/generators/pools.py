@@ -132,6 +132,65 @@ LIBRARY_PAIRS = [
 ]
 
 # ---------------------------------------------------------------------------
+# Code-domain confusable APIs/methods (for S4 software-engineering
+# interference). Near-twin entity names that SHARE a stem but have DISTINCT
+# behavior — the confusion is in the codebase itself, not a bolted-on business
+# term. Each entry: a shared stem, two confusable names with contrasting
+# behaviors, and a forced-choice probe whose gold is name_a (distractor name_b).
+# Used by S4 when PressureConfig.confusable_topic_matched is set.
+# ---------------------------------------------------------------------------
+CODE_CONFUSABLE_PAIRS = [
+    {"stem": "by-tag", "name_a": "filter_by_tag", "name_b": "sort_by_tag",
+     "desc_a": "returns ONLY the subset of notes matching the tag",
+     "desc_b": "returns ALL notes reordered by their first tag",
+     "probe_question": "Which function returns only the subset of notes matching a tag — filter_by_tag or sort_by_tag? Reply with the exact function name."},
+    {"stem": "dict", "name_a": "from_dict", "name_b": "to_dict",
+     "desc_a": "parses a dict into a model instance",
+     "desc_b": "serializes a model instance into a dict",
+     "probe_question": "Which method parses a dict into a model instance — from_dict or to_dict? Reply with the exact method name."},
+    {"stem": "by-id", "name_a": "get_by_id", "name_b": "get_by_ids",
+     "desc_a": "returns a single record for one id",
+     "desc_b": "returns a list of records for a list of ids",
+     "probe_question": "Which function returns a single record for one id — get_by_id or get_by_ids? Reply with the exact function name."},
+    {"stem": "save", "name_a": "save", "name_b": "save_all",
+     "desc_a": "persists a single record",
+     "desc_b": "persists every record in the batch",
+     "probe_question": "Which method persists only a single record — save or save_all? Reply with the exact method name."},
+    {"stem": "find", "name_a": "find_one", "name_b": "find_all",
+     "desc_a": "returns the first matching record or None",
+     "desc_b": "returns a list of all matching records",
+     "probe_question": "Which method returns just the first matching record — find_one or find_all? Reply with the exact method name."},
+    {"stem": "serialize", "name_a": "serialize", "name_b": "deserialize",
+     "desc_a": "converts an object to its stored representation",
+     "desc_b": "reconstructs an object from its stored representation",
+     "probe_question": "Which function converts an object to its stored representation — serialize or deserialize? Reply with the exact function name."},
+    {"stem": "update", "name_a": "update", "name_b": "upsert",
+     "desc_a": "modifies an existing record and fails if absent",
+     "desc_b": "modifies an existing record or inserts it if absent",
+     "probe_question": "Which method fails if the record is absent — update or upsert? Reply with the exact method name."},
+    {"stem": "delete", "name_a": "delete", "name_b": "delete_all",
+     "desc_a": "removes a single record by id",
+     "desc_b": "removes every record in the table",
+     "probe_question": "Which command removes only a single record by id — delete or delete_all? Reply with the exact command name."},
+    {"stem": "config", "name_a": "load_config", "name_b": "reload_config",
+     "desc_a": "reads the config once at startup",
+     "desc_b": "re-reads the config file at runtime, discarding cached values",
+     "probe_question": "Which function reads the config once at startup — load_config or reload_config? Reply with the exact function name."},
+    {"stem": "note", "name_a": "add_note", "name_b": "append_note",
+     "desc_a": "creates a new note with a fresh id",
+     "desc_b": "appends text to the body of an existing note",
+     "probe_question": "Which command creates a brand-new note with a fresh id — add_note or append_note? Reply with the exact command name."},
+    {"stem": "count", "name_a": "count", "name_b": "count_distinct",
+     "desc_a": "returns the total number of rows",
+     "desc_b": "returns the number of unique values in a column",
+     "probe_question": "Which function returns the total number of rows — count or count_distinct? Reply with the exact function name."},
+    {"stem": "list", "name_a": "list_notes", "name_b": "list_tags",
+     "desc_a": "lists every stored note",
+     "desc_b": "lists the distinct tags across all notes",
+     "probe_question": "Which command lists every stored note — list_notes or list_tags? Reply with the exact command name."},
+]
+
+# ---------------------------------------------------------------------------
 # Food and cuisine (USDA categories + common types)
 # ---------------------------------------------------------------------------
 CUISINE_TYPES = [

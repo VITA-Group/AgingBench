@@ -143,6 +143,18 @@ class S4Generator(BaseGenerator, DependencyMixin):
         }
         import_graph: dict[str, list[str]] = {}
 
+        # Topic-matched (opt-in) code-confusable order: a stable shuffle of the
+        # code-domain pool. The first n_confusable_pairs entries form a FIXED
+        # cohort injected once (below) and re-probed every later session — the
+        # S6-style interference-AGING design (decay of a fixed target as the
+        # store grows), not per-session-fresh. Only built in topic mode, so
+        # generic-mode RNG order is untouched.
+        code_order = None
+        if getattr(self.pressure, "confusable_topic_matched", False):
+            from .pools import CODE_CONFUSABLE_PAIRS
+            code_order = list(range(len(CODE_CONFUSABLE_PAIRS)))
+            self.rng.shuffle(code_order)
+
         for t in range(n_sessions):
             entity = entities[t % len(entities)]
             fields = CODE_FIELDS.get(entity, [("name", "str"), ("value", "str")])
@@ -198,9 +210,16 @@ class S4Generator(BaseGenerator, DependencyMixin):
                     f"{len(CODE_FIELDS.get(prev_entity, []))} fields."
                 )
 
-            # Apply dependency task (appended as separate probe, not replacing coding task)
+            # Held-out dependency probe — a SEPARATE eval question answered from
+            # compressed memory only (no dep_context in the prompt), so it
+            # measures genuine memory recall, unlike the dep_recall proxy which
+            # scores against the dep_context re-injected into the task prompt.
+            # Fired EVERY post-warmup session (not density-gated) so the faithful
+            # curve is dense enough to be the headline. It does not alter the
+            # coding task — the runner asks it after the task. (Removing the
+            # density gate changes the S4 RNG stream vs. older seeds.)
             dep_probe = None
-            if t >= self.pressure.warmup_sessions and self.rng.random() < self.pressure.dependency_density:
+            if t >= self.pressure.warmup_sessions:
                 dep_task = self.build_dependency_task(graph, t, self.rng, self.pressure)
                 if dep_task:
                     dep_probe = {
@@ -220,12 +239,72 @@ class S4Generator(BaseGenerator, DependencyMixin):
                 dep_context += "\n" + "\n".join(inv["text"] for inv in invalidations)
 
             # Inject interference facts
-            if t >= self.pressure.confusable_start_session:
+            binding_probes: list[dict] = []
+            if (code_order is not None
+                    and t == self.pressure.confusable_start_session):
+                # TOPIC-MATCHED (opt-in), S6-STYLE FIXED COHORT: inject
+                # n_confusable_pairs confusable CODE pairs ONCE — near-twin
+                # APIs/methods sharing a stem (from_dict/to_dict,
+                # filter_by_tag/sort_by_tag, …) drawn from the codebase domain
+                # instead of the generic business pool — then re-probe the SAME
+                # pairs at every later session. probe_lags spans the whole
+                # remaining horizon (1,2,…), so the runner's lag-scheduler asks
+                # each pair once per subsequent session: a growing-lag sweep of a
+                # fixed target = the canonical interference-AGING curve, matching
+                # S6. gold = name_a, distractor = name_b; independent of dep_recall.
+                from .pools import CODE_CONFUSABLE_PAIRS
+                k = min(max(1, int(self.pressure.n_confusable_pairs)), len(code_order))
+                # Default: re-probe every remaining session (full lag sweep).
+                # An explicit confusable_probe_lags overrides (e.g. for a sparse
+                # sweep), matching the generic path's knob.
+                lags = (self.pressure.confusable_probe_lags
+                        or list(range(1, max(2, n_sessions - t))))
+                for j in range(k):
+                    c = CODE_CONFUSABLE_PAIRS[code_order[j]]
+                    dep_context += (
+                        f"\n`{c['name_a']}` {c['desc_a']}; "
+                        f"`{c['name_b']}` {c['desc_b']}."
+                    )
+                    binding_probes.append({
+                        "probe_id": f"s{t}_codeinterf_{j}",
+                        "question": c["probe_question"],
+                        "gold_value": c["name_a"],
+                        "distractor_value": c["name_b"],
+                        "keywords": [c["name_a"]],
+                        "inject_session": t,
+                        "probe_lags": list(lags),
+                    })
+            elif (not getattr(self.pressure, "confusable_topic_matched", False)
+                    and t >= self.pressure.confusable_start_session):
                 pairs = self.inject_interference(graph, t, self.rng, self.pressure)
                 if pairs:
                     dep_context += "\n" + "\n".join(
                         f"{p['text_a']} {p['text_b']}" for p in pairs
                     )
+                    # Forced-choice binding probes — emitted by DEFAULT for every
+                    # injected confusable pair so interference is *measured*, not
+                    # just injected. Each probe asks for fact_a's value (gold)
+                    # with fact_b's value as the confusable distractor (shared
+                    # term). The runner asks these at fixed lags after injection
+                    # and stores the raw answers under session_result[
+                    # "interference_probes"], which score_interference_binding
+                    # classifies as correct/confused/both/miss. This is separate
+                    # from the coding task and does NOT touch dep_recall.
+                    lags = self.pressure.confusable_probe_lags or [1, 3]
+                    for j, p in enumerate(pairs):
+                        q = p.get("probe_question") or (
+                            f"What is the {p['shared_term']} for "
+                            f"{p['fact_a']['domain']}? Reply with the exact value only."
+                        )
+                        binding_probes.append({
+                            "probe_id": f"s{t}_interf_{j}",
+                            "question": q,
+                            "gold_value": p["fact_a"]["value"],
+                            "distractor_value": p["fact_b"]["value"],
+                            "keywords": [str(p["fact_a"]["value"])],
+                            "inject_session": t,
+                            "probe_lags": list(lags),
+                        })
 
             session_entry = {
                 "session": t,
@@ -239,6 +318,8 @@ class S4Generator(BaseGenerator, DependencyMixin):
             }
             if dep_probe:
                 session_entry["dependency_probe"] = dep_probe
+            if binding_probes:
+                session_entry["interference_binding_probes"] = binding_probes
             sessions.append(session_entry)
 
             snapshots.append({

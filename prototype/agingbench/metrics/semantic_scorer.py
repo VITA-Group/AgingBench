@@ -17,6 +17,16 @@ _model = None
 _model_load_attempted = False
 
 
+def _present(needle: str, haystack_lower: str) -> bool:
+    """Digit-flank-safe substring presence: a numeric keyword (e.g. ``73``)
+    will not match inside a longer number (``731``/``$1,732``). Word keywords
+    keep plain substring semantics. ``haystack_lower`` must be lowercased."""
+    if not needle:
+        return False
+    return re.search(r"(?<!\d)" + re.escape(needle.lower()) + r"(?!\d)",
+                     haystack_lower) is not None
+
+
 def _get_model():
     """Lazy-load sentence-transformers model."""
     global _model, _model_load_attempted
@@ -114,9 +124,20 @@ def score_fact_survival(
     """
     text_lower = memory_text.lower()
 
-    # Keyword match
-    if any(kw.lower() in text_lower for kw in keywords):
+    # Keyword match (digit-flank-safe so "73" does not match inside "731").
+    if any(_present(kw, text_lower) for kw in keywords):
         return 1.0
+
+    # Value-bearing gate: if the fact carries numeric gold keywords (dollar
+    # amounts, counts, dates) and NONE of those exact values survived above,
+    # the specific value is gone. Sentence-level cosine similarity must NOT
+    # re-credit a stale/wrong number — "Contingency reserve set at $X" stays
+    # ~0.9 similar to the gold sentence regardless of X, which would mask the
+    # compression/revision the metric exists to detect. The semantic fallback
+    # is reserved for non-numeric (paraphrasable) facts only.
+    numeric_gold = [kw for kw in keywords if any(ch.isdigit() for ch in kw)]
+    if numeric_gold:
+        return 0.0
 
     # Semantic: check each sentence in memory for similarity to the fact
     model = _get_model()

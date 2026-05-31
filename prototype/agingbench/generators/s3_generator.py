@@ -86,6 +86,7 @@ class S3Generator(BaseGenerator, DependencyMixin):
         all_decisions = []
         all_transcripts = []
         all_queries = []
+        all_binding_probes = []  # per-session forced-choice interference probes
         decision_idx = 0
 
         for t in range(n_sessions):
@@ -175,18 +176,54 @@ class S3Generator(BaseGenerator, DependencyMixin):
                 transcript["transcript"] += "\n\n" + "\n".join(inv_lines)
 
             # Inject interference facts (confusable cross-domain pairs)
+            session_binding_probes: list[dict] = []
             if t >= self.pressure.confusable_start_session:
                 pairs = self.inject_interference(graph, t, self.rng, self.pressure)
                 if pairs:
                     interf_lines = [f"{p['text_a']} {p['text_b']}" for p in pairs]
                     transcript["transcript"] += "\n\nNote: " + " ".join(interf_lines)
+                    # Emit a forced-choice binding probe for EVERY injected pair
+                    # so interference is measured by default (not just in the
+                    # explicit similar-name / high-similarity modes). These are
+                    # kept on a SEPARATE key from the session's `queries` so the
+                    # `fidelity` headline and the query-accuracy path are
+                    # undisturbed; the S3 runner asks them at a small fixed set
+                    # of post-injection lags and feeds score_interference_binding
+                    # (correct/confused/miss).
+                    for j, p in enumerate(pairs):
+                        gold = p["fact_a"]["value"]
+                        distractor = p["fact_b"]["value"]
+                        q = p.get("probe_question") or (
+                            f"What is the {p['shared_term']} for "
+                            f"{p['fact_a']['domain']}? Reply with the exact value only."
+                        )
+                        session_binding_probes.append({
+                            "probe_id": f"s{t}_interf_{j}",
+                            "question": q,
+                            "keywords": [str(gold)],
+                            "gold_value": gold,
+                            "distractor_value": distractor,
+                            "probe_type": "interference_binding",
+                        })
 
             all_queries.append({"session": t, "queries": session_queries})
+            # Per-session binding probes (NEW key, separate from `queries`).
+            all_binding_probes.append({
+                "session": t,
+                "probes": session_binding_probes,
+            })
 
         result = {
             "transcripts": {"sessions": all_transcripts},
             "gold_timeline": {"decisions": all_decisions},
             "queries": {"sessions": all_queries},
+            "interference_probes": {
+                "sessions": all_binding_probes,
+                # Lags (in sessions, after injection) at which the runner should
+                # re-ask each pair's binding probe. Bounds cost: S3 can run up to
+                # 100 sessions, so we do NOT re-ask every probe every session.
+                "probe_lags": list(self.pressure.confusable_probe_lags or [1, 3]),
+            },
         }
         result["dependency_graph"] = graph.export()
         return result

@@ -69,6 +69,38 @@ def _s5_kw_present(keyword: str, lower_text: str) -> bool:
         lower_text,
     ) is not None
 
+
+def _s5_active_keywords(probe: dict, block: int) -> list:
+    """Keywords valid for a recall probe at ``block``.
+
+    When the probe's source fact was revised, the generator records a
+    ``keywords_history`` = [(orig_block, old_kws), (update_block, new_kws), …];
+    we pick the latest entry whose block is <= ``block`` (old value before the
+    update, new value after). Without this the probe scores the agent against
+    the stale pre-revision value forever — rewarding staleness and penalizing a
+    correct update. Falls back to ``probe["keywords"]`` when no history exists.
+    """
+    hist = probe.get("keywords_history")
+    if not hist:
+        return probe.get("keywords", [])
+    active = probe.get("keywords", [])
+    for sess, kws in hist:
+        if sess <= block:
+            active = kws
+        else:
+            break
+    return active
+
+
+def _s5_is_mechanics_failure(text: str) -> bool:
+    """True when an adapter response is a tool-loop breakage rather than a real
+    answer: the ReactFileAdapter sentinel ``"(max turns reached)"`` or an
+    ``"ERROR:"`` tool-error observation. Such responses score 0 on every
+    keyword, which would masquerade as recall aging — so they are excluded from
+    recall_accuracy and reported separately as mechanics_failure_rate."""
+    t = (text or "").strip()
+    return t == "(max turns reached)" or t.lstrip().startswith("ERROR:")
+
 from .base import BaseRunner, RunResult
 from .trace import TraceLogger
 from ..core.agent_adapter import AgentAdapter, AgentResponse
@@ -157,7 +189,29 @@ class S5Runner(BaseRunner):
         task_stream = self.generated_data.get("task_stream", {})
         tasks = task_stream.get("tasks", [])
         recall_probes = self.generated_data.get("recall_probes", {}).get("probes", [])
+        binding_probes = self.generated_data.get("binding_probes", [])
         facts_registry = self.generated_data.get("facts_registry", [])
+
+        # Forced binding probes (gold-vs-distractor) are re-asked at a small
+        # fixed set of lags after the pair is injected, so the cost stays
+        # bounded regardless of n_sessions. Each (probe, lag) is asked through
+        # the agent's OWN workspace tool-loop (same send_message path recall
+        # probes use), forcing the agent to recover the gold value from its
+        # own notes; citing the distractor is a binding failure.
+        # Lags are taken from pressure.confusable_probe_lags if the generator
+        # propagated it into generated_data; otherwise a small fixed default.
+        binding_probe_lags = (
+            self.generated_data.get("confusable_probe_lags") or [1, 3]
+        )
+        # Interference-binding source. "topic" (opt-in via
+        # PressureConfig.confusable_topic_matched) reuses the same-category
+        # competitor probe S5 already asks each block — drawn from S5's own
+        # personal facts (topic-matched) and per-block dense, at NO extra agent
+        # calls. "generic" (default) keeps the business-pool binding probes
+        # asked at lags, preserving reproducibility of prior runs.
+        interference_binding_source = self.generated_data.get(
+            "interference_binding_source", "generic"
+        )
 
         if not tasks:
             raise ValueError("No tasks in generated_data. Run S5Generator first.")
@@ -259,6 +313,7 @@ class S5Runner(BaseRunner):
                 # Track interference task responses
                 if task.get("type") == "interference":
                     interference_responses.append({
+                        "task_id": task.get("id"),
                         "target_keywords": task.get("target_keywords", []),
                         "competitor_keywords": task.get("competitor_keywords", []),
                         "response_text": response.text,
@@ -282,9 +337,9 @@ class S5Runner(BaseRunner):
             available_probes = [p for p in recall_probes if p["available_after_block"] < block]
             if available_probes:
                 sampled = self._sample_recall_probes(available_probes, block, rng)
-                probe_scores = []
-                primed_scores = []
-                spontaneous_scores = []
+                probe_scores = []          # raw 0/1, aligned with `sampled`
+                mech_flags = []            # tool-loop-failure flag, aligned with `sampled`
+                spont_flags = []           # is_spontaneous, aligned with `sampled`
 
                 for i, probe in enumerate(sampled):
                     # Alternate: even-indexed probes are spontaneous, odd are primed
@@ -308,21 +363,26 @@ class S5Runner(BaseRunner):
                     # Word-boundary match within a bounded scoring window
                     # (see _s5_scoring_window for rationale).
                     _scored_text = _s5_scoring_window(probe_response.text).lower()
+                    # Use the value valid at THIS block: if the source fact was
+                    # revised, score against the post-update keywords (revision
+                    # faithfulness) rather than the frozen original.
+                    _active_kw = _s5_active_keywords(probe, block)
+                    mech = _s5_is_mechanics_failure(probe_response.text)
                     p_score = 1.0 if any(
                         _s5_kw_present(kw, _scored_text)
-                        for kw in probe["keywords"]
+                        for kw in _active_kw
                     ) else 0.0
                     probe_scores.append(p_score)
-                    if is_spontaneous:
-                        spontaneous_scores.append(p_score)
-                    else:
-                        primed_scores.append(p_score)
+                    mech_flags.append(mech)
+                    spont_flags.append(is_spontaneous)
 
                     lag = block - probe["available_after_block"]
                     if block not in recall_matrix:
                         recall_matrix[block] = {}
                     recall_matrix[block][lag] = recall_matrix[block].get(lag, [])
-                    if isinstance(recall_matrix[block][lag], list):
+                    # Exclude tool-loop failures from the lag matrix too — they
+                    # are not recall evidence.
+                    if not mech and isinstance(recall_matrix[block][lag], list):
                         recall_matrix[block][lag].append(p_score)
 
                     self.tracer.log("recall_probe",
@@ -330,20 +390,112 @@ class S5Runner(BaseRunner):
                         probe_id=probe["id"],
                         lag=lag,
                         score=p_score,
+                        mechanics_failure=mech,
                         probe_type="spontaneous" if is_spontaneous else "primed",
                         prompt=probe_prompt[:200],
                         response_text=probe_response.text[:10000],
                         keywords=probe["keywords"],
                     )
 
-                recall_accuracy = sum(probe_scores) / len(probe_scores) if probe_scores else 1.0
-                primed_recall = (sum(primed_scores) / len(primed_scores)) if primed_scores else None
-                spontaneous_recall = (sum(spontaneous_scores) / len(spontaneous_scores)) if spontaneous_scores else None
+                # Aggregate over GENUINE answers only: a tool-loop crash
+                # ("(max turns reached)" / "ERROR:") scores 0 on every keyword,
+                # which would masquerade as recall aging — so it is excluded from
+                # recall_accuracy and surfaced separately as mechanics_failure_rate.
+                valid = [ps for ps, mf in zip(probe_scores, mech_flags) if not mf]
+                primed_valid = [ps for ps, mf, sp in zip(probe_scores, mech_flags, spont_flags)
+                                if not mf and not sp]
+                spont_valid = [ps for ps, mf, sp in zip(probe_scores, mech_flags, spont_flags)
+                               if not mf and sp]
+                # Down-weight, don't deflate: mean over genuine answers; falls
+                # back to the no-measurable-probe semantics (1.0) only when there
+                # is nothing genuine to score — in which case mechanics_failure_rate
+                # flags the session as unmeasured.
+                recall_accuracy = (sum(valid) / len(valid)) if valid else 1.0
+                primed_recall = (sum(primed_valid) / len(primed_valid)) if primed_valid else None
+                spontaneous_recall = (sum(spont_valid) / len(spont_valid)) if spont_valid else None
+                mechanics_failure_rate = (sum(mech_flags) / len(mech_flags)) if mech_flags else None
             else:
                 recall_accuracy = 1.0
                 probe_scores = []
                 primed_recall = None
                 spontaneous_recall = None
+                mechanics_failure_rate = None
+
+            # ---- Forced binding probes (interference, measured by default) ----
+            # For each injected confusable pair, re-ask the gold-vs-distractor
+            # probe at a small fixed set of lags through the agent's own
+            # workspace tool-loop (same send_message path recall probes use).
+            # The agent must recover the gold value from its own notes; citing
+            # the distractor is a binding failure. These feed only
+            # score_interference_binding — they do NOT touch recall_accuracy.
+            interference_probe_results = []
+
+            def _mech_fail(txt: str) -> bool:
+                # Adapter sentinel / tool-error observation: a tool-loop
+                # breakage, NOT a confusable mis-binding. Flagged so aging
+                # analysis can filter it. The scorer ignores unknown fields.
+                return (txt.strip() == "(max turns reached)"
+                        or txt.lstrip().startswith("ERROR:"))
+
+            if interference_binding_source == "topic":
+                # TOPIC-MATCHED, zero extra agent calls: reuse the same-category
+                # competitor probe S5 already asked THIS block (drawn from S5's
+                # own personal facts). gold = the target fact's value; distractor
+                # = a same-category competitor's value. Per-block dense.
+                for ir in interference_responses:
+                    tgt = ir.get("target_keywords") or []
+                    comp = ir.get("competitor_keywords") or []
+                    if not tgt or not comp:
+                        continue  # need both a gold and a confusable distractor
+                    resp_text = ir.get("response_text", "") or ""
+                    interference_probe_results.append({
+                        "session": block,
+                        "task_id": ir.get("task_id"),
+                        "question": "(same-category competitor probe)",
+                        "response_text": resp_text,
+                        "gold_value": tgt[0],
+                        "distractor_value": comp[0],
+                        "mechanics_failure": _mech_fail(resp_text),
+                    })
+            else:
+                # GENERIC (default): re-ask each injected business-pool pair's
+                # binding probe at a small fixed set of lags through the agent's
+                # own workspace tool-loop. Citing the distractor is a binding
+                # failure. Feeds only score_interference_binding (not recall).
+                for bp in binding_probes:
+                    # Due at injection_block + lag for each configured lag. If NO
+                    # lag lands inside the run horizon (injected too late — e.g. a
+                    # short run), fall back to the final block so each pair is
+                    # scored at least once (n_probes > 0), matching S3/S4. Cost is
+                    # bounded: a pair is asked at most len(lags) times.
+                    inj = bp["available_after_block"]
+                    reachable = [inj + lag for lag in binding_probe_lags
+                                 if lag > 0 and inj + lag < n_sessions]
+                    due = (block in reachable) if reachable else (block == n_sessions - 1)
+                    if not due:
+                        continue
+                    resp = self.adapter.send_message(bp["question"])
+                    resp_text = resp.text or ""
+                    mech_fail = _mech_fail(resp_text)
+                    interference_probe_results.append({
+                        "session": block,
+                        "task_id": bp["probe_id"],
+                        "question": bp["question"],
+                        "response_text": resp_text,
+                        "gold_value": bp["gold_value"],
+                        "distractor_value": bp["distractor_value"],
+                        "mechanics_failure": mech_fail,
+                    })
+                    global_interaction += 1
+                    self.tracer.log("interference_binding_probe",
+                        session=block,
+                        probe_id=bp["probe_id"],
+                        question=bp["question"][:200],
+                        response_text=resp_text[:10000],
+                        gold_value=bp["gold_value"],
+                        distractor_value=bp["distractor_value"],
+                        mechanics_failure=mech_fail,
+                    )
 
             # Workspace inspection (transparent adapters)
             ws_state = self.adapter.get_workspace_state()
@@ -474,12 +626,19 @@ class S5Runner(BaseRunner):
                 "response_tokens_max": max(valid_resp_tokens) if valid_resp_tokens else 0,
                 "primed_recall": primed_recall,
                 "spontaneous_recall": spontaneous_recall,
+                # Fraction of recall probes this block whose response was a
+                # tool-loop breakage (adapter sentinel / ERROR), excluded from
+                # recall_accuracy. Lets analysis filter mechanics from aging.
+                "mechanics_failure_rate": mechanics_failure_rate,
                 "task_scores": block_task_scores,
                 "keyword_m": keyword_m,
                 "overwrite_loss_rate": overwrite_loss,
                 "workspace_fidelity": ws_fidelity,
                 "cohort_keyword_m": cohort_kw,
                 "proactive_check_rate": proactive_rate,
+                # Forced binding probes (gold-vs-distractor) for
+                # score_interference_binding (interference measured by default).
+                "interference_probes": interference_probe_results,
                 # Accumulation-complexity metrics
                 "interference_rate": interf_rate,
                 "specificity_score": avg_specificity,
@@ -522,6 +681,11 @@ class S5Runner(BaseRunner):
             recall_matrix_agg[block] = {}
             for lag, scores in lags.items():
                 if isinstance(scores, list):
+                    # A bucket can be empty when every probe at this (block, lag)
+                    # was a tool-loop failure and thus excluded — skip it rather
+                    # than divide by zero (no genuine recall evidence here).
+                    if not scores:
+                        continue
                     recall_matrix_agg[block][lag] = sum(scores) / len(scores)
                 else:
                     recall_matrix_agg[block][lag] = scores

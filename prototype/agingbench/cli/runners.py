@@ -192,8 +192,14 @@ def _run_s1(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
         from agingbench.generators.s1_generator import S1Generator
         from agingbench.generators.pressure_config import PressureConfig
         gen_n = gen_sessions if gen_sessions > 0 else n_cycles
-        gen_data = S1Generator(seed=sut_cfg.get("seed", 42),
-                               pressure=_resolve_pressure(sut_cfg, scenario_cfg)).generate(gen_n)
+        gen_data = S1Generator(
+            seed=sut_cfg.get("seed", 42),
+            pressure=_resolve_pressure(sut_cfg, scenario_cfg),
+            dense_revision=sut_cfg.get(
+                "dense_revision",
+                scenario_cfg.get("dense_revision", False),
+            ),
+        ).generate(gen_n)
         source_doc = gen_data["source_doc"]
         probes = gen_data["probes"]
         n_cycles = gen_n
@@ -718,15 +724,33 @@ def _run_s4(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
     la_curve = result["la_curve"]
     dep_recall_curve = result["dep_recall_curve"]
 
-    # Headline aging metric for S4 is dep_recall (dependency recall),
-    # not la (location accuracy). la can saturate at 1.0 for some models
-    # (qwen3 lossy: la stays at 1.0 while dep_recall drops 1.00 → 0.145).
-    # dep_recall directly tracks the temporal-dependency-graph collapse
-    # that the scenario is designed to measure.
-    stats = summarize(dep_recall_curve)
+    from agingbench.metrics.aging import AgingCurve
+    # Headline aging metric for S4. We promote **dep_recall_faithful** — the
+    # HELD-OUT dependency probe answered from compressed memory only (no
+    # dep_context in the prompt) — to the headline, because the legacy
+    # dep_recall scores the agent against dep_context that is re-injected into
+    # the task prompt each sprint, i.e. prompt-attention rather than memory
+    # recall (see test_s4_dep_recall_faithful). dep_recall and la are retained
+    # as reported secondaries. Falls back to dep_recall when no faithful probe
+    # fired (e.g. dependency_density/warmup left the curve empty).
+    _faithful = result.get("dep_recall_faithful_raw") or []
+    if _faithful:
+        faithful_curve = AgingCurve(
+            exposures=[int(e) for e, _ in _faithful],
+            scores=[float(s) for _, s in _faithful],
+            scenario="s4_software_engineering",
+            sut_id=sut_cfg["sut_id"],
+            metric_name="dep_recall_faithful",
+        )
+        primary_s4_curve = faithful_curve
+        stats = summarize(faithful_curve)
+        stats["headline_metric"] = "dep_recall_faithful"
+    else:
+        primary_s4_curve = dep_recall_curve
+        stats = summarize(dep_recall_curve)
+        stats["headline_metric"] = "dep_recall"
     stats["scenario"] = "s4_software_engineering"
     stats["metric_group"] = "G4"
-    stats["headline_metric"] = "dep_recall"
     stats["la_raw"] = result["la_raw"]
     stats["cfr_raw"] = result["cfr_raw"]
     stats["fasr_raw"] = result["fasr_raw"]
@@ -790,21 +814,30 @@ def _run_s4(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
     result["cfr_curve"].metric_name = "test_stability"
     result["fasr_curve"].metric_name = "first_attempt_success"
 
-    compare_curves(
-        [dep_recall_curve, la_curve, result["cfr_curve"], result["fasr_curve"]],
-        str(output_dir / "aging_curve.png"),
-        title=title,
-        labels=[
+    # Plot the faithful (held-out memory) curve as headline when available,
+    # with dep_recall (prompt-echo proxy) and la as secondaries.
+    if _faithful:
+        _curves = [primary_s4_curve, dep_recall_curve, la_curve, result["fasr_curve"]]
+        _labels = [
+            "dep_recall_faithful (headline)",
+            "dep_recall (prompt-echo)",
+            "lookahead_accuracy",
+            "first_attempt_success",
+        ]
+    else:
+        _curves = [dep_recall_curve, la_curve, result["cfr_curve"], result["fasr_curve"]]
+        _labels = [
             "dep_recall (headline)",
             "lookahead_accuracy",
             "test_stability (1-CFR)",
             "first_attempt_success",
-        ],
-    )
+        ]
+    compare_curves(_curves, str(output_dir / "aging_curve.png"),
+                   title=title, labels=_labels)
 
     # Mechanism-coverage plot (Table 2 claims: compression + interference)
     _emit_mechanism_aging_plot(
-        primary_curve=dep_recall_curve,
+        primary_curve=primary_s4_curve,
         dep_metrics=stats.get("dependency_metrics") or {},
         output_dir=output_dir,
         sut_id=sut_cfg["sut_id"],

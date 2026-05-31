@@ -738,17 +738,14 @@ class S2Generator(BaseGenerator, DependencyMixin):
         category = budget_constraint["category"]
         acc_name = f"{category}_budget"
 
-        # Scale initial budget with horizon so gold stays positive on long runs.
-        # Per-session expected net = 0.8·(-50) + 0.2·25 ≈ -$35. We only scale
-        # when expected drain exceeds the original budget by a $100 margin, so
-        # short-run baselines (n ≤ ~12 for typical profile budgets) are
-        # preserved. When scaling, cushion at 1.5× expected drain + 2σ of the
-        # cumulative random walk (~34·sqrt(n)).
+        # Scale the initial budget so the ledger stays positive across the
+        # horizon. Per-session net ≈ -$35; per-session σ ≈ 34. We scale when
+        # the worst-case (mean drift + 2σ noise) would breach zero.
         per_session_drain = 35
         expected_drain = per_session_drain * max(0, n_sessions - 1)
-        if expected_drain > original_initial + 100:
-            variance_cushion = int(34 * (n_sessions ** 0.5))
-            initial = int(expected_drain * 1.5) + variance_cushion
+        two_sigma = int(34 * (n_sessions ** 0.5))
+        if expected_drain + two_sigma > original_initial:
+            initial = int(expected_drain * 1.5) + two_sigma
         else:
             initial = original_initial
 

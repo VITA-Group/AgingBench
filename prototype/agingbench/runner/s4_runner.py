@@ -373,6 +373,18 @@ class S4Runner(BaseRunner):
         session_results = []
         all_design_notes = ""
 
+        # Pending forced-choice interference binding probes. Each injected
+        # confusable pair (emitted by the generator at its injection session)
+        # is asked at a small fixed set of lags after injection so interference
+        # is MEASURED by default, not merely injected. Keyed by the absolute
+        # session at which the probe is due. See score_interference_binding.
+        pending_binding_probes: dict[int, list[dict]] = {}
+        # Track which pairs (probe_id) have been asked at least once so we can
+        # guarantee >=1 scored probe per pair even if all scheduled lags fall
+        # past the run horizon (asked at the final session as a fallback).
+        binding_probe_asked: set[str] = set()
+        binding_probe_all: list[dict] = []
+
         # ---- Full trajectory log (content-level, separate from trace) ----
         trajectory_path = self.tracer.path.parent / "trajectory.jsonl"
         traj_f = open(trajectory_path, "w", buffering=1)
@@ -414,6 +426,24 @@ class S4Runner(BaseRunner):
             # already unconditional, but we hoist for defense in depth.)
             dep_context = task.get("dependency_context", "")
             depends_on = task.get("depends_on", [])
+
+            # Schedule this session's forced-choice interference binding probes
+            # at their configured lags (clamped to the run horizon). Asked via
+            # the same self.llm.chat recall path as the dependency probe below,
+            # so cost is bounded (one short ask per pair per scheduled lag).
+            for bp in task.get("interference_binding_probes", []) or []:
+                inj = bp.get("inject_session", t)
+                lags = bp.get("probe_lags") or [1, 3]
+                due = sorted({
+                    inj + lag for lag in lags
+                    if 0 < lag and inj + lag < actual_sessions
+                })
+                # Guarantee >=1 scheduled ask within the horizon: if every
+                # configured lag overshoots, fall back to the last session.
+                if not due:
+                    due = [actual_sessions - 1]
+                for d in due:
+                    pending_binding_probes.setdefault(d, []).append(bp)
 
             # Life event: force memory compaction (only applies to the SUT's
             # memory_policy under C1; C3/C4 use runner-owned state that isn't
@@ -705,6 +735,52 @@ class S4Runner(BaseRunner):
                           score=probe_score,
                           keywords_found=probe_kw_found)
 
+            # ---- Forced-choice interference binding probes due this session ----
+            # Ask each scheduled binding probe through the same self.llm.chat
+            # recall path as the dependency probe. Store raw answers under
+            # session_result["interference_probes"] in the scorer's contract
+            # schema so score_interference_binding can classify correct/
+            # confused/both/miss. Skipped under the oracle/ceiling paths that
+            # replace memory_policy entirely (mirrors the dependency probe).
+            interference_probes: list[dict] = []
+            due_binding = pending_binding_probes.pop(t, [])
+            if (due_binding and not self.oracle_mode and not self.oracle_store
+                    and not self.incontext_ceiling):
+                for bp in due_binding:
+                    probe_q = bp["question"]
+                    probe_user_msg = (
+                        f"Based on your knowledge of all prior sprints, answer this question.\n\n"
+                        f"Question: {probe_q}\n\n"
+                        f"Answer concisely with the specific value only."
+                    )
+                    if memory_text:
+                        probe_user_msg = (
+                            f"Context from prior sprints:\n{memory_text}\n\n{probe_user_msg}"
+                        )
+                    bp_messages = [
+                        {"role": "system",
+                         "content": "You are a software engineer recalling prior design decisions."},
+                        {"role": "user", "content": probe_user_msg},
+                    ]
+                    bp_output = self.llm.chat(bp_messages)
+                    probe_rec = {
+                        "session": t,
+                        "task_id": bp.get("probe_id"),
+                        "question": probe_q,
+                        "response_text": bp_output[:10000],
+                        "gold_value": bp.get("gold_value"),
+                        "distractor_value": bp.get("distractor_value"),
+                    }
+                    interference_probes.append(probe_rec)
+                    binding_probe_all.append(probe_rec)
+                    binding_probe_asked.add(bp.get("probe_id"))
+                    _log_traj("interference_binding_probe", session=t,
+                              probe_id=bp.get("probe_id"),
+                              question=probe_q[:200],
+                              response=bp_output[:300],
+                              gold_value=bp.get("gold_value"),
+                              distractor_value=bp.get("distractor_value"))
+
             sr = {
                 "session": t,
                 "task": task_text[:100],
@@ -722,6 +798,7 @@ class S4Runner(BaseRunner):
                 "dep_recall": dep_recall,
                 "depends_on": depends_on,
                 "dependency_probe_result": dep_probe_result,
+                "interference_probes": interference_probes,
                 # Agent output + probe output so dependency_scorer.forget_accuracy
                 # can scan for invalidated keywords in both the coding response
                 # and the probe answer.

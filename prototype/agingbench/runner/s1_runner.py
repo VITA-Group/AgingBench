@@ -143,6 +143,12 @@ class S1Runner(BaseRunner):
             self.cross_cycle_queries = pb.get("cross_cycle_queries", [])
             sf = generated_data.get("session_facts", {})
             self.session_facts = sf.get("facts", []) if isinstance(sf, dict) else sf
+            # Capture the dependency graph's per-fact version history so the
+            # baseline-corrected revision-aging trident (revision_fidelity_excess,
+            # stale_residue_rate; see scenarios.s1_research_literature.revision_metrics)
+            # can be scored per-cycle against M_t.
+            dg = generated_data.get("dependency_graph") or {}
+            self.dep_graph_facts = dg.get("facts", {}) if isinstance(dg, dict) else {}
         else:
             # Curated mode: load from disk
             facts_path = Path(__file__).parent.parent / "scenarios" / "s1_research_literature" / "session_facts.json"
@@ -161,6 +167,7 @@ class S1Runner(BaseRunner):
             else:
                 self.paper_batches = []
                 self.cross_cycle_queries = []
+            self.dep_graph_facts = {}
 
     def _build_responder(self, eval_text: str, cycle: int):
         """Per-cycle agent-routed responder, or None when agent_class is unset.
@@ -519,6 +526,23 @@ class S1Runner(BaseRunner):
             from agingbench.metrics.aging import count_response_tokens
             eval_tokens = count_response_tokens(self.llm, eval_text)
 
+            # Baseline-corrected revision-aging trident (S3-ported). Scores
+            # M_t against the dependency graph's per-fact version history,
+            # using unrevised facts as the compression-aging baseline so the
+            # residual signal isolates revision-specific decay. Robust to
+            # phrasing (no agent involvement) — see revision_metrics.py.
+            from agingbench.scenarios.s1_research_literature.revision_metrics import (
+                score_revision_aging as _score_rev_aging,
+            )
+            revision_trident = _score_rev_aging(
+                eval_text, self.dep_graph_facts, cycle
+            ) if self.dep_graph_facts else {
+                "revision_fidelity_excess": None,
+                "stale_residue_rate": None,
+                "coverage_verdict": "no_graph",
+                "n_revised": 0, "n_unrevised": 0,
+            }
+
             session_results.append({
                 "session": cycle,
                 # Headline — whichever of snapshot/longitudinal is active.
@@ -558,6 +582,11 @@ class S1Runner(BaseRunner):
                 # task outputs — eval_text IS the agent-visible state).
                 "task_outputs_text": eval_text[:10000],
                 "response_tokens_max": eval_tokens,
+                # Baseline-corrected revision-aging signals: compare survival
+                # rates of revised vs unrevised facts in M_t at this cycle.
+                # See agingbench.scenarios.s1_research_literature.revision_metrics
+                # for the full method.
+                "revision_aging": revision_trident,
             })
 
             self.tracer.log("cycle_end", parent_span_id=cycle_span, cycle=cycle,

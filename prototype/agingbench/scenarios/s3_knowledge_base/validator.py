@@ -19,7 +19,7 @@ def _active_keywords(decision: dict, at_session: Optional[int] = None) -> list[s
     back to ``decision["keywords"]`` (original) when no history is present or
     no session is specified.
 
-    Pre-2026-05-30 the gold timeline froze at original keywords, so an agent
+    Earlier the gold timeline froze at original keywords, so an agent
     that correctly adopted a revised value (e.g. $429,374 → $394,560) was
     marked as having LOST the decision, while an agent that kept stale
     residue scored a survival. This helper restores the correct sign.

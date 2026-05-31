@@ -52,37 +52,9 @@ from ..scenarios.s6_naturalistic.validator import (
 
 
 def _build_tool_registry(memory_reader) -> ToolRegistry:
-    """Build a ToolRegistry with a search_memory tool."""
-    registry = ToolRegistry()
-
-    def _search_memory_fn(args: dict):
-        query = args.get("query", "")
-        mem = memory_reader()
-        if not mem:
-            return {"result": "(no memory available)"}
-        return {"result": mem[:3000]}
-
-    search_spec = ToolSpec(
-        name="search_memory",
-        version="1.0.0",
-        description=(
-            "Search your memory for information from previous research sessions. "
-            "Use this to recall facts, findings, and data from past analyses."
-        ),
-        parameters={
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "What to search for in memory.",
-                }
-            },
-            "required": ["query"],
-        },
-        fn=_search_memory_fn,
-    )
-    registry.register(search_spec)
-    return registry
+    """Tool registry for S6: shared ``read_memory`` only."""
+    from ..core.tool_helpers import build_default_tool_registry
+    return build_default_tool_registry(memory_reader)
 
 
 class S6Runner(BaseRunner, DiagnosticMixin):

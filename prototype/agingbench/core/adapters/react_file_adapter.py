@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Optional
 
 from ..agent_adapter import AgentAdapter, AgentResponse
-from ..agent import ReferenceAgent, strip_thinking
+from ..agent import ReferenceAgent, _ParseFailure, strip_thinking
 from ..llm import BaseLLM
 from ..tools import ToolSpec, ToolRegistry
 from ..memory.workspace import WorkspaceMemoryPolicy
@@ -116,15 +116,11 @@ class ReactFileAdapter(AgentAdapter):
         return registry
 
     def _write_file(self, args: dict) -> str:
-        # Defensive: handle various argument formats
         path_str = args.get("path") or args.get("filename") or args.get("file") or "notes.txt"
         content = args.get("content") or args.get("text") or args.get("data") or str(args)
-        # Llama / small models sometimes emit numeric or boolean `content`
-        # values (e.g. {"content": 42}); pathlib.write_text requires str.
         if not isinstance(content, str):
             content = str(content)
         path = self.workspace_dir / path_str
-        # Sanitize path (prevent directory traversal)
         try:
             path.resolve().relative_to(self.workspace_dir.resolve())
         except ValueError:
@@ -183,19 +179,33 @@ class ReactFileAdapter(AgentAdapter):
         total_input = 0
         total_output = 0
 
+        # Same-call cache: identical (tool, args) reuse the result so
+        # repeated retries don't redundantly hit the filesystem and
+        # consume the turn budget.
+        tool_cache: dict[tuple, object] = {}
+
+        def _tool_cache_key(name: str, args: dict) -> tuple:
+            try:
+                return (name, json.dumps(args, sort_keys=True, default=str))
+            except Exception:
+                return (name, repr(args))
+
         # ReAct loop
         for turn in range(self.max_turns):
             response = self.llm.chat_with_usage(messages)
             total_input += response.input_tokens
             total_output += response.output_tokens
-            text = response.text
+            # Parse the visible (stripped) content, not the raw text — otherwise
+            # Actions or Final Answers inside <think> blocks of a thinking
+            # model (Gemma 4, DeepSeek R1) get treated as committed protocol
+            # output. Visible text is also what we add to history.
+            text = strip_thinking(response.text, self.llm)
 
             # Check for Final Answer
             final = ReferenceAgent._parse_final_answer(text)
             if final is not None:
-                # Save to conversation history
                 self._conversation_history.append({"role": "user", "content": message})
-                self._conversation_history.append({"role": "assistant", "content": strip_thinking(final, self.llm)})
+                self._conversation_history.append({"role": "assistant", "content": final})
                 return AgentResponse(
                     text=final,
                     tool_calls=tool_calls,
@@ -209,9 +219,37 @@ class ReactFileAdapter(AgentAdapter):
             action = ReferenceAgent._parse_action(text)
             if action is not None:
                 tool_name, tool_args = action
+                # Malformed Action Input — surface as an Observation
+                # instead of dispatching the tool with a sentinel that
+                # would crash any args.get(...) inside the tool fn.
+                if isinstance(tool_args, _ParseFailure):
+                    messages.append({"role": "assistant", "content": text})
+                    messages.append({
+                        "role": "user",
+                        "content": f"Observation: ERROR: {tool_args.reason}",
+                    })
+                    continue
                 tool_spec = self._tool_registry.get(tool_name)
                 if tool_spec:
-                    result = tool_spec.call(tool_args)
+                    cache_key = _tool_cache_key(tool_name, tool_args)
+                    if cache_key in tool_cache:
+                        result = tool_cache[cache_key]
+                        obs = (
+                            f"Observation: {result} "
+                            f"[repeated call — same result as before; "
+                            f"try different arguments or commit a Final Answer]"
+                        )
+                    else:
+                        # Catch tool exceptions so a raising tool fn doesn't
+                        # crash the entire run (the file-tool layer can raise
+                        # TypeError on numeric content, OSError on path
+                        # collisions, etc).
+                        try:
+                            result = tool_spec.call(tool_args)
+                        except Exception as e:
+                            result = f"ERROR: {type(e).__name__}: {e}"
+                        tool_cache[cache_key] = result
+                        obs = f"Observation: {result}"
                     tool_calls.append({
                         "tool": tool_name,
                         "input": tool_args,
@@ -219,16 +257,15 @@ class ReactFileAdapter(AgentAdapter):
                     })
                     if tool_name == "write_file":
                         files_changed.append(tool_args.get("path", ""))
-                    # Add observation to messages
-                    messages.append({"role": "assistant", "content": strip_thinking(text, self.llm)})
-                    messages.append({"role": "user", "content": f"Observation: {result}"})
+                    messages.append({"role": "assistant", "content": text})
+                    messages.append({"role": "user", "content": obs})
                 else:
-                    messages.append({"role": "assistant", "content": strip_thinking(text, self.llm)})
+                    messages.append({"role": "assistant", "content": text})
                     messages.append({"role": "user", "content": f"Observation: Unknown tool '{tool_name}'. Available: {', '.join(t.name for t in self._tool_registry)}"})
             else:
                 # No action or final answer — treat as final answer
                 self._conversation_history.append({"role": "user", "content": message})
-                self._conversation_history.append({"role": "assistant", "content": strip_thinking(text, self.llm)})
+                self._conversation_history.append({"role": "assistant", "content": text})
                 return AgentResponse(
                     text=text,
                     tool_calls=tool_calls,

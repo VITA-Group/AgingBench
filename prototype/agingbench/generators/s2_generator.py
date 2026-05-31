@@ -286,6 +286,21 @@ def _gen_gifting_constraint(rng):
 
 
 # ---------------------------------------------------------------------------
+# Accumulator probe phrasings — rotated to discourage pattern-matching when
+# probes fire every session (dense_accumulator=True). All variants must elicit
+# a single numeric answer for the current remaining balance.
+# ---------------------------------------------------------------------------
+
+_ACCUMULATOR_PROBE_TEMPLATES = [
+    "What is my remaining {category} budget this month? Give me the exact number.",
+    "How much do I have left in my {category} budget? Reply with the exact remaining dollar amount.",
+    "What's the current balance on my {category} budget? Just the number, please.",
+    "Tell me the exact remaining amount in my {category} budget right now.",
+    "If I checked my {category} budget today, what number would I see? Exact value only.",
+]
+
+
+# ---------------------------------------------------------------------------
 # Task templates per category
 # ---------------------------------------------------------------------------
 
@@ -341,9 +356,15 @@ class S2Generator(BaseGenerator, DependencyMixin):
 
     SCENARIO_ID = "s2_lifestyle_assistant"
 
-    def __init__(self, seed: int = 42, pressure: PressureConfig | None = None):
+    def __init__(
+        self,
+        seed: int = 42,
+        pressure: PressureConfig | None = None,
+        dense_accumulator: bool = False,
+    ):
         super().__init__(seed)
         self.pressure = pressure or PressureConfig.none()
+        self.dense_accumulator = dense_accumulator
 
     def generate(self, n_sessions: int = 10) -> dict[str, Any]:
         graph = FactGraph()
@@ -604,13 +625,8 @@ class S2Generator(BaseGenerator, DependencyMixin):
 
     def _generate_session_facts(self, n: int, sessions: list) -> list[dict]:
         facts = []
-        # Event-fact text now embeds the {cat} token so the recall_question's
-        # "{cat} activity" reference points at content actually present in the
-        # fact. Pre-fix the recall_question's category was sampled independently
-        # from the text, so a fact like "user booked a service costing $42"
-        # was paired with "What recent groceries activity?" — even with
-        # perfect memory the agent had no semantic anchor and the metric
-        # could not score the event facts above zero.
+        # Event-fact text embeds {cat} so the recall_question's
+        # "{cat} activity" matches a token present in the fact.
         fact_templates = [
             ("preference", "The user mentioned their favorite {cat} spot is {entity}.",
              "What is the user's favorite {cat} spot?"),
@@ -627,13 +643,9 @@ class S2Generator(BaseGenerator, DependencyMixin):
             action = self.rng.choice(["bought something", "booked a service", "made a purchase"])
             text = tmpl_text.format(cat=cat, entity=entity, action=action, amount=amount)
             question = tmpl_q.format(cat=cat)
-            # Multi-keyword gold: entity/amount + category. Aligns with the
-            # curated session_facts.json which already uses 2-3 keywords per
-            # fact. score_recall's "hits >= max(1, n//2)" rule means at 2
-            # keywords either token can satisfy recall — so paraphrased
-            # responses that capture the category (or the value) but not both
-            # still register, giving lag_recall a graded signal instead of
-            # the all-or-nothing single-token collapse.
+            # Two keywords (entity/amount + category) so paraphrased recall
+            # that captures either still scores via the
+            # "hits >= max(1, n//2)" rule in score_recall.
             if tmpl_type == "preference":
                 kws = [entity.lower().split()[0], cat.lower()]
             else:
@@ -675,9 +687,43 @@ class S2Generator(BaseGenerator, DependencyMixin):
         if budget_constraint is None:
             return []
 
-        initial = int(budget_constraint["keywords"][0])
+        original_initial = int(budget_constraint["keywords"][0])
         category = budget_constraint["category"]
         acc_name = f"{category}_budget"
+
+        # Scale initial budget with horizon so gold stays positive on long runs.
+        # Per-session expected net = 0.8·(-50) + 0.2·25 ≈ -$35. We only scale
+        # when expected drain exceeds the original budget by a $100 margin, so
+        # short-run baselines (n ≤ ~12 for typical profile budgets) are
+        # preserved. When scaling, cushion at 1.5× expected drain + 2σ of the
+        # cumulative random walk (~34·sqrt(n)).
+        per_session_drain = 35
+        expected_drain = per_session_drain * max(0, n_sessions - 1)
+        if expected_drain > original_initial + 100:
+            variance_cushion = int(34 * (n_sessions ** 0.5))
+            initial = int(expected_drain * 1.5) + variance_cushion
+        else:
+            initial = original_initial
+
+        # Keep the source constraint coherent with the scaled accumulator: a
+        # "remaining $X budget?" probe is meaningless if the constraint cap and
+        # the accumulator's starting balance disagree.
+        if initial != original_initial:
+            old_s, new_s = str(original_initial), str(initial)
+            budget_constraint["keywords"] = [new_s] + budget_constraint["keywords"][1:]
+            budget_constraint["test_value"] = initial
+            budget_constraint["rule"] = budget_constraint["rule"].replace(
+                f"${old_s}", f"${new_s}"
+            )
+            pd = budget_constraint.get("_probe_data") or {}
+            for k in ("text", "gold"):
+                if isinstance(pd.get(k), str):
+                    pd[k] = pd[k].replace(f"${old_s}", f"${new_s}")
+            if isinstance(pd.get("anti_patterns"), list):
+                pd["anti_patterns"] = [p.replace(old_s, new_s) for p in pd["anti_patterns"]]
+            if isinstance(pd.get("precision_targets"), list):
+                pd["precision_targets"] = [t.replace(old_s, new_s) for t in pd["precision_targets"]]
+
         graph.register_accumulator(acc_name, float(initial), session=0, domain=category)
 
         # Generate delta events: 1 per session starting from session 1
@@ -716,20 +762,26 @@ class S2Generator(BaseGenerator, DependencyMixin):
                     "category": "accumulator_delta",
                 })
 
-            # Generate probe every 2-3 sessions. Gold reflects state at the
-            # end of session t (delta_t already applied), but the probe is
-            # placed at session t+1 so the agent reads memory that has been
-            # written + compressed at session t's boundary. Without this
-            # +1 offset, the probe in session t can never see the delta from
-            # the same session (within-session memory snapshot lag), giving
-            # a systematic ~$20-80 error baked into every affected probe.
-            if t >= 2 and t % self.rng.randint(2, 3) == 0 and t + 1 < n_sessions:
+            # Probe schedule. Gold reflects state at the end of session t
+            # (delta_t already applied); probe is placed at session t+1 so the
+            # agent reads memory written + compressed at session t's boundary
+            # (avoids within-session snapshot lag).
+            #   default: every 2-3 sessions (sparse, ~5 probes per 12-session run)
+            #   dense_accumulator=True: every session ≥ 2 (dense, ~10 probes,
+            #     for smooth per-session accumulator_error curves)
+            if self.dense_accumulator:
+                fires = t >= 2 and t + 1 < n_sessions
+            else:
+                fires = t >= 2 and t % self.rng.randint(2, 3) == 0 and t + 1 < n_sessions
+            if fires:
                 gold = graph.get_accumulator_value(acc_name, at_session=t)
+                question = self.rng.choice(_ACCUMULATOR_PROBE_TEMPLATES).format(
+                    category=category
+                )
                 probes.append({
-                    "session": t + 1,   # moved from t to t+1 (Option A fix)
-                    "gold_at_session": t,   # records the state the gold corresponds to
-                    "question": f"What is my remaining {category} budget this month? "
-                                f"Give me the exact number.",
+                    "session": t + 1,
+                    "gold_at_session": t,
+                    "question": question,
                     "gold_value": gold,
                     "accumulator": acc_name,
                     "eval_keywords": [str(int(gold))],

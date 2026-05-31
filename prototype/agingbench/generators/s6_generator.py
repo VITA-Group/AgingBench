@@ -527,7 +527,7 @@ class S6Generator(BaseGenerator, DependencyMixin):
     def _generate_xref_session(self, sid: int, all_facts: list[dict]) -> dict:
         """Generate a cross-reference session requiring synthesis from memory.
 
-        Pre-2026-05-30 the task text literally embedded the fact values
+        Earlier the task text literally embedded the fact values
         (``- Revenue: $785,163``) and used those same values as eval_keywords,
         making the xref task a copy-echo of the prompt rather than a memory
         synthesis test. The redaction below preserves the topic structure

@@ -83,6 +83,10 @@ def main():
     trace_path = output_dir / "trace.jsonl"
 
     with TraceLogger(str(trace_path)) as tracer:
+        _agent_cfg = sut_cfg.get("agent") if isinstance(sut_cfg.get("agent"), dict) else {}
+        _tool_kind = (_agent_cfg or {}).get("tool_kind", "read")
+        _interaction_format = (_agent_cfg or {}).get("interaction_format", "with_tool_findings")
+
         runner = S2Runner(
             memory_policy=memory_policy,
             llm=llm,
@@ -90,6 +94,8 @@ def main():
             sut_id=sut_id,
             oracle_mode=oracle_mode,
             generated_data=generated_data,
+            tool_kind=_tool_kind,
+            interaction_format=_interaction_format,
         )
         result = runner.run(
             n_sessions=args.sessions,

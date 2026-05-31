@@ -121,15 +121,9 @@ class S1Runner(BaseRunner):
         self.incontext_ceiling = incontext_ceiling # C4
         self.ceiling_max_tokens = ceiling_max_tokens
         self.score_via_response = score_via_response
-        # Optional Tier-1 ReAct wrapper. When None (default), S1 keeps its
-        # original direct-LLM evaluation path byte-identical to prior runs:
-        # the LLM is called only for memory compaction and the response-
-        # scoring helpers. When set (e.g. ReferenceAgent), per-cycle the
-        # runner builds an _EvalTextMemoryProxy + search_memory tool around
-        # the runner-computed eval_text and routes the helper LLM calls
-        # through agent.run_session(...). The headline keyword survival
-        # metric is unaffected because it scores eval_text via substring
-        # grep, not via the LLM.
+        # When agent_class is None, helper LLM calls go through llm.chat
+        # directly. When set (ReferenceAgent), they route through a per-
+        # cycle agent with eval_text-aware tools.
         self.agent_class = agent_class
         self.agent_max_turns = agent_max_turns
 
@@ -168,44 +162,16 @@ class S1Runner(BaseRunner):
                 self.cross_cycle_queries = []
 
     def _build_responder(self, eval_text: str, cycle: int):
-        """Construct the per-cycle agent-routed responder, or return None
-        to keep the direct-LLM path (byte-identical default).
+        """Per-cycle agent-routed responder, or None when agent_class is unset.
 
-        Builds a fresh agent per cycle wrapping:
-          * an ``_EvalTextMemoryProxy`` so the agent reads the runner's
-            ``eval_text`` (preserves C2/C3/C4/cycle-0 attribution modes)
-          * a ``search_memory`` tool that also returns ``eval_text`` so
-            an agent that prefers tool calls over reading its system
-            prompt still sees the right snapshot.
+        The ``_EvalTextMemoryProxy`` ensures the agent's view of memory
+        matches the runner's eval_text under C2/C3/C4 attribution modes.
         """
         if self.agent_class is None:
             return None
-        from ..core.tools import ToolRegistry, ToolSpec
+        from ..core.tool_helpers import build_default_tool_registry
 
-        registry = ToolRegistry()
-
-        def _search_memory_fn(args):
-            return {"result": (eval_text[:8000] if eval_text else "(empty)")}
-
-        registry.register(ToolSpec(
-            name="search_memory",
-            version="1.0.0",
-            description=(
-                "Search your memory for prior session content (papers, "
-                "design notes, constraints)."
-            ),
-            parameters={
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "What to look up in memory.",
-                    }
-                },
-                "required": ["query"],
-            },
-            fn=_search_memory_fn,
-        ))
+        registry = build_default_tool_registry(lambda: eval_text)
 
         proxy = _EvalTextMemoryProxy(self.memory_policy, eval_text)
         agent = self.agent_class(

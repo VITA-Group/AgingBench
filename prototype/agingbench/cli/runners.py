@@ -392,8 +392,14 @@ def _run_s2(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
         from agingbench.generators.s2_generator import S2Generator
         from agingbench.generators.pressure_config import PressureConfig
         gen_n = gen_sessions if gen_sessions > 0 else n_sessions
-        generated_data = S2Generator(seed=sut_cfg.get("seed", 42),
-                                     pressure=_resolve_pressure(sut_cfg, scenario_cfg)).generate(gen_n)
+        generated_data = S2Generator(
+            seed=sut_cfg.get("seed", 42),
+            pressure=_resolve_pressure(sut_cfg, scenario_cfg),
+            dense_accumulator=sut_cfg.get(
+                "dense_accumulator",
+                scenario_cfg.get("dense_accumulator", False),
+            ),
+        ).generate(gen_n)
         n_sessions = gen_n
 
     with TraceLogger(str(trace_path)) as tracer:

@@ -72,27 +72,9 @@ class S3Runner(BaseRunner):
         return [d for d in self.gold_decisions if d["session"] <= session]
 
     def _build_tools(self, memory_text: str) -> ToolRegistry:
-        """Build tools for the agent: search_memory only."""
-        registry = ToolRegistry()
-
-        def search_memory(arguments: dict) -> str:
-            query = arguments.get("query", "")
-            return memory_text[:3000] if memory_text else "(no memory available)"
-
-        registry.register(ToolSpec(
-            name="search_memory",
-            version="1.0.0",
-            description="Search the project knowledge base for past decisions, facts, and meeting notes.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "What to search for"}
-                },
-                "required": ["query"],
-            },
-            fn=search_memory,
-        ))
-        return registry
+        """Tool registry: shared ``read_memory`` only (no scenario-specific tools)."""
+        from ..core.tool_helpers import build_default_tool_registry
+        return build_default_tool_registry(lambda: memory_text)
 
     def run(self, n_sessions: int = 12, seed: int = 42) -> dict:
         """Run S3 for n_sessions; return dict with aging curves and session results."""

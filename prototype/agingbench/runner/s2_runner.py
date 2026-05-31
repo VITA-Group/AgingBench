@@ -61,56 +61,31 @@ def _load_constraint_updates() -> list[dict]:
         return json.load(f)["updates"]
 
 
-def _build_tool_registry(memory_reader) -> ToolRegistry:
-    """
-    Build a ToolRegistry containing the check_constraints tool.
-
-    The tool's callable reads the current memory text from *memory_reader*
-    (a callable returning str), so the agent always queries M_t at call time.
-    """
-    registry = ToolRegistry()
+def _build_tool_registry(memory_reader, tool_kind: str = "read") -> ToolRegistry:
+    """Tool registry for S2: memory-access tool (read or lookup) + check_constraints."""
+    if tool_kind == "lookup":
+        from ..core.tool_helpers import build_lookup_tool_registry
+        registry = build_lookup_tool_registry(memory_reader)
+    elif tool_kind == "read":
+        from ..core.tool_helpers import build_default_tool_registry
+        registry = build_default_tool_registry(memory_reader)
+    else:
+        raise ValueError(
+            f"S2 tool_kind must be 'read' or 'lookup', got {tool_kind!r}"
+        )
 
     def _tool_fn(args: dict):
         category = args.get("category", "")
         memory_text = memory_reader()
         return _check_constraints_fn(category, memory_text)
 
-    spec = ToolSpec(
+    registry.register(ToolSpec(
         name="check_constraints",
         version="1.0.0",
         description=_S2_TOOL_SPEC["description"],
         parameters=_S2_TOOL_SPEC["input_schema"],
         fn=_tool_fn,
-    )
-    registry.register(spec)
-
-    # Also register a search_memory tool so the agent can retrieve context
-    def _search_memory_fn(args: dict):
-        query = args.get("query", "")
-        mem = memory_reader()
-        if not mem:
-            return {"result": "(no memory available)"}
-        # Return full memory for now; in append_only the query drives retrieval
-        return {"result": mem[:2000]}
-
-    search_spec = ToolSpec(
-        name="search_memory",
-        version="1.0.0",
-        description="Search your memory for information about the user's profile, constraints, and past interactions.",
-        parameters={
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "What to search for in memory.",
-                }
-            },
-            "required": ["query"],
-        },
-        fn=_search_memory_fn,
-    )
-    registry.register(search_spec)
-
+    ))
     return registry
 
 
@@ -151,6 +126,8 @@ class S2Runner(BaseRunner):
         oracle_store: bool = False,
         incontext_ceiling: bool = False,
         ceiling_max_tokens: int = 100_000,
+        tool_kind: str = "read",
+        interaction_format: str = "with_tool_findings",
     ):
         # --- Attribution mode handling (C1 / C2 / C3 / C4) --------------
         # Back-compat: legacy `oracle_mode=True` is aliased to oracle_store.
@@ -173,6 +150,12 @@ class S2Runner(BaseRunner):
         self.ceiling_max_tokens = ceiling_max_tokens
         self.agent_class = agent_class
         self.self_plan = self_plan
+        self.tool_kind = tool_kind
+        if interaction_format not in ("thin", "with_tool_findings"):
+            raise ValueError(
+                f"interaction_format must be 'thin' or 'with_tool_findings', got {interaction_format!r}"
+            )
+        self.interaction_format = interaction_format
 
         # C3 state: runner-owned AppendOnly store for the oracle_store path.
         # Instantiated lazily on first use so we don't spin up embeddings
@@ -503,7 +486,7 @@ class S2Runner(BaseRunner):
                     return self._build_gold_text(session_idx)
                 return self.memory_policy.read() or self._current_profile_text
 
-            tool_registry = _build_tool_registry(_memory_reader)
+            tool_registry = _build_tool_registry(_memory_reader, tool_kind=self.tool_kind)
             agent = self.agent_class(
                 llm=self.llm,
                 memory_policy=self.memory_policy,
@@ -518,6 +501,7 @@ class S2Runner(BaseRunner):
             # ---- Run session tasks ----
             tasks = session_data["tasks"]
             task_outputs = []
+            task_tool_calls: list[list[dict]] = []  # parallel to task_outputs
             all_trace_events = []
             # Capture accumulator probe outputs paired with their gold values
             # so dependency_scorer.score_accumulator can grade revision-aging
@@ -557,6 +541,7 @@ class S2Runner(BaseRunner):
                     result = agent.run_session(task_text, session_id=session_idx)
 
                     task_outputs.append(result["output"])
+                    task_tool_calls.append(result.get("tool_calls", []))
 
                     # If this task is an accumulator probe, record the gold
                     # value alongside the agent's response so the scorer can
@@ -837,7 +822,8 @@ class S2Runner(BaseRunner):
             #     the runner's session list; no memory_policy involvement.
             if not is_no_memory:
                 interaction_history = self._build_interaction_history(
-                    session_idx, tasks, task_outputs, update
+                    session_idx, tasks, task_outputs, update,
+                    task_tool_calls=task_tool_calls,
                 )
                 # Preserve raw history for retroactive-recompact hooks (E2 A4c).
                 # No-op for any run that doesn't register that hook.
@@ -1155,27 +1141,74 @@ Think step by step. For each task, state which task you're addressing, then give
         tasks: list[dict],
         task_outputs: list[str],
         update: Optional[dict],
+        task_tool_calls: Optional[list[list[dict]]] = None,
     ) -> str:
         """Build a text summary of the session interaction for memory write.
 
-        No runner-level truncation — the memory policy's compression handles
-        information selection. Constraint updates are included explicitly so
-        the agent's memory has a fair chance to capture them.
+        When ``self.interaction_format == "with_tool_findings"`` (default),
+        a ``Tool findings:`` line summarises the structured results of
+        ``check_constraints`` calls (skipping read_memory/lookup_memory
+        which are redundant with the system prompt content). Opt-in
+        ``"thin"`` produces a Task/Response-only shape — the pre-cleanup
+        format, retained for reproducing earlier baselines.
         """
         lines = [f"--- Session {session_idx} ---"]
         if update:
-            # Present the update conversationally so memory can capture it
             lines.append(
                 f"IMPORTANT UPDATE from user: {update.get('update_text', update['new_rule'])}"
             )
             lines.append(
                 f"(Changed constraint {update['constraint_id']}: {update['new_rule']})"
             )
-        # Include session fact so it enters memory and can be probed later
         session_fact = self._facts_by_session.get(session_idx)
         if session_fact:
             lines.append(f"Note: {session_fact['text']}")
-        for task, output in zip(tasks, task_outputs):
+        include_findings = (
+            self.interaction_format == "with_tool_findings"
+            and task_tool_calls is not None
+        )
+        for i, (task, output) in enumerate(zip(tasks, task_outputs)):
             lines.append(f"Task: {task['text']}")
+            if include_findings:
+                tcs = task_tool_calls[i] if i < len(task_tool_calls) else []
+                findings = self._summarise_tool_findings(tcs)
+                if findings:
+                    lines.append(f"Tool findings: {findings}")
             lines.append(f"Response: {output}")
         return "\n".join(lines)
+
+    @staticmethod
+    def _summarise_tool_findings(tool_calls: list[dict]) -> str:
+        """Compress tool results into one line of structured facts.
+
+        Includes ``check_constraints`` findings (the scenario-specific
+        compute tool); skips ``read_memory`` / ``lookup_memory`` /
+        ``search_memory`` since those return content already in the
+        system prompt. Limits output length to keep the compactor's
+        input bounded.
+        """
+        out = []
+        for tc in tool_calls:
+            name = tc.get("tool", "")
+            result = tc.get("result")
+            inp = tc.get("input", {}) or {}
+            if name == "check_constraints" and isinstance(result, dict):
+                cat = inp.get("category") or result.get("category", "?")
+                found = result.get("constraints_found", []) or []
+                if not found:
+                    out.append(f"check_constraints({cat})→none")
+                    continue
+                ids = [c.get("id", "?") for c in found if isinstance(c, dict)]
+                # Include the FIRST rule excerpt to give the compactor an
+                # actual fact to anchor on, not just a constraint id.
+                first_rule = ""
+                for c in found:
+                    if isinstance(c, dict) and c.get("rule"):
+                        first_rule = str(c["rule"])[:80]
+                        break
+                ids_str = ",".join(ids[:3]) if ids else "?"
+                if first_rule:
+                    out.append(f"check_constraints({cat})→{ids_str}: {first_rule}")
+                else:
+                    out.append(f"check_constraints({cat})→{ids_str}")
+        return "; ".join(out)[:600]

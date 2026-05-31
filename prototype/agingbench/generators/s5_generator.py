@@ -507,16 +507,9 @@ class S5Generator(BaseGenerator, DependencyMixin):
             recall_q = recall_templates[0].format(**fill)
 
         # Extract keywords — the specific values that must be recalled.
-        # Pre-fix, keywords were always [amount, person_first_name, category]
-        # regardless of which template was selected, producing keywords that
-        # often did not appear in the rendered prompt at all (e.g. a probe
-        # for "What is my dentist's location?" had keywords ['456','Kai',
-        # 'clothing'] because the template only used appointment/schedule/
-        # location/street fields). An agent that perfectly recalled the
-        # fact still scored 0 because the gold keywords were unrelated.
-        # Fix: collect distinctive candidate fill values, then filter to
-        # those that actually appear in the rendered prompt. Parallel to
-        # the S1 keyword-extraction fix.
+        # Collect candidate fill values across all templates, then keep only
+        # those that appear in the rendered prompt so the gold matches what
+        # the agent actually saw.
         candidate_keys = [
             "amount", "person", "category", "date", "account", "provider",
             "service", "appointment", "schedule", "location", "allergen",
@@ -536,8 +529,7 @@ class S5Generator(BaseGenerator, DependencyMixin):
             if val is None:
                 continue
             sval = str(val)
-            # For person/doctor/vendor (multi-word strings), use the first
-            # token — it's the distinctive part and avoids overlap noise.
+            # Multi-word person/doctor/vendor: use first token only.
             if k in ("person", "doctor", "vendor", "old_person", "new_person") and " " in sval:
                 sval = sval.split()[0]
             if not sval or sval.lower() in seen:
@@ -545,9 +537,6 @@ class S5Generator(BaseGenerator, DependencyMixin):
             if sval.lower() in prompt_lower:
                 keywords.append(sval)
                 seen.add(sval.lower())
-        # Fallback: if nothing matched (very rare — would mean the template
-        # used only literal text, no fill values) keep at least one stable
-        # gold-anchor so the probe still has a target.
         if not keywords:
             keywords = [str(amount)]
 
@@ -573,13 +562,9 @@ class S5Generator(BaseGenerator, DependencyMixin):
             f"The value '{old_keywords[0]}' should be '{new_amount}'. "
             f"Please update your records accordingly."
         )
-        # eval_keywords scores the agent's response to THIS correction task.
-        # Only tokens actually in the correction prompt can reasonably appear
-        # in the agent's acknowledgement. Stale metadata from old_keywords[1:]
-        # (e.g. "Bergström", "tech gadgets") is never restated by the prompt,
-        # so leaving it in eval_keywords penalises a correct response.
-        # new_keywords is preserved as the structural version-chain record
-        # used by downstream recall-probe gold construction.
+        # eval_keywords scores the acknowledgement of THIS correction (only
+        # the new value can reasonably appear). new_keywords carries the
+        # full post-update gold for downstream recall probes.
         return {
             "id": f"b{block}_update_0",
             "type": "update",

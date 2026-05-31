@@ -229,7 +229,7 @@ class S5Runner(BaseRunner):
                     input_tokens=response.input_tokens,
                     output_tokens=response.output_tokens,
                     prompt=task["prompt"],
-                    response_text=response.text[:2000],  # cap at 2K chars
+                    response_text=response.text[:10000],
                     files_changed=response.files_changed,
                 )
 
@@ -285,7 +285,7 @@ class S5Runner(BaseRunner):
                         score=p_score,
                         probe_type="spontaneous" if is_spontaneous else "primed",
                         prompt=probe_prompt[:200],
-                        response_text=probe_response.text[:2000],
+                        response_text=probe_response.text[:10000],
                         keywords=probe["keywords"],
                     )
 

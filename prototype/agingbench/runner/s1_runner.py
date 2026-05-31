@@ -23,6 +23,36 @@ from ..core.memory.summarize_store import SummarizeStorePolicy
 from ..scenarios.s1_research_literature.task_validator import run_tasks
 
 
+class _EvalTextMemoryProxy:
+    """Per-cycle proxy around `memory_policy` that returns the runner's
+    pre-computed ``eval_text`` from ``.read()`` while passing every other
+    attribute (including ``.write()``) through to the real policy.
+
+    S1's runner computes ``eval_text`` in a mode-dependent way: at cycle 0
+    it's the raw ``source_doc``; under C2/C3/C4 it's gold-text /
+    runner-owned-store / incontext_ceiling content — not what the SUT's
+    own ``memory_policy.read()`` would return. Agents like
+    ``ReferenceAgent`` read ``memory_policy.read()`` directly when building
+    their system prompt, so without this proxy a wired-in agent would see
+    the SUT's lossy compaction even in the oracle modes — silently
+    breaking the C1-C4 attribution framework. The proxy is constructed
+    fresh per cycle by the runner before the agent is built.
+    """
+
+    def __init__(self, real_policy, eval_text):
+        self._real = real_policy
+        self._text = eval_text
+
+    def read(self):
+        return self._text
+
+    def write(self, *args, **kwargs):
+        return self._real.write(*args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+
 class S1Runner(BaseRunner):
     """
     ScenarioRunner for Scenario S1 — Research Literature Agent.
@@ -63,6 +93,8 @@ class S1Runner(BaseRunner):
         ceiling_max_tokens: int = 100_000,
         generated_data: dict | None = None,
         score_via_response: bool = False,
+        agent_class=None,
+        agent_max_turns: int = 8,
     ):
         # Back-compat alias: legacy oracle_mode -> oracle_store under the
         # new clean attribution framework (§5.2). In S1 the behavioral
@@ -89,6 +121,17 @@ class S1Runner(BaseRunner):
         self.incontext_ceiling = incontext_ceiling # C4
         self.ceiling_max_tokens = ceiling_max_tokens
         self.score_via_response = score_via_response
+        # Optional Tier-1 ReAct wrapper. When None (default), S1 keeps its
+        # original direct-LLM evaluation path byte-identical to prior runs:
+        # the LLM is called only for memory compaction and the response-
+        # scoring helpers. When set (e.g. ReferenceAgent), per-cycle the
+        # runner builds an _EvalTextMemoryProxy + search_memory tool around
+        # the runner-computed eval_text and routes the helper LLM calls
+        # through agent.run_session(...). The headline keyword survival
+        # metric is unaffected because it scores eval_text via substring
+        # grep, not via the LLM.
+        self.agent_class = agent_class
+        self.agent_max_turns = agent_max_turns
 
         # Infer model info for trace logging
         self._model_id = getattr(llm, "model_id", None) or getattr(llm, "model", "unknown")
@@ -123,6 +166,60 @@ class S1Runner(BaseRunner):
             else:
                 self.paper_batches = []
                 self.cross_cycle_queries = []
+
+    def _build_responder(self, eval_text: str, cycle: int):
+        """Construct the per-cycle agent-routed responder, or return None
+        to keep the direct-LLM path (byte-identical default).
+
+        Builds a fresh agent per cycle wrapping:
+          * an ``_EvalTextMemoryProxy`` so the agent reads the runner's
+            ``eval_text`` (preserves C2/C3/C4/cycle-0 attribution modes)
+          * a ``search_memory`` tool that also returns ``eval_text`` so
+            an agent that prefers tool calls over reading its system
+            prompt still sees the right snapshot.
+        """
+        if self.agent_class is None:
+            return None
+        from ..core.tools import ToolRegistry, ToolSpec
+
+        registry = ToolRegistry()
+
+        def _search_memory_fn(args):
+            return {"result": (eval_text[:8000] if eval_text else "(empty)")}
+
+        registry.register(ToolSpec(
+            name="search_memory",
+            version="1.0.0",
+            description=(
+                "Search your memory for prior session content (papers, "
+                "design notes, constraints)."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "What to look up in memory.",
+                    }
+                },
+                "required": ["query"],
+            },
+            fn=_search_memory_fn,
+        ))
+
+        proxy = _EvalTextMemoryProxy(self.memory_policy, eval_text)
+        agent = self.agent_class(
+            llm=self.llm,
+            memory_policy=proxy,
+            tools=registry,
+            max_turns=self.agent_max_turns,
+        )
+
+        def _respond(framed_query: str) -> str:
+            result = agent.run_session(framed_query, session_id=cycle)
+            return result.get("output", "") or ""
+
+        return _respond
 
     def _probe_lag_recall(self, eval_text: str, cycle: int) -> dict:
         """
@@ -227,6 +324,7 @@ class S1Runner(BaseRunner):
             _progress(f"cycle {cycle + 1}/{n_cycles + 1} start", cycle_t0)
 
             # ---- Longitudinal mode: add new paper batch ----
+            new_batch_text = ""  # set in the C1 branch below when applicable
             if self.paper_batches and cycle < len(self.paper_batches):
                 batch = self.paper_batches[cycle]
                 new_content = f"\n\n--- {batch['title']} ---\n{batch['content']}"
@@ -282,11 +380,16 @@ class S1Runner(BaseRunner):
                 eval_text = self.memory_policy.read()
                 if self.paper_batches and cycle < len(self.paper_batches):
                     batch = self.paper_batches[cycle]
-                    eval_text += f"\n\n--- {batch['title']} ---\n{batch['content']}"
+                    new_batch_text = f"\n\n--- {batch['title']} ---\n{batch['content']}"
+                    eval_text += new_batch_text
 
             # ---- Track memory_bloat (G3-M2) ----
             bloat = compute_memory_bloat(eval_text)
             bloat_series.append(bloat)
+
+            # ---- Build the per-cycle responder once. None unless
+            # agent_class is set; helpers fall back to direct llm.chat.
+            responder = self._build_responder(eval_text, cycle)
 
             # ---- Snapshot metric: fraction of the fixed probe set that is
             # findable in the agent's current eval_text view. One binary
@@ -327,6 +430,7 @@ class S1Runner(BaseRunner):
                     )
                     k_scores, k_details = _run_keyword_probes(
                         kw_probes, eval_text, self.llm,
+                        responder=responder,
                     )
                     for probe, score, detail in zip(kw_probes, k_scores, k_details):
                         keyword_response_results.append({
@@ -346,6 +450,7 @@ class S1Runner(BaseRunner):
                 )
                 r_scores, r_details = _run_trend_probes(
                     trend_probes_this_cycle, eval_text, self.llm,
+                    responder=responder,
                 )
                 by_id = {d["probe_id"]: d for d in r_details}
                 for tr in trend_probe_results:
@@ -397,7 +502,9 @@ class S1Runner(BaseRunner):
             # ---- Run compliance decision tasks (task_m) ----
             task_m = 0.0
             if self.tasks:
-                _, task_m, task_details = run_tasks(self.tasks, eval_text, self.llm)
+                _, task_m, task_details = run_tasks(
+                    self.tasks, eval_text, self.llm, responder=responder,
+                )
                 task_scores_by_cycle.append(task_m)
                 self.tracer.log(
                     "task_batch",
@@ -478,7 +585,7 @@ class S1Runner(BaseRunner):
                 # store a truncated copy so dependency_scorer.forget_accuracy
                 # can scan it for invalidated keywords (S1 has no separate
                 # task outputs — eval_text IS the agent-visible state).
-                "task_outputs_text": eval_text[:1500],
+                "task_outputs_text": eval_text[:10000],
                 "response_tokens_max": eval_tokens,
             })
 
@@ -515,8 +622,12 @@ class S1Runner(BaseRunner):
             )
             if _uses_sut_policy:
                 _progress(f"cycle {cycle + 1}: compression start", cycle_t0)
-                input_len = len(eval_text)
-                self.memory_policy.write(eval_text, llm=self.llm)
+                if cycle == 0 or not new_batch_text:
+                    write_payload = eval_text
+                else:
+                    write_payload = new_batch_text
+                input_len = len(write_payload)
+                self.memory_policy.write(write_payload, llm=self.llm)
                 compressed = self.memory_policy.read()
 
                 # Read token usage if the policy captured it

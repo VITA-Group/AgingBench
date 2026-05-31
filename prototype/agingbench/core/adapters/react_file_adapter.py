@@ -119,6 +119,10 @@ class ReactFileAdapter(AgentAdapter):
         # Defensive: handle various argument formats
         path_str = args.get("path") or args.get("filename") or args.get("file") or "notes.txt"
         content = args.get("content") or args.get("text") or args.get("data") or str(args)
+        # Llama / small models sometimes emit numeric or boolean `content`
+        # values (e.g. {"content": 42}); pathlib.write_text requires str.
+        if not isinstance(content, str):
+            content = str(content)
         path = self.workspace_dir / path_str
         # Sanitize path (prevent directory traversal)
         try:

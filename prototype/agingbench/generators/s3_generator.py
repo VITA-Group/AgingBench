@@ -107,25 +107,28 @@ class S3Generator(BaseGenerator, DependencyMixin):
                 fact_text = tmpl_text.format(**vals)
                 keywords = self._extract_keywords(vals, kw_fields)
 
+                # Register each decision in the FactGraph and capture the
+                # auto-assigned fact_id so we can later link version updates
+                # back to the corresponding gold-timeline decision.
+                fact = graph.register_fact(
+                    session=t,
+                    domain=cat,
+                    content=fact_text,
+                    keywords=keywords,
+                )
                 decision = {
                     "id": f"D{decision_idx + 1:02d}",
                     "session": t,
                     "category": cat,
                     "fact": fact_text,
                     "keywords": keywords,
+                    "fact_id": fact.id,
+                    "keywords_history": [(t, list(keywords))],
                     "person": person,
                 }
                 session_decisions.append(decision)
                 all_decisions.append(decision)
                 decision_idx += 1
-
-                # Register each decision in the FactGraph
-                graph.register_fact(
-                    session=t,
-                    domain=cat,
-                    content=fact_text,
-                    keywords=keywords,
-                )
 
             # Generate transcript
             transcript = self._generate_transcript(t, session_decisions, team, project_name)
@@ -150,6 +153,20 @@ class S3Generator(BaseGenerator, DependencyMixin):
             if updates:
                 update_lines = [u["text"] for u in updates]
                 transcript["transcript"] += "\n\n" + "\n".join(update_lines)
+                # Mirror each version update into the corresponding decision's
+                # keywords_history so compute_fidelity can pick the active
+                # keywords at any given session. Without this, the gold timeline
+                # froze at original keywords while the FactGraph advanced,
+                # producing a perverse metric where revision SUCCESS scored 0
+                # and revision FAILURE (stale residue) scored 1.
+                for u in updates:
+                    matching = next(
+                        (d for d in all_decisions if d.get("fact_id") == u["old_fact_id"]),
+                        None,
+                    )
+                    if matching is not None:
+                        matching["keywords_history"].append((t, list(u["new_keywords"])))
+                        matching["fact_id"] = u["new_fact_id"]  # advance pointer
 
             # Apply selective forgetting (revision aging)
             invalidations = self.invalidate_random_facts(graph, t, self.rng, self.pressure)

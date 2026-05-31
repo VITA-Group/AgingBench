@@ -727,6 +727,19 @@ def _run_s4(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
     stats["rr_raw"] = result["rr_raw"]
     stats["task_m_raw"] = result["task_m_raw"]
     stats["dep_recall_raw"] = result["dep_recall_raw"]
+    # Faithful per-probe dep_recall (LLM answers held-out questions using only
+    # compressed memory_text — no dep_context). Sparse: present only at sessions
+    # where dependency_density fired a probe. Side-car metric for empirical
+    # comparison against the substring-on-dep_context proxy reported above.
+    _faithful = result.get("dep_recall_faithful_raw") or []
+    stats["dep_recall_faithful_raw"] = _faithful
+    if _faithful:
+        _faithful_scores = [s for _, s in _faithful]
+        stats["dep_recall_faithful_mean"] = round(
+            sum(_faithful_scores) / len(_faithful_scores), 4
+        )
+        stats["dep_recall_faithful_final"] = round(_faithful_scores[-1], 4)
+        stats["dep_recall_faithful_n_probes"] = len(_faithful_scores)
     stats["session_results"] = result["session_results"]
 
     if generated_data and "dependency_graph" in generated_data:

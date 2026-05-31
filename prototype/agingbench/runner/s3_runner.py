@@ -308,7 +308,9 @@ class S3Runner(BaseRunner):
             current_memory = self.memory_policy.read() if not is_no_memory else all_transcripts_text
             decisions_so_far = self._get_decisions_up_to(t)
 
-            fidelity_detail = compute_fidelity_detailed(current_memory, decisions_so_far)
+            fidelity_detail = compute_fidelity_detailed(
+                current_memory, decisions_so_far, at_session=t
+            )
             fidelity = fidelity_detail["fidelity"]
             contradiction = compute_contradiction_rate(current_memory, decisions_so_far)
             contradiction_count = compute_contradiction_count(current_memory, decisions_so_far)

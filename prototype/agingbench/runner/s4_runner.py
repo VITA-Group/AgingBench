@@ -18,11 +18,48 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import tempfile
 import time
 import shutil
 from pathlib import Path
+
+
+_DEP_RECALL_STRUCTURAL = frozenset({
+    "session", "important", "update", "correction", "previous",
+    "finding", "invalid", "withdrawn", "longer", "accurate",
+    "information", "about", "sprint", "value", "point",
+    "earlier", "above", "below", "should", "would", "could",
+    "using", "added", "which", "must", "have", "this", "that",
+    "please", "disregard", "future", "analyses", "analysis",
+    "retracted",
+})
+
+
+def _compute_dep_recall(dep_context: str, agent_output: str) -> float:
+    """Score how well the agent referenced prior sprint decisions.
+
+    Returns a value in [0, 1] computed as:
+        min(1, hits / max(0.3 * N_unique_keywords, 1))
+
+    where keywords are alphabetic content tokens (>=5 chars, deduped,
+    excluding structural mixin markers like "UPDATE:" and common English
+    like "should"/"about"). Vacuously returns 1.0 when dep_context is empty
+    or produces no qualifying keywords.
+    """
+    if not dep_context:
+        return 1.0
+    tokens = re.findall(r"[a-z][a-z_0-9]*", dep_context.lower())
+    dep_keywords = sorted({
+        t for t in tokens
+        if len(t) >= 5 and t not in _DEP_RECALL_STRUCTURAL
+    })
+    if not dep_keywords:
+        return 1.0
+    output_lower = agent_output.lower()
+    hits = sum(1 for kw in dep_keywords if kw in output_lower)
+    return min(1.0, hits / max(len(dep_keywords) * 0.3, 1))
 from typing import Optional
 
 from .base import BaseRunner, RunResult
@@ -555,16 +592,8 @@ class S4Runner(BaseRunner):
             # lossy). We restore the documented semantics here.
             rr = 1.0
 
-            # Dependency recall: does the agent reference prior sprint decisions?
-            dep_recall = 1.0
-            if dep_context:
-                # Check if key terms from dependency_context appear in agent output
-                dep_keywords = [w for w in dep_context.lower().split()
-                               if len(w) > 4 and w not in ("sprint", "using", "added", "which", "must")]
-                if dep_keywords:
-                    output_lower = agent_output.lower()
-                    hits = sum(1 for kw in dep_keywords if kw in output_lower)
-                    dep_recall = min(1.0, hits / max(len(dep_keywords) * 0.3, 1))
+            # Dependency recall (S4 headline; paper Table 3 column).
+            dep_recall = _compute_dep_recall(dep_context, agent_output)
 
             # Task success
             task_success = 1.0 if (la > 0.3 and len(agent_output) > 50) else 0.0
@@ -658,7 +687,7 @@ class S4Runner(BaseRunner):
                 dep_probe_result = {
                     "session": t,
                     "question": dep_probe["question"],
-                    "output": probe_output[:500],
+                    "output": probe_output[:10000],
                     "eval_keywords": probe_kw,
                     "keywords_found": probe_kw_found,
                     "score": probe_score,
@@ -686,11 +715,11 @@ class S4Runner(BaseRunner):
                 "dep_recall": dep_recall,
                 "depends_on": depends_on,
                 "dependency_probe_result": dep_probe_result,
-                # Truncated agent output — also include probe output so
-                # dependency_scorer.forget_accuracy can scan for invalidated
-                # keywords in both the coding response and the probe answer.
+                # Agent output + probe output so dependency_scorer.forget_accuracy
+                # can scan for invalidated keywords in both the coding response
+                # and the probe answer.
                 "task_outputs_text": (
-                    (agent_output[:1500] if agent_output else "")
+                    (agent_output[:10000] if agent_output else "")
                     + (" " + dep_probe_result["output"] if dep_probe_result else "")
                 ),
                 # Token-cap diagnostics
@@ -749,6 +778,18 @@ class S4Runner(BaseRunner):
             scenario=self.SCENARIO_ID, sut_id=self.sut_id,
         )
 
+        # FAITHFUL dep recall: aggregate the LLM-answered dependency probe scores.
+        # Unlike the substring-on-dep_context proxy above (which scores whether
+        # the agent's coding response echoes fresh prompt content), this metric
+        # tests whether the agent can ANSWER a recall question with only
+        # compressed memory_text — no dep_context provided to the probe call.
+        # Sparse: only present at sessions where dependency_density triggered.
+        dep_recall_faithful_raw: list[tuple[int, float]] = []
+        for sr in session_results:
+            dpr = sr.get("dependency_probe_result")
+            if dpr is not None and "score" in dpr:
+                dep_recall_faithful_raw.append((sr["session"], float(dpr["score"])))
+
         # Life event analysis
         life_event_result = None
         if self.life_event_session is not None and self.life_event_session < len(la_raw):
@@ -799,6 +840,7 @@ class S4Runner(BaseRunner):
             "rr_raw": rr_raw,
             "task_m_raw": task_m_raw,
             "dep_recall_raw": dep_recall_raw,
+            "dep_recall_faithful_raw": dep_recall_faithful_raw,
             "session_results": session_results,
             "life_event": life_event_result,
             "attribution_schema": "v2_clean",

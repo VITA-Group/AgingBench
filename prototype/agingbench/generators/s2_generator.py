@@ -370,6 +370,26 @@ class S2Generator(BaseGenerator, DependencyMixin):
         # Generate constraint updates (1-2 mid-lifetime)
         updates = self._generate_constraint_updates(n_sessions, constraints)
 
+        # Refresh precision_targets for "relax" updates that change a constraint's
+        # numeric value. Without this, an agent that learns the new value (e.g.
+        # $400) is penalized because the eval probe's frozen target is still the
+        # OLD value (e.g. $309) — the metric perversely rewards staleness. The
+        # `precision_target_change` field records the session at which the new
+        # target becomes active so the scorer can pick the correct gold per session.
+        for upd in updates:
+            if upd.get("type") != "relax":
+                continue
+            new_kws = upd.get("keywords_added") or []
+            if not new_kws:
+                continue
+            for probe in eval_probes:
+                if probe["constraint_id"] == upd["constraint_id"]:
+                    probe["precision_target_change"] = {
+                        "session": upd["session"],
+                        "new_targets": new_kws,
+                    }
+                    break
+
         # Generate session facts (1 per session)
         facts = self._generate_session_facts(n_sessions, sessions)
 
@@ -717,11 +737,18 @@ class S2Generator(BaseGenerator, DependencyMixin):
                     "category": "accumulator_delta",
                 })
 
-            # Generate probe every 2-3 sessions
-            if t >= 2 and t % self.rng.randint(2, 3) == 0:
+            # Generate probe every 2-3 sessions. Gold reflects state at the
+            # end of session t (delta_t already applied), but the probe is
+            # placed at session t+1 so the agent reads memory that has been
+            # written + compressed at session t's boundary. Without this
+            # +1 offset, the probe in session t can never see the delta from
+            # the same session (within-session memory snapshot lag), giving
+            # a systematic ~$20-80 error baked into every affected probe.
+            if t >= 2 and t % self.rng.randint(2, 3) == 0 and t + 1 < n_sessions:
                 gold = graph.get_accumulator_value(acc_name, at_session=t)
                 probes.append({
-                    "session": t,
+                    "session": t + 1,   # moved from t to t+1 (Option A fix)
+                    "gold_at_session": t,   # records the state the gold corresponds to
                     "question": f"What is my remaining {category} budget this month? "
                                 f"Give me the exact number.",
                     "gold_value": gold,

@@ -261,7 +261,19 @@ class DependencyMixin:
             domains.append(domains[-1] if domains else "general")
 
         template = rng.choice(SYNTHESIZE_TEMPLATES)
-        entities = [f.content.split(".")[0][:30] for f in selected]
+        # Redact each entity's value tokens (its keywords) so the template
+        # doesn't embed the gold answer the eval_keywords subsequently scores
+        # against. Pre-fix: the entity strings were ``f.content.split(".")[0][:30]``
+        # which for S6 fact content like "Revenue: $785,163" leaked the exact
+        # value into the synthesis prompt — same copy-echo failure mode as
+        # the xref task. Now: "Revenue: $[?]".
+        def _redact_entity(f: Fact) -> str:
+            raw = f.content.split(".")[0][:60]   # widen window so labels survive
+            for kw in sorted(f.keywords or [], key=len, reverse=True):
+                if kw:
+                    raw = raw.replace(kw, "[?]")
+            return raw[:50]   # keep prompt-token budget bounded
+        entities = [_redact_entity(f) for f in selected]
         text = template.format(
             domain_a=domains[0],
             domain_b=domains[1],
@@ -402,6 +414,40 @@ class DependencyMixin:
             return []
 
         results = []
+
+        # High-similarity mode: near-twin entities (same base, minimal
+        # qualifier) with CLOSE values, to actually induce mis-binding.
+        if getattr(pressure, "confusable_high_similarity", False):
+            bases = ["marketing budget", "engineering budget", "dining budget",
+                     "travel budget", "contract deadline", "project deadline",
+                     "vendor invoice", "subscription fee"]
+            qual_pairs = [("Q3", "Q4"), ("2023", "2024"), ("primary", "secondary"),
+                          ("North-region", "South-region"), ("east-team", "west-team"),
+                          ("phase-1", "phase-2"), ("January", "February")]
+            avail_bases = [b for b in bases if b not in existing_groups]
+            for base in avail_bases[:n_needed]:
+                q1, q2 = rng.choice(qual_pairs)
+                v1 = rng.randint(200, 900)
+                while v1 % 5 == 0:
+                    v1 += rng.randint(1, 4)
+                # v2 within ~5% of v1 (close magnitude → genuinely confusable)
+                delta = max(2, rng.randint(2, max(3, v1 // 20)))
+                v2 = v1 + (delta if rng.random() < 0.5 else -delta)
+                while v2 % 5 == 0 or v2 == v1:
+                    v2 += rng.randint(1, 4)
+                f1 = graph.register_fact(session=session, domain=q1,
+                    content=f"The {q1} {base} is ${v1:,}.", keywords=[f"${v1:,}", str(v1)])
+                f2 = graph.register_fact(session=session, domain=q2,
+                    content=f"The {q2} {base} is ${v2:,}.", keywords=[f"${v2:,}", str(v2)])
+                graph.add_interference(f1.id, f2.id, base)
+                results.append({
+                    "shared_term": base,
+                    "fact_a": {"id": f1.id, "domain": q1, "value": f"${v1:,}"},
+                    "fact_b": {"id": f2.id, "domain": q2, "value": f"${v2:,}"},
+                    "text_a": f1.content, "text_b": f2.content,
+                })
+            return results
+
         available_terms = [t for t in confusable_terms if t not in existing_groups]
 
         for term in available_terms[:n_needed]:

@@ -67,8 +67,15 @@ class S6Generator(BaseGenerator, DependencyMixin):
                     )
                 non_xref_idx += 1
 
-            # Apply dependency task replacement after warmup
-            if i >= self.pressure.warmup_sessions and self.rng.random() < self.pressure.dependency_density:
+            # Apply dependency task replacement after warmup.
+            # Skip on xref sessions: their task is already a carefully-redacted
+            # cross-domain synthesis test (see _generate_xref_session). Letting
+            # build_dependency_task overwrite it would replace the value-masked
+            # xref prompt with a generic synthesize template — losing the
+            # multi-session memory-test design.
+            if (i >= self.pressure.warmup_sessions
+                and not is_xref
+                and self.rng.random() < self.pressure.dependency_density):
                 dep_task = self.build_dependency_task(graph, i, self.rng, self.pressure)
                 if dep_task:
                     session["task"] = {
@@ -498,7 +505,15 @@ class S6Generator(BaseGenerator, DependencyMixin):
                     fact["key_fact"] = kf
 
     def _generate_xref_session(self, sid: int, all_facts: list[dict]) -> dict:
-        """Generate a cross-reference session requiring synthesis from memory."""
+        """Generate a cross-reference session requiring synthesis from memory.
+
+        Pre-2026-05-30 the task text literally embedded the fact values
+        (``- Revenue: $785,163``) and used those same values as eval_keywords,
+        making the xref task a copy-echo of the prompt rather than a memory
+        synthesis test. The redaction below preserves the topic structure
+        ("Revenue: $[?]") so the agent knows what categories to recall, while
+        masking the specific values it must retrieve from memory.
+        """
         # Pick 3-5 facts from different prior sessions
         available = [f for f in all_facts if f["session_id"] < sid]
         if len(available) < 3:
@@ -507,16 +522,30 @@ class S6Generator(BaseGenerator, DependencyMixin):
             n_pick = min(self.rng.randint(3, 5), len(available))
         selected = sample_unique(available, n_pick, self.rng)
 
-        # Build synthesis question
-        fact_summaries = [f["key_fact"] for f in selected]
-        all_kw = []
+        # Build redacted (value-stripped) fact prompts — preserves the
+        # topic/label structure but masks the value the agent must recall.
+        redacted_prompts: list[str] = []
+        fact_summaries: list[str] = []
+        all_kw: list[str] = []
         for f in selected:
+            fact_summaries.append(f["key_fact"])
             all_kw.extend(f["keywords"])
+            redacted = f["key_fact"]
+            # Replace longer keywords first so we don't leave partial residues
+            # (e.g. "785,215" masked before "785" inside a different token).
+            for kw in sorted(f.get("keywords", []), key=len, reverse=True):
+                if kw:
+                    redacted = redacted.replace(kw, "[?]")
+            redacted_prompts.append(redacted)
 
         task_text = (
-            "Based on your memory of our previous research sessions, provide a "
-            "summary that includes the following details from our past analyses:\n"
-            + "\n".join(f"- {s}" for s in fact_summaries)
+            "Based on your memory of our previous research sessions, recall the "
+            "specific details from our past analyses on each of the topics below. "
+            "Provide the original values, names, and specifics — don't repeat the "
+            "placeholders:\n"
+            + "\n".join(f"- {p}" for p in redacted_prompts)
+            + "\n\nBe precise with numbers, names, and proper nouns where you can "
+            "recall them."
         )
 
         # Determine domain label
@@ -535,5 +564,5 @@ class S6Generator(BaseGenerator, DependencyMixin):
                 "reference_answer": "; ".join(fact_summaries),
                 "eval_keywords": all_kw[:6],  # cap at 6 keywords
             },
-            "recall_probes": [],  # no new facts to probe
+            "recall_probes": [],  # xref tests synthesis, not new-fact recall
         }

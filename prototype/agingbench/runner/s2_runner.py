@@ -544,8 +544,13 @@ class S2Runner(BaseRunner):
                 for task_i, task in enumerate(tasks, start=1):
                     task_text = task["text"]
                     # For constraint update tasks, prepend the update instruction
+                    # to the first task's text so the agent both acknowledges the
+                    # update AND answers the original probe in one turn. Previously
+                    # this REPLACED the first task's text, silently dropping the
+                    # probe answer on every update session (~20% of headline-metric
+                    # variance on N=10 runs).
                     if update and task == tasks[0] and update.get("update_text"):
-                        task_text = update["update_text"]
+                        task_text = update["update_text"] + "\n\n" + task["text"]
 
                     if task_i == 1 or task_i % task_log_every == 0 or task_i == len(tasks):
                         _progress(
@@ -734,6 +739,7 @@ class S2Runner(BaseRunner):
                 probes=self.eval_probes,
                 trace_events=all_trace_events,
                 baseline_tool_counts=baseline_tool_counts,
+                session_idx=session_idx,
             )
 
             cvr = session_score["cvr"]
@@ -872,12 +878,12 @@ class S2Runner(BaseRunner):
                     written_payload = interaction_history
                     self.memory_policy.write(interaction_history, llm=self.llm)
                 else:
-                    current_mem = self.memory_policy.read() or ""
-                    written_payload = (
-                        current_mem + "\n\n" + interaction_history
-                        if current_mem
-                        else self._current_profile_text + "\n\n" + interaction_history
-                    )
+                    # summarize_store and similar: write() internally concats
+                    # with prior memory, so pass only the new content.
+                    if self.memory_policy.read():
+                        written_payload = interaction_history
+                    else:
+                        written_payload = self._current_profile_text + "\n\n" + interaction_history
                     self.memory_policy.write(written_payload, llm=self.llm)
 
                 compressed = self.memory_policy.read()

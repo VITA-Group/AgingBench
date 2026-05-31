@@ -57,6 +57,12 @@ class PressureConfig:
     confusable_start_session: int = 5
     warmup_sessions: int = 3
     forget_rate: float = 0.0  # fraction of facts to invalidate per session (0.0 = disabled)
+    # High-similarity confusables: near-twin entities (same base, minimal
+    # qualifier diff) with CLOSE values (±~5%), instead of the default
+    # surface-word-only pairs with order-of-magnitude-apart values. The default
+    # pairs can't induce mis-binding (trivially distinguishable); this mode
+    # produces genuinely fragile bindings to test the confusion channel.
+    confusable_high_similarity: bool = False
 
     def __post_init__(self) -> None:
         """Validate cross-knob compatibility.

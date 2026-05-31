@@ -1,0 +1,24 @@
+sut_id: llama3_appendonly_interf_n6
+description: "append_only + pure interference (n_confusable_pairs=6, revision OFF). Compression-free dose-response point."
+
+model:
+  provider: local_hf
+  model_id: NousResearch/Meta-Llama-3.1-8B-Instruct
+  max_new_tokens: 700
+  temperature: 0.0
+
+memory_policy:
+  type: append_only
+  retriever:
+    top_k: 5
+
+pressure:
+  preset: medium
+  tokens_per_session: 2000
+  dependency_density: 0.5
+  confusable_start_session: 1
+  n_confusable_pairs: 6
+  update_rate: 0.0
+  forget_rate: 0.0
+
+seed: 42

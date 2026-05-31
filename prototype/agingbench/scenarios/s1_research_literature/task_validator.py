@@ -70,10 +70,22 @@ def score_task(response: str, task: dict) -> int:
         return int(correct in r)
 
 
+_TASK_REACT_FRAMING = (
+    "You are a project compliance checker. Answer based strictly on what "
+    "is in your memory.\n"
+    "For yes/no questions: start your answer with YES or NO, then give one "
+    "sentence of reasoning. For open questions: state the name or value "
+    "directly, then give one sentence of reasoning. Be concise.\n\n"
+    "Question: {query}"
+)
+
+
 def run_tasks(
     tasks: list[dict],
     memory_text: str,
     llm,
+    *,
+    responder=None,
 ) -> tuple[list[int], float, list[dict]]:
     """
     Run all tasks against the current memory snapshot.
@@ -83,23 +95,26 @@ def run_tasks(
     tasks       : list of task dicts loaded from tasks.jsonl
     memory_text : current compressed memory (or source_doc at cycle 0)
     llm         : BaseLLM instance
-
-    Returns
-    -------
-    scores      : list[int]  — 0 or 1 per task
-    task_m      : float      — fraction correct
-    details     : list of {task_id, query, response, correct, score}
+    responder   : optional Callable[[str], str]. When provided, the helper
+                  routes the framed task query through `responder(...)`
+                  instead of `llm.chat(messages)`. The runner uses this
+                  to wrap an agent (e.g. ReferenceAgent) around the LLM
+                  while preserving runner-owned memory semantics.
+                  When None, the existing direct-LLM path is unchanged.
     """
     system_msg = TASK_SYSTEM.format(memory=memory_text or "(empty)")
     scores = []
     details = []
 
     for task in tasks:
-        messages = [
-            {"role": "system", "content": system_msg},
-            {"role": "user", "content": task["query"]},
-        ]
-        response = llm.chat(messages)
+        if responder is None:
+            messages = [
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": task["query"]},
+            ]
+            response = llm.chat(messages)
+        else:
+            response = responder(_TASK_REACT_FRAMING.format(query=task["query"]))
         s = score_task(response, task)
         scores.append(s)
         details.append({
@@ -123,20 +138,33 @@ _TREND_PROBE_SYSTEM = """You are answering questions about a series of engineeri
 Answer each question concisely using the information in memory. If a value has been updated, cite the latest value, not the original."""
 
 
+_PROBE_REACT_FRAMING = (
+    "Answer the following question using only the information in your "
+    "memory. If a value has been updated, cite the latest value, not the "
+    "original. Be concise.\n\n"
+    "Question: {query}"
+)
+
+
 def run_keyword_probes(
     probes: list[dict],
     memory_text: str,
     llm,
+    *,
+    responder=None,
 ) -> tuple[list[int], list[dict]]:
     from .validator import score_probe
     system_msg = _TREND_PROBE_SYSTEM.format(memory=memory_text or "(empty)")
     scores, details = [], []
     for probe in probes:
-        messages = [
-            {"role": "system", "content": system_msg},
-            {"role": "user", "content": probe["question"]},
-        ]
-        response = llm.chat(messages)
+        if responder is None:
+            messages = [
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": probe["question"]},
+            ]
+            response = llm.chat(messages)
+        else:
+            response = responder(_PROBE_REACT_FRAMING.format(query=probe["question"]))
         s = score_probe(response, probe)
         scores.append(s)
         details.append({
@@ -152,16 +180,21 @@ def run_trend_probes(
     trend_probes: list[dict],
     memory_text: str,
     llm,
+    *,
+    responder=None,
 ) -> tuple[list[int], list[dict]]:
     from .validator import score_probe
     system_msg = _TREND_PROBE_SYSTEM.format(memory=memory_text or "(empty)")
     scores, details = [], []
     for probe in trend_probes:
-        messages = [
-            {"role": "system", "content": system_msg},
-            {"role": "user", "content": probe["question"]},
-        ]
-        response = llm.chat(messages)
+        if responder is None:
+            messages = [
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": probe["question"]},
+            ]
+            response = llm.chat(messages)
+        else:
+            response = responder(_PROBE_REACT_FRAMING.format(query=probe["question"]))
         s = score_probe(response, probe)
         scores.append(s)
         details.append({

@@ -7,6 +7,33 @@ Produces G3 metrics: summarization_fidelity, memory_bloat, contradiction_rate.
 
 from __future__ import annotations
 import re
+from typing import Optional
+
+
+def _active_keywords(decision: dict, at_session: Optional[int] = None) -> list[str]:
+    """Pick the keywords valid at session ``at_session``.
+
+    When the decision carries ``keywords_history`` (a list of (session, kws)
+    tuples emitted by the generator each time version_random_facts updates the
+    fact), choose the latest entry whose session is <= ``at_session``. Falls
+    back to ``decision["keywords"]`` (original) when no history is present or
+    no session is specified.
+
+    Pre-2026-05-30 the gold timeline froze at original keywords, so an agent
+    that correctly adopted a revised value (e.g. $429,374 → $394,560) was
+    marked as having LOST the decision, while an agent that kept stale
+    residue scored a survival. This helper restores the correct sign.
+    """
+    history = decision.get("keywords_history")
+    if not history or at_session is None:
+        return decision.get("keywords", [])
+    active: list[str] = decision.get("keywords", [])
+    for sess, kws in history:
+        if sess <= at_session:
+            active = kws
+        else:
+            break
+    return active
 
 
 def score_query(response: str, query: dict) -> float:
@@ -40,26 +67,42 @@ def score_queries(responses: list[str], queries: list[dict]) -> tuple[list[int],
     return scores, acc
 
 
-def compute_fidelity(memory_text: str, gold_decisions: list[dict]) -> float:
+def compute_fidelity(
+    memory_text: str,
+    gold_decisions: list[dict],
+    at_session: Optional[int] = None,
+) -> float:
     """
     G3-M1: Summarization fidelity.
-    Fraction of gold decisions whose keywords survive in M_t.
+    Fraction of gold decisions whose CURRENTLY-active keywords survive in M_t.
+
+    When ``at_session`` is provided, decisions with a ``keywords_history`` use
+    their post-revision keywords (the value valid at that session). Otherwise
+    the original keywords are used (back-compat).
     """
     text = memory_text.lower()
     survived = 0
     for d in gold_decisions:
-        # A decision "survives" if at least one keyword is present
-        for kw in d["keywords"]:
+        active = _active_keywords(d, at_session)
+        for kw in active:
             if kw.lower() in text:
                 survived += 1
                 break
     return survived / len(gold_decisions) if gold_decisions else 1.0
 
 
-def compute_fidelity_detailed(memory_text: str, gold_decisions: list[dict]) -> dict:
+def compute_fidelity_detailed(
+    memory_text: str,
+    gold_decisions: list[dict],
+    at_session: Optional[int] = None,
+) -> dict:
     """
     Detailed fidelity: per-decision survival and by category.
     Uses hybrid keyword + semantic scoring for partial credit.
+
+    When ``at_session`` is provided, decisions with a ``keywords_history`` use
+    their post-revision keywords for both the keyword pass and the
+    semantic-survival call.
     """
     try:
         from agingbench.metrics.semantic_scorer import score_fact_survival
@@ -72,10 +115,11 @@ def compute_fidelity_detailed(memory_text: str, gold_decisions: list[dict]) -> d
     by_category = {}
 
     for d in gold_decisions:
+        active = _active_keywords(d, at_session)
         if use_semantic:
-            score = score_fact_survival(memory_text, d["fact"], d["keywords"])
+            score = score_fact_survival(memory_text, d["fact"], active)
         else:
-            score = 1.0 if any(kw.lower() in text for kw in d["keywords"]) else 0.0
+            score = 1.0 if any(kw.lower() in text for kw in active) else 0.0
 
         per_decision[d["id"]] = score
         cat = d.get("category", "other")

@@ -506,11 +506,50 @@ class S5Generator(BaseGenerator, DependencyMixin):
         except (KeyError, IndexError):
             recall_q = recall_templates[0].format(**fill)
 
-        # Extract keywords — the specific values that must be recalled
-        keywords = [str(amount)]
-        if person and person != "None":
-            keywords.append(person.split()[0])  # first name
-        keywords.append(category if self.domain != "coding" else fill.get("module", category))
+        # Extract keywords — the specific values that must be recalled.
+        # Pre-fix, keywords were always [amount, person_first_name, category]
+        # regardless of which template was selected, producing keywords that
+        # often did not appear in the rendered prompt at all (e.g. a probe
+        # for "What is my dentist's location?" had keywords ['456','Kai',
+        # 'clothing'] because the template only used appointment/schedule/
+        # location/street fields). An agent that perfectly recalled the
+        # fact still scored 0 because the gold keywords were unrelated.
+        # Fix: collect distinctive candidate fill values, then filter to
+        # those that actually appear in the rendered prompt. Parallel to
+        # the S1 keyword-extraction fix.
+        candidate_keys = [
+            "amount", "person", "category", "date", "account", "provider",
+            "service", "appointment", "schedule", "location", "allergen",
+            "doctor", "preference",
+            # coding domain
+            "module", "technology", "purpose", "endpoint", "auth_method",
+            "table", "config_key", "dependency", "version",
+            # knowledge_base domain
+            "vendor", "project", "milestone", "topic", "new_version",
+            "new_amount", "old_amount", "bug_id",
+        ]
+        prompt_lower = prompt.lower()
+        seen: set[str] = set()
+        keywords: list[str] = []
+        for k in candidate_keys:
+            val = fill.get(k)
+            if val is None:
+                continue
+            sval = str(val)
+            # For person/doctor/vendor (multi-word strings), use the first
+            # token — it's the distinctive part and avoids overlap noise.
+            if k in ("person", "doctor", "vendor", "old_person", "new_person") and " " in sval:
+                sval = sval.split()[0]
+            if not sval or sval.lower() in seen:
+                continue
+            if sval.lower() in prompt_lower:
+                keywords.append(sval)
+                seen.add(sval.lower())
+        # Fallback: if nothing matched (very rare — would mean the template
+        # used only literal text, no fill values) keep at least one stable
+        # gold-anchor so the probe still has a target.
+        if not keywords:
+            keywords = [str(amount)]
 
         return {
             "id": f"fact_{fact_id}",
@@ -529,16 +568,24 @@ class S5Generator(BaseGenerator, DependencyMixin):
         new_amount = self.rng.choice([129, 237, 391, 458, 582, 619, 747, 893])
         new_keywords = [str(new_amount)] + old_keywords[1:]
 
+        prompt = (
+            f"IMPORTANT CORRECTION: The information from '{old_fact['id']}' needs updating. "
+            f"The value '{old_keywords[0]}' should be '{new_amount}'. "
+            f"Please update your records accordingly."
+        )
+        # eval_keywords scores the agent's response to THIS correction task.
+        # Only tokens actually in the correction prompt can reasonably appear
+        # in the agent's acknowledgement. Stale metadata from old_keywords[1:]
+        # (e.g. "Bergström", "tech gadgets") is never restated by the prompt,
+        # so leaving it in eval_keywords penalises a correct response.
+        # new_keywords is preserved as the structural version-chain record
+        # used by downstream recall-probe gold construction.
         return {
             "id": f"b{block}_update_0",
             "type": "update",
             "session_block": block,
-            "prompt": (
-                f"IMPORTANT CORRECTION: The information from '{old_fact['id']}' needs updating. "
-                f"The value '{old_keywords[0]}' should be '{new_amount}'. "
-                f"Please update your records accordingly."
-            ),
-            "eval_keywords": new_keywords,
+            "prompt": prompt,
+            "eval_keywords": [str(new_amount)],
             "old_keywords": old_keywords,
             "new_keywords": new_keywords,
             "replaces_fact": old_fact["id"],

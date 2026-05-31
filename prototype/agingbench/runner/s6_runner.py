@@ -511,13 +511,9 @@ class S6Runner(BaseRunner, DiagnosticMixin):
                 if is_growing or isinstance(self.memory_policy, AppendOnlyPolicy):
                     self.memory_policy.write(interaction_text, llm=self.llm)
                 else:
-                    current_mem = self.memory_policy.read() or ""
-                    new_content = (
-                        current_mem + "\n\n" + interaction_text
-                        if current_mem
-                        else interaction_text
-                    )
-                    self.memory_policy.write(new_content, llm=self.llm)
+                    # summarize_store and similar: write() internally concats
+                    # with prior memory, so pass only the new content.
+                    self.memory_policy.write(interaction_text, llm=self.llm)
 
                 compressed = self.memory_policy.read()
                 in_tok = getattr(self.memory_policy, "last_input_tokens", 0)

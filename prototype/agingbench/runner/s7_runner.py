@@ -45,22 +45,54 @@ def _keyword_match_score(response: str, expected: list[str],
 
 
 def _extract_count_from_text(text: str) -> int | None:
-    """Find the first plausible integer in a response (for accumulator probes).
+    """Find the plausible answer-count in a probe response.
 
-    Looks for explicit numerals first, then English number words up to 20.
+    Priority:
+      1. Total-/count-anchored phrases ("total: N", "N commands", "there are N", ...).
+      2. First integer that is NOT a markdown list marker ("N." followed by space/tab/newline).
+      3. Highest markdown-list-marker integer (a list of "1." ... "5." indicates count 5).
+      4. English number word up to 17.
     Returns None if nothing parses.
     """
     if not text:
         return None
+    low = text.lower()
+
+    # 1. Anchored patterns — most reliable.
+    anchored_patterns = (
+        r"total\s*(?:of)?\s*[:\-=]?\s*(\d{1,3})",
+        r"(\d{1,3})\s+(?:total\s+)?(?:cli\s+)?(?:commands?|items?|entries|notes|files|fields|tests|columns|rows|values|operations|tags|categories|subcommands)",
+        r"there\s+are\s+(\d{1,3})",
+        r"count\s*(?:is|=|:)\s*(\d{1,3})",
+        r"(\d{1,3})\s+(?:supported|defined|registered|implemented|in\s+total)",
+    )
+    for pat in anchored_patterns:
+        m = re.search(pat, low)
+        if m:
+            return int(m.group(1))
+
+    # 2. First integer that is NOT a markdown list marker ("N. ").
+    list_markers: list[int] = []
     for m in re.finditer(r"\b(\d{1,3})\b", text):
+        end = m.end()
+        next_ch = text[end] if end < len(text) else ""
+        is_marker = next_ch == "." and (end + 1 >= len(text) or text[end + 1] in " \t\n")
+        if is_marker:
+            list_markers.append(int(m.group(1)))
+            continue
         return int(m.group(1))
+
+    # 3. Fall back to the highest list-marker integer (e.g. "1. ... 5." → 5).
+    if list_markers:
+        return max(list_markers)
+
+    # 4. English number word fallback.
     words = {
         "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
         "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
         "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
         "fifteen": 15, "sixteen": 16, "seventeen": 17,
     }
-    low = text.lower()
     for w, n in words.items():
         if f" {w} " in f" {low} " or low.startswith(w + " "):
             return n
@@ -507,7 +539,7 @@ class S7Runner:
                     "chain_depth": p["chain_depth"],
                     "score": score,
                     "num_turns": probe_turns,
-                    "response_text": (pr.text[:300] if pr else "error"),
+                    "response_text": (pr.text[:10000] if pr else "error"),
                 })
 
             # 4. Workspace fidelity (all canonical keywords across all sessions so far)

@@ -116,7 +116,28 @@ def score_probe_with_judge(probe: dict, agent_output: str, llm=None) -> dict:
     return result
 
 
-def score_probe_precision(probe: dict, agent_output: str) -> dict:
+def _resolve_active_targets(probe: dict, session_idx: Optional[int] = None) -> list:
+    """Pick the precision_targets that apply at this session.
+
+    Precedence:
+      1. If ``precision_target_change`` is set AND session_idx is known AND
+         session_idx >= change.session → return ``new_targets``.
+      2. Otherwise fall back to the original ``precision_targets``.
+
+    Backward-compatible: probes without ``precision_target_change`` see the
+    original targets regardless of session.
+    """
+    change = probe.get("precision_target_change")
+    if change and session_idx is not None and session_idx >= change.get("session", float("inf")):
+        return change.get("new_targets", probe.get("precision_targets", []))
+    return probe.get("precision_targets", [])
+
+
+def score_probe_precision(
+    probe: dict,
+    agent_output: str,
+    session_idx: Optional[int] = None,
+) -> dict:
     """
     Score whether the agent cites EXACT constraint-specific values.
 
@@ -125,6 +146,12 @@ def score_probe_precision(probe: dict, agent_output: str) -> dict:
     generic caution. This produces a monotonically decaying signal because
     once compression removes a specific value (e.g., "$173"), the agent
     can never cite it again.
+
+    When ``session_idx`` is provided and the probe carries a
+    ``precision_target_change`` (e.g., a "relax" constraint update at session
+    N changed the budget value), the active targets switch to the new value
+    at session N. This prevents the metric from perversely rewarding agents
+    that fail to learn the update.
 
     Returns:
         dict with:
@@ -135,7 +162,7 @@ def score_probe_precision(probe: dict, agent_output: str) -> dict:
           - precision_score: targets_hit / targets_total (partial credit)
     """
     output_lower = agent_output.lower()
-    targets = probe.get("precision_targets", [])
+    targets = _resolve_active_targets(probe, session_idx)
 
     if not targets:
         # No precision targets defined — skip
@@ -169,6 +196,7 @@ def score_probe_precision(probe: dict, agent_output: str) -> dict:
 def compute_constraint_precision(
     probes: list[dict],
     agent_outputs: list[str],
+    session_idx: Optional[int] = None,
 ) -> dict:
     """
     Compute Constraint Precision — fraction of probes where the agent
@@ -178,6 +206,10 @@ def compute_constraint_precision(
     knowledge (does the agent know the specific value?). This is immune
     to generic caution and is monotonically decaying under compression.
 
+    When ``session_idx`` is provided, probes that carry a
+    ``precision_target_change`` (relax-update mutated their gold) switch to
+    the new targets at and after the update session.
+
     Returns:
         dict with:
           - constraint_precision: overall fraction [0,1]
@@ -186,7 +218,7 @@ def compute_constraint_precision(
     """
     results = []
     for probe, output in zip(probes, agent_outputs):
-        result = score_probe_precision(probe, output)
+        result = score_probe_precision(probe, output, session_idx=session_idx)
         results.append(result)
 
     # Only count probes that have precision targets
@@ -504,6 +536,7 @@ def score_session(
     probes: Optional[list[dict]] = None,
     trace_events: Optional[list[dict]] = None,
     baseline_tool_counts: Optional[dict[str, int]] = None,
+    session_idx: Optional[int] = None,
 ) -> dict:
     """
     Score a complete session for S2.
@@ -513,6 +546,8 @@ def score_session(
         probes: the eval probes (loaded from eval_probes.json if None)
         trace_events: raw trace from the session (for tool_usage_shift)
         baseline_tool_counts: session-0 tool distribution (for KL divergence)
+        session_idx: session index; when set, probes with
+            ``precision_target_change`` switch to the post-update target.
 
     Returns:
         dict with CVR, tool_usage_shift, per-probe results
@@ -529,7 +564,9 @@ def score_session(
     cvr = compute_cvr(probe_results)
 
     # Constraint precision — the primary aging metric for S2
-    precision_result = compute_constraint_precision(probes, agent_outputs)
+    precision_result = compute_constraint_precision(
+        probes, agent_outputs, session_idx=session_idx
+    )
 
     # Compute tool usage shift if trace data is available
     tus = 0.0

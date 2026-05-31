@@ -67,6 +67,10 @@ def check_constraints(category: str, memory_text: str) -> dict:
     profile = load_profile()
     all_constraints = {c["id"]: c for c in profile["constraints"]}
 
+    # Defensive: the agent sometimes passes a list for `category`; a list is
+    # unhashable and crashes dict.get(). Coerce to the first element (or "").
+    if isinstance(category, (list, tuple)):
+        category = category[0] if category else ""
     relevant_ids = _CATEGORY_CONSTRAINTS.get(category, [])
     found = []
     missing = []

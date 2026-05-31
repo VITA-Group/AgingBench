@@ -63,6 +63,16 @@ class PressureConfig:
     # pairs can't induce mis-binding (trivially distinguishable); this mode
     # produces genuinely fragile bindings to test the confusion channel.
     confusable_high_similarity: bool = False
+    # Similar-NAME confusables (the figure's "two Johns" case): near-identical
+    # entity names (John Smith / John Smyth) with DISTINCT attribute values.
+    # The ambiguity is in the retrieval KEY (the name), not the value — the
+    # agent may grab the wrong record. Tests identity-confusion specifically.
+    confusable_similar_names: bool = False
+    # Lags (in sessions, after injection) at which to re-probe each confusable
+    # pair. Probing the same pair at increasing lags as the append_only store
+    # grows gives a context-DENSITY gradient for interference. None → single
+    # probe at +2 (backward compatible).
+    confusable_probe_lags: Optional[list] = None
 
     def __post_init__(self) -> None:
         """Validate cross-knob compatibility.

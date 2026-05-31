@@ -525,10 +525,6 @@ class S2Runner(BaseRunner):
             # the runner discarded which task was an accumulator probe, so the
             # accumulator track was generated and executed but never scored.
             accumulator_probe_results: list[dict] = []
-            # Forced-answer interference probes: capture the agent's response
-            # alongside the correct (gold) and confusable (distractor) values so
-            # score_interference_binding can classify correct/confused/miss.
-            interference_probe_results: list[dict] = []
 
             if self.self_plan:
                 # Self-planned mode: give the agent all tasks at once and let
@@ -573,19 +569,6 @@ class S2Runner(BaseRunner):
                             "response_text": result["output"],
                             "gold_value": task.get("gold_value"),
                             "eval_keywords": task.get("eval_keywords", []),
-                        })
-
-                    # If this task is a forced-answer interference probe, record
-                    # the agent's answer with both the gold and the confusable
-                    # distractor so the scorer can tell confusion from omission.
-                    if task.get("category") == "interference_probe":
-                        interference_probe_results.append({
-                            "session": session_idx,
-                            "task_id": task.get("id"),
-                            "question": task_text,
-                            "response_text": result["output"],
-                            "gold_value": task.get("gold_value"),
-                            "distractor_value": task.get("distractor_value"),
                         })
 
                     _log_traj("agent_output", session=session_idx, phase="task",
@@ -788,7 +771,6 @@ class S2Runner(BaseRunner):
                 "compounding_fresh_n_passed": compounding_fresh_result["n_fresh_passed"],
                 # Revision-aging scoring inputs (consumed by dependency_scorer)
                 "accumulator_probes": accumulator_probe_results,
-                "interference_probes": interference_probe_results,
                 "task_outputs_text": task_outputs_text,
                 "response_tokens_per_task": task_token_counts,
                 "response_tokens_max": max(valid_tokens) if valid_tokens else 0,

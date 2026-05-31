@@ -343,6 +343,11 @@ class S6Runner(BaseRunner, DiagnosticMixin):
                 all_probes.extend(self.sessions[s].get("recall_probes", []))
 
             probe_results = []
+            # Forced binding probes (confusable names): capture response with
+            # gold + distractor so score_interference_binding can classify
+            # correct/confused/miss. S6 re-asks prior probes each session, so
+            # this yields a lag/density gradient automatically.
+            interference_probe_results = []
             total_probes = len(all_probes)
             if total_probes:
                 _progress(
@@ -355,13 +360,27 @@ class S6Runner(BaseRunner, DiagnosticMixin):
                 )
                 scored = score_recall_probe(probe_result["output"], probe)
                 # Carry the raw probe answer so forget_accuracy's text scan and
-                # the per-probe token diagnostics below see it. score_recall_probe
-                # itself only returns {probe_id, recalled, keywords}, so without
-                # this the probe responses were silently dropped from
-                # task_outputs_text (forget_accuracy then only saw the primary
-                # task output).
+                # the per-probe token diagnostics below see it.
                 scored["agent_answer"] = probe_result["output"]
+                # Tag the probe type so the recall headline can be sliced with
+                # vs without the confusable subset (comparability across configs).
+                scored["probe_type"] = probe.get("probe_type")
                 probe_results.append(scored)
+                # Forced binding probes (confusable names) also count toward the
+                # recall headline (a "wrong John" answer is a recall failure),
+                # AND are decomposed here into confusion vs omission for
+                # score_interference_binding. Same probe, two views; S6 re-asks
+                # them every session so the per-session series is the density
+                # gradient.
+                if probe.get("probe_type") == "interference_binding":
+                    interference_probe_results.append({
+                        "session": session_idx,
+                        "task_id": probe.get("probe_id"),
+                        "question": probe["question"],
+                        "response_text": probe_result["output"],
+                        "gold_value": probe.get("gold_value"),
+                        "distractor_value": probe.get("distractor_value"),
+                    })
                 _log_traj("recall_probe", session=session_idx,
                           probe_id=probe.get("probe_id", ""),
                           question=probe["question"],
@@ -411,11 +430,23 @@ class S6Runner(BaseRunner, DiagnosticMixin):
                     session_idx, self.sessions, probe_results
                 )
                 recall_matrix[session_idx] = matrix_row
+                # Headline recall counts ALL probes (a confused binding answer
+                # is a recall failure → interference lowers the headline).
                 overall_recall = sum(
                     p["recalled"] for p in probe_results
                 ) / len(probe_results)
+                # Also report recall over the non-binding subset, so the
+                # original cross-domain recall stays comparable across configs
+                # with vs without the confusable-name pairs.
+                _nb = [p for p in probe_results
+                       if p.get("probe_type") != "interference_binding"]
+                recall_excl_binding = (
+                    round(sum(p["recalled"] for p in _nb) / len(_nb), 4)
+                    if _nb else None
+                )
             else:
                 recall_matrix[session_idx] = {}
+                recall_excl_binding = None
                 overall_recall = 1.0
 
             # Record scores
@@ -449,12 +480,14 @@ class S6Runner(BaseRunner, DiagnosticMixin):
                 ),
                 "task_score": task_eval["task_score"],
                 "recall_rate": round(overall_recall, 4),
+                "recall_rate_excl_binding": recall_excl_binding,
                 "recall_matrix_row": matrix_row if probe_results else {},
                 "n_probes_total": len(probe_results),
                 "n_probes_recalled": sum(
                     p["recalled"] for p in probe_results
                 ),
                 "probe_details": probe_results,
+                "interference_probes": interference_probe_results,
                 "task_keywords_found": task_eval["keywords_found"],
                 "task_keywords_missing": task_eval["keywords_missing"],
                 "task_outputs_text": task_outputs_text,

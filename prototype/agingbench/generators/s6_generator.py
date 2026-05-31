@@ -105,6 +105,26 @@ class S6Generator(BaseGenerator, DependencyMixin):
                         f"{p['text_a']}\n{p['text_b']}" for p in pairs
                     )
                     session["environment_data"] = session.get("environment_data", "") + "\n\n" + interf_text
+                    # Add a forced binding probe per pair to recall_probes,
+                    # carrying gold + distractor so the runner/scorer can tell
+                    # confusion (partner value) from omission. S6 re-asks all
+                    # prior probes every session, so these get a lag/density
+                    # sweep for free.
+                    probes = session.setdefault("recall_probes", [])
+                    for j, p in enumerate(pairs):
+                        q = p.get("probe_question") or (
+                            f"What is the exact {p['fact_a']['domain']} "
+                            f"{p['shared_term']}? Reply with the exact value only."
+                        )
+                        probes.append({
+                            "probe_id": f"s{i}_interf_{j}",
+                            "question": q,
+                            "keywords": [str(p["fact_a"]["value"])],
+                            "canonical_answer": str(p["fact_a"]["value"]),
+                            "gold_value": p["fact_a"]["value"],
+                            "distractor_value": p["fact_b"]["value"],
+                            "probe_type": "interference_binding",
+                        })
 
             sessions.append(session)
 

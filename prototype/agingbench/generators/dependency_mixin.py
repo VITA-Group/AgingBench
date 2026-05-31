@@ -415,6 +415,41 @@ class DependencyMixin:
 
         results = []
 
+        # Similar-NAME mode (the "two Johns" case): near-identical names with
+        # DISTINCT attribute values; ambiguity is in the retrieval key.
+        if getattr(pressure, "confusable_similar_names", False):
+            # Pool sized (~15) to match the value-type CONFUSABLE_TERMS pool so
+            # name confusables aren't under-supplied relative to other types.
+            name_pairs = [("John Smith", "John Smyth"), ("Sara Chen", "Sarah Chen"),
+                          ("Michael Brown", "Micheal Browne"), ("David Lee", "David Li"),
+                          ("Catherine Park", "Katherine Park"), ("Eric Olson", "Erik Olsen"),
+                          ("Ana Reyes", "Anna Reyes"), ("Mohamed Ali", "Mohammed Ali"),
+                          ("Jon Stewart", "John Stewart"), ("Kristen Lowe", "Kristin Lowe"),
+                          ("Geoffrey Hall", "Jeffrey Hall"), ("Sean Murphy", "Shawn Murphy"),
+                          ("Bryan Cole", "Brian Cole"), ("Philip Ross", "Phillip Ross"),
+                          ("Carolyn Diaz", "Caroline Diaz")]
+            attrs = ["extension", "desk number", "employee ID"]
+            avail = [p for p in name_pairs if p[0] not in existing_groups]
+            for (n1, n2) in avail[:n_needed]:
+                attr = rng.choice(attrs)
+                v1 = rng.randint(1000, 9999)
+                v2 = rng.randint(1000, 9999)
+                while v2 == v1:
+                    v2 = rng.randint(1000, 9999)
+                f1 = graph.register_fact(session=session, domain=n1,
+                    content=f"{n1} is in the office directory; {attr}: {v1}.", keywords=[str(v1)])
+                f2 = graph.register_fact(session=session, domain=n2,
+                    content=f"{n2} is in the office directory; {attr}: {v2}.", keywords=[str(v2)])
+                graph.add_interference(f1.id, f2.id, n1)
+                results.append({
+                    "shared_term": n1,
+                    "fact_a": {"id": f1.id, "domain": n1, "value": str(v1)},
+                    "fact_b": {"id": f2.id, "domain": n2, "value": str(v2)},
+                    "text_a": f1.content, "text_b": f2.content,
+                    "probe_question": f"What is {n1}'s {attr}? Reply with the exact number only.",
+                })
+            return results
+
         # High-similarity mode: near-twin entities (same base, minimal
         # qualifier) with CLOSE values, to actually induce mis-binding.
         if getattr(pressure, "confusable_high_similarity", False):

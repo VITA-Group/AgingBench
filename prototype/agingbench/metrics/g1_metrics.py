@@ -21,6 +21,34 @@ from typing import Optional
 
 # ─── G1-M1: keyword_m ───────────────────────────────────────────────────────
 
+def _keyword_present(keyword: str, lower_text: str) -> bool:
+    """Word-boundary-aware presence check for a single keyword.
+
+    Avoids unanchored-substring false positives that would otherwise count
+    short numeric keywords like "847" as present inside larger numbers like
+    "1847" or "8470", and short year fragments like "14th" as present inside
+    unrelated text.
+
+    For multi-token keywords (e.g. "PostgreSQL 15") we anchor only the outer
+    boundaries, so they still match when surrounded by punctuation/whitespace
+    but not when embedded inside larger tokens.
+    """
+    kw = keyword.lower().strip()
+    if not kw:
+        return False
+    # Word-boundary pattern: non-alphanumeric (or string boundary) on both
+    # sides of the keyword. Allow optional English plural suffix `s`/`es`
+    # so "amazon" matches "amazons" / "address" matches "addresses" without
+    # admitting embedded matches like "amazonian".
+    pattern = (
+        r"(?<![A-Za-z0-9])"
+        + re.escape(kw)
+        + r"(?:es|s)?"
+        + r"(?![A-Za-z0-9])"
+    )
+    return re.search(pattern, lower_text) is not None
+
+
 def compute_keyword_survival(
     memory_text: str,
     probe: dict,
@@ -28,14 +56,16 @@ def compute_keyword_survival(
     """
     Score a single keyword probe against memory text.
 
-    Returns 1 if ANY keyword from probe["keywords"] appears as a
-    case-insensitive substring in memory_text, else 0.
+    Returns 1 if ANY keyword from probe["keywords"] appears in memory_text
+    with word-boundary anchoring (case-insensitive). Word boundaries prevent
+    false positives where a short keyword (e.g. "847") would otherwise match
+    inside a longer token ("1847", "8470").
 
-    This is task-independent: it inspects M_t directly without
-    running the agent.
+    This is task-independent: it inspects M_t directly without running the
+    agent.
     """
     lower = memory_text.lower()
-    return int(any(kw.lower() in lower for kw in probe["keywords"]))
+    return int(any(_keyword_present(kw, lower) for kw in probe["keywords"]))
 
 
 def compute_keyword_m(

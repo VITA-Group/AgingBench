@@ -196,34 +196,107 @@ DOCUMENT:
 SUMMARY:"""
 
 
+import re as _re_accum
+
+# Matches a numeric expression with optional sign(s) and currency prefix.
+# Captures the full token so we can preserve sign semantics. Examples that
+# match: "$1,234", "-$50", "$-50", "1234", "-1234.56", "1,234.5".
+_ACCUM_TOKEN_RE = _re_accum.compile(
+    r"-?\s*\$?\s*-?\s*(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?"
+)
+# A negative lookbehind to avoid matching inside identifiers/dates like
+# "2026-05-15" (the "05" would otherwise match).
+_ACCUM_TOKEN_RE_ANCHORED = _re_accum.compile(
+    r"(?<![A-Za-z0-9])-?\s*\$?\s*-?\s*(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?"
+)
+# Words that typically precede the answer to "what is your remaining budget?"
+_ACCUM_ANCHOR_WORDS = (
+    "remaining", "remain", "left", "balance", "available",
+    "answer", "answer:", "is", "have", "total",
+)
+
+
+def _accum_parse_token(token: str) -> Optional[float]:
+    """Parse a matched numeric token (possibly with $/sign/comma) into a float.
+
+    Two leading minuses collapse to positive (so "-$-50" becomes 50.0); a
+    single minus anywhere in the token makes the value negative.
+    """
+    if not token:
+        return None
+    cleaned = token.replace("$", "").replace(",", "").replace(" ", "")
+    is_neg = (cleaned.count("-") % 2) == 1
+    cleaned = cleaned.replace("-", "")
+    if not cleaned:
+        return None
+    try:
+        val = float(cleaned)
+    except ValueError:
+        return None
+    return -val if is_neg else val
+
+
+def _accum_parse_one(text: str) -> Optional[float]:
+    """Extract the agent's intended numeric answer from a probe response.
+
+    Strategy (in order of preference):
+      1. If a number appears immediately after an anchor word ("remaining",
+         "balance", "is", ...), use that one.
+      2. Otherwise use the FIRST currency-formatted number (with $ prefix).
+      3. Otherwise use the LAST plain number in the response.
+
+    Handles thousand-separator commas correctly: "$1,234" → 1234.0.
+    Handles negative currency: "-$50" / "$-50" → -50.0.
+    Avoids parsing date components in "2026-05-15" via word-boundary anchor.
+    """
+    if not text:
+        return None
+    lower = text.lower()
+
+    # Pass 1: number adjacent to anchor word
+    for word in _ACCUM_ANCHOR_WORDS:
+        for m in _re_accum.finditer(
+            r"\b" + _re_accum.escape(word) + r"\b[^0-9\-$]{0,40}?"
+            r"(-?\s*\$?\s*-?\s*(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)",
+            lower,
+        ):
+            val = _accum_parse_token(m.group(1))
+            if val is not None:
+                return val
+
+    # Pass 2: first currency-formatted ($-prefixed) number
+    for m in _ACCUM_TOKEN_RE_ANCHORED.finditer(text):
+        span = m.group(0)
+        if "$" in span:
+            val = _accum_parse_token(span)
+            if val is not None:
+                return val
+
+    # Pass 3: last plain number
+    plain_matches = list(_ACCUM_TOKEN_RE_ANCHORED.finditer(text))
+    if plain_matches:
+        return _accum_parse_token(plain_matches[-1].group(0))
+    return None
+
+
 def _accumulator_error_from_record(record: dict) -> Optional[float]:
     """Pull mean accumulator error from a session record's accumulator_probes.
 
-    Each probe has 'gold_value' and 'response_text'. We extract the agent's
-    numeric answer with a simple regex (largest dollar number in the response).
-    Returns mean |agent - gold| over probes that had a parseable answer, or
-    None if no probes were scored this session.
+    For each probe, extract the agent's numeric answer using ``_accum_parse_one``
+    (anchor-word > $-prefixed-first > last-plain fallback; comma-aware).
+    Returns mean |agent - gold| over probes with a parseable answer, or None
+    if no probes were scored this session.
     """
     probes = record.get("accumulator_probes", [])
     if not probes:
         return None
-    import re
-    num_re = re.compile(r"\$?(-?\d+(?:\.\d+)?)")
     errors = []
     for p in probes:
         gold = p.get("gold_value")
         if gold is None:
             continue
-        text = p.get("response_text", "") or ""
-        # Heuristic: find all dollar-prefixed numbers, pick the most plausible
-        # remaining-balance answer (often the last number or one labeled
-        # "remaining"). For simplicity, pick the LAST number in the response.
-        nums = num_re.findall(text)
-        if not nums:
-            continue
-        try:
-            agent_val = float(nums[-1])
-        except ValueError:
+        agent_val = _accum_parse_one(p.get("response_text", "") or "")
+        if agent_val is None:
             continue
         errors.append(abs(agent_val - float(gold)))
     if not errors:

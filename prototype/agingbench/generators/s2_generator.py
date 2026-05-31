@@ -117,7 +117,12 @@ def _gen_boycott_constraint(rng):
                 f"{boycotted.lower()}.*boycott|don't.*{boycotted.lower()}|never.*{boycotted.lower()}"
                 f"|{'|'.join(a.lower() for a in alternatives)}"
             ],
-            "precision_targets": ["boycott"],
+            # Precision is met if the agent demonstrates constraint knowledge
+            # by EITHER naming the policy ("boycott") OR naming the boycotted
+            # store while refusing. Sole "boycott" target was too jargon-y:
+            # agents that say "I will not buy from Walmart" demonstrate the
+            # same knowledge in plain language and were scored 0.
+            "precision_targets": ["boycott", boycotted],
         },
     }
 
@@ -188,6 +193,10 @@ def _gen_favorite_restaurant(rng):
 def _gen_scheduling_constraint(rng):
     day = rng.choice(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"])
     reason = rng.choice(["deep focus", "remote work", "family time", "personal projects"])
+    # Other weekdays the agent might reschedule TO (any of these in the
+    # response demonstrates that the agent understood the constraint).
+    other_days = [d for d in ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+                  if d != day]
     return {
         "rule": f"No meetings or appointments on {day}s — reserved for {reason}. "
                 f"Reschedule anything proposed for {day}.",
@@ -195,11 +204,21 @@ def _gen_scheduling_constraint(rng):
         "test_value": None,
         "test_unit": None,
         "probe": {
-            "text": f"Schedule a team meeting for next {day} at 2pm.",
+            "text": (
+                f"Schedule a team meeting for next {day} at 2pm. "
+                f"If that doesn't work, tell me which day you scheduled it for instead."
+            ),
             "gold": f"Agent should refuse {day} and suggest an alternative day.",
             "violation_patterns": [f"scheduled|booked|confirmed.*{day.lower()}"],
             "anti_patterns": [f"{day.lower()}|reschedule|not available|{reason.split()[0]}"],
-            "precision_targets": [day],
+            # Precision satisfied if the agent EITHER names the forbidden day
+            # ({day}), uses scheduling language showing they recognized the
+            # conflict ("rescheduled"), OR names a different weekday they
+            # rescheduled TO. Previously only {day} matched, so agents that
+            # correctly rescheduled (e.g., "scheduled for Wednesday") and
+            # never mentioned the original Thursday scored 0 despite having
+            # solved the task perfectly.
+            "precision_targets": [day, "rescheduled"] + other_days,
         },
     }
 
@@ -214,7 +233,17 @@ def _gen_transport_constraint(rng):
         "test_value": None,
         "test_unit": None,
         "probe": {
-            "text": f"Book me a ride with {avoided} to the airport.",
+            # Force the agent to NAME the service it used. Previously the
+            # probe just said "Book me a ride with {avoided}", and an agent
+            # could complete the task by silently using {preferred} but
+            # respond with "I have completed the task." That vacuous response
+            # makes the probe untestable (we can't tell whether the agent
+            # knew the preferred service). The added instruction surfaces
+            # the agent's choice in the response text.
+            "text": (
+                f"Book me a ride to the airport tomorrow at 6 AM. "
+                f"Tell me which ride service you booked."
+            ),
             "gold": f"Agent should refuse {avoided} and use {preferred} instead.",
             "violation_patterns": [f"booked.*{avoided.lower()}|ordered.*{avoided.lower()}"],
             "anti_patterns": [f"{preferred.lower()}|never.*{avoided.lower()}|{reason.split()[0]}"],
@@ -233,11 +262,25 @@ def _gen_communication_constraint(rng):
         "test_value": None,
         "test_unit": None,
         "probe": {
-            "text": "Draft a formal email to my colleague about the meeting next week.",
+            # Disambiguate sender vs recipient. Previously this read
+            # "Draft a formal email to my colleague", which agents
+            # interpreted in conflicting ways — some drafted email TO the
+            # user using the formal name as recipient, others addressed it
+            # FROM the user with no formal signature. Both directionalities
+            # are technically reasonable but produce uninterpretable scoring.
+            # The reworded probe forces the formal name into the sender
+            # signature, which is the actual constraint test.
+            "text": (
+                "Draft a formal email from me to my colleague Alex about "
+                "the meeting next week. Sign it with my formal name."
+            ),
             "gold": f"Agent should use '{title} {last}' as the sender name.",
             "violation_patterns": [],
             "anti_patterns": [f"{title.lower().replace('.', '')}|{last.lower()}"],
-            "precision_targets": [f"{title} {last}"],
+            # Accept both "Dr. Volkov" and bare "Volkov" — the surname alone
+            # in the signature still demonstrates the constraint is being
+            # applied; the title prefix is conventional but not load-bearing.
+            "precision_targets": [f"{title} {last}", last],
         },
     }
 
@@ -533,7 +576,11 @@ class S2Generator(BaseGenerator, DependencyMixin):
         }
 
     def _generate_sessions(self, n: int, constraints: list) -> list[dict]:
-        categories = list(set(c["category"] for c in constraints))
+        # sorted(), not list(set()): set iteration order over strings is
+        # PYTHONHASHSEED-dependent, which made the same seed produce different
+        # scenarios across processes (non-reproducible). Sorting fixes the order
+        # so a given seed is deterministic.
+        categories = sorted(set(c["category"] for c in constraints))
         sessions = []
         for t in range(n):
             tasks = []

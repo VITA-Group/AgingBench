@@ -1,0 +1,12 @@
+sut_id: llama3_s6_names
+description: "S6 naturalistic + similar-name confusables (two-Johns identity confusion). append_only so confusable names survive → confusion observable. S6 re-probes across sessions → density gradient."
+model: {provider: local_hf, model_id: NousResearch/Meta-Llama-3.1-8B-Instruct, max_new_tokens: 700, temperature: 0.0}
+memory_policy: {type: append_only, retriever: {top_k: 5}}
+pressure:
+  preset: medium
+  confusable_start_session: 1
+  n_confusable_pairs: 6
+  update_rate: 0.0
+  forget_rate: 0.0
+  confusable_similar_names: true
+seed: 42

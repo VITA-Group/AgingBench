@@ -1,0 +1,5 @@
+sut_id: llama3_s4
+description: "Llama-3.1-8B + lossy compaction for S4 (software engineering). 2000-token cap: room for code edits, bounded to avoid runaway."
+model: {provider: local_hf, model_id: NousResearch/Meta-Llama-3.1-8B-Instruct, max_new_tokens: 2000, temperature: 0.0}
+memory_policy: {type: summarize_store, compaction_prompt: experiments/prompts/compact_lossy.txt, word_budget: 300}
+seed: 42

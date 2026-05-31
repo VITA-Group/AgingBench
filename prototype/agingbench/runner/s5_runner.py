@@ -21,9 +21,53 @@ from __future__ import annotations
 
 import json
 import random
+import re
 import time
 from pathlib import Path
 from typing import Optional
+
+
+# Max characters of an agent response considered when keyword-scoring.
+# Defends against "memory dump everything at the top of every response" agent
+# strategies that would otherwise score 1.0 by mention alone, regardless of
+# whether the answer is focused on the asked question. We score the LAST
+# `_S5_SCORE_TAIL_CHARS` of the response (typically where the final answer
+# lives) plus the FIRST `_S5_SCORE_HEAD_CHARS` to allow concise answers that
+# lead with the answer. The combined window captures focused answers without
+# rewarding fact-dump strategies that bury everything in the middle.
+_S5_SCORE_HEAD_CHARS = 1500
+_S5_SCORE_TAIL_CHARS = 2500
+
+
+def _s5_scoring_window(response_text: str) -> str:
+    """Return the substring of ``response_text`` that should be keyword-scored.
+
+    For short responses (≤ HEAD+TAIL) returns the full text. For long
+    responses returns ``head + " ... " + tail`` so the focused answer area
+    is preserved without giving credit to middle-of-response dump content.
+    """
+    text = response_text or ""
+    if len(text) <= _S5_SCORE_HEAD_CHARS + _S5_SCORE_TAIL_CHARS:
+        return text
+    return text[:_S5_SCORE_HEAD_CHARS] + " ... " + text[-_S5_SCORE_TAIL_CHARS:]
+
+
+def _s5_kw_present(keyword: str, lower_text: str) -> bool:
+    """Word-boundary-aware presence check (mirrors S6/S1 fix).
+
+    Allows optional `s`/`es` plural suffix so common English plurals
+    (e.g. "amazons", "addresses") still match the singular keyword.
+    """
+    kw = (keyword or "").lower().strip()
+    if not kw:
+        return False
+    return re.search(
+        r"(?<![A-Za-z0-9])"
+        + re.escape(kw)
+        + r"(?:es|s)?"
+        + r"(?![A-Za-z0-9])",
+        lower_text,
+    ) is not None
 
 from .base import BaseRunner, RunResult
 from .trace import TraceLogger
@@ -261,8 +305,11 @@ class S5Runner(BaseRunner):
                     probe["_resp_text"] = probe_response.text
                     global_interaction += 1
 
+                    # Word-boundary match within a bounded scoring window
+                    # (see _s5_scoring_window for rationale).
+                    _scored_text = _s5_scoring_window(probe_response.text).lower()
                     p_score = 1.0 if any(
-                        kw.lower() in probe_response.text.lower()
+                        _s5_kw_present(kw, _scored_text)
                         for kw in probe["keywords"]
                     ) else 0.0
                     probe_scores.append(p_score)
@@ -527,14 +574,21 @@ class S5Runner(BaseRunner):
         )
 
     def _score_response(self, response_text: str, task: dict) -> float:
-        """Score an agent response against task eval_keywords."""
+        """Score an agent response against task eval_keywords.
+
+        Uses word-boundary matching (so "234" doesn't match inside "$2340")
+        and restricts the scored text to a head+tail window (so a memory-dump
+        strategy that floods the middle with all known facts doesn't trivially
+        score 1.0 on every task).
+        """
         keywords = task.get("eval_keywords", [])
         if not keywords:
             return 1.0  # plan tasks without keywords scored as 1 (qualitative)
 
+        scored_text = _s5_scoring_window(response_text).lower()
         matched = sum(
             1 for kw in keywords
-            if kw.lower() in response_text.lower()
+            if _s5_kw_present(kw, scored_text)
         )
         return matched / len(keywords)
 

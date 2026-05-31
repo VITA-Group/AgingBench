@@ -209,8 +209,13 @@ class S4Runner(BaseRunner):
         Returns {test_id: "pass"|"fail"}.
         """
         try:
+            # NOTE: do NOT pass -q. -q suppresses the per-test
+            # "tests/test_x.py::test PASSED" lines the parser below relies on,
+            # which made _run_tests() always return {} → tests_before/after
+            # silently fell back to the gold snapshot, making FASR/CFR/RR
+            # agent-independent gold echoes. -v alone yields parseable lines.
             result = subprocess.run(
-                ["python", "-m", "pytest", "tests/", "-v", "--tb=no", "-q"],
+                ["python", "-m", "pytest", "tests/", "-v", "--tb=no"],
                 cwd=str(project_dir),
                 capture_output=True, text=True, timeout=30,
                 env={**os.environ, "PYTHONPATH": str(project_dir)},
@@ -533,10 +538,12 @@ class S4Runner(BaseRunner):
                       turns=result.get("turns", 0),
                       tool_calls=result.get("tool_calls", []))
 
-            # Score LA: structured impact prediction
+            # Score LA strictly from the agent's prediction. We previously
+            # union-ed task["files_to_modify"] into the predicted set as a
+            # "minimum baseline", which gave every agent a free floor (gold
+            # files leaked into the prediction) and compressed cross-model LA
+            # differences. The agent must actually mention the impacted files.
             predicted_impact = self._parse_impact_prediction(agent_output, snapshot_files)
-            # Include files_to_modify as minimum prediction
-            predicted_impact.update(set(task["files_to_modify"]))
 
             from ..scenarios.s4_software_engineering.validator import compute_la, compute_cfr
             la = compute_la(predicted_impact, ground_truth_impact)

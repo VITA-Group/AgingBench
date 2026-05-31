@@ -20,7 +20,77 @@ Metrics:
 
 from __future__ import annotations
 
+import re as _re
 from typing import Optional
+
+
+def _kw_in_text(kw: str, text: str) -> bool:
+    """Keyword presence that won't fire on a longer number — e.g. the stale
+    keyword '43' must NOT match inside the current value '143,751'. Numeric
+    keywords match only with non-digit flanks; for word keywords the guards are
+    harmless. Fixes forget_accuracy substring-collision false positives that
+    capped a clean agent below 1.0."""
+    return _re.search(r"(?<!\d)" + _re.escape(kw) + r"(?!\d)", text) is not None
+
+
+def _session_haystack(result: dict):
+    """Lowercased agent output for a session (same field preference as
+    forget_accuracy). Returns None if no output text is available."""
+    for f in ("task_outputs_text", "agent_outputs", "response_text",
+              "task_output", "agent_output"):
+        v = result.get(f)
+        if isinstance(v, str) and v.strip():
+            return v.lower()
+    for f in ("task_keywords_found", "keywords_found"):
+        v = result.get(f)
+        if isinstance(v, (list, tuple)) and v:
+            return " ".join(str(x).lower() for x in v)
+    return None
+
+
+def _fact_kw_map(facts: dict) -> dict:
+    """{fact_id: (version_int, [keywords])} over all version chains."""
+    m: dict = {}
+    for _root, fd in (facts or {}).items():
+        for v in fd.get("versions", []):
+            m[v.get("fact_id")] = (v.get("version", 1), v.get("keywords", []) or [])
+    return m
+
+
+def _trend_gold_and_stale(task: dict, facts: dict):
+    """For a trend task (depends_on_facts = [old, current]), return
+    (gold_keywords=current version, stale_keywords=older values dropped in the
+    current version). Used to gold-score whether the agent cited the current
+    value and avoided the stale one."""
+    m = _fact_kw_map(facts)
+    entries = [m[fid] for fid in task.get("depends_on_facts", []) if fid in m]
+    if not entries:
+        return [], []
+    maxv = max(v for v, _ in entries)
+    gold, older = [], []
+    for v, kws in entries:
+        (gold if v == maxv else older).extend(kws)
+    goldset = set(gold)
+    stale = [k for k in older if k not in goldset]
+    return gold, stale
+
+
+def _dep_gold_recall(task: dict, result: dict, facts: dict):
+    """Gold recall for a dependency task: fraction of the task's depended facts
+    whose value the agent cited in its session output. Returns None when no gold
+    or no output text is available, so the caller can fall back to the headline
+    proxy. Replaces reusing the session-wide _extract_score for chain recall."""
+    hay = _session_haystack(result)
+    if hay is None:
+        return None
+    kwmap = _fact_kw_map(facts or {})
+    golds = [kwmap[f][1] for f in task.get("depends_on_facts", [])
+             if f in kwmap and kwmap[f][1]]
+    if not golds:
+        return None
+    hits = sum(1 for kws in golds
+               if any(_kw_in_text(k.lower(), hay) for k in kws if k))
+    return hits / len(golds)
 
 
 def score_dependency_chain(
@@ -66,12 +136,12 @@ def score_dependency_chain(
     # chain_recall_by_version_depth is the canonical name (clarifies the
     # bucketing axis is version chain length). chain_recall_by_depth is an
     # alias kept for backward compatibility.
-    crv = chain_recall_by_version_depth(session_lookup, tasks)
+    crv = chain_recall_by_version_depth(session_lookup, tasks, facts)
     result = {
         "chain_recall_by_version_depth": crv,
         "chain_recall_by_depth": crv,  # alias; same values
         "chain_recall_by_session_span": chain_recall_by_session_span(
-            session_lookup, tasks
+            session_lookup, tasks, facts
         ),
         "version_accuracy": version_accuracy(session_lookup, tasks, facts),
         "interference_resistance": interference_resistance(
@@ -107,6 +177,7 @@ def score_dependency_chain(
 def chain_recall_by_version_depth(
     session_lookup: dict[int, dict],
     tasks: dict[str, dict],
+    facts: Optional[dict] = None,
 ) -> dict[int, float]:
     """
     Recall as a function of version-chain depth: the longest version chain
@@ -133,7 +204,8 @@ def chain_recall_by_version_depth(
         if result is None:
             continue
 
-        score = _extract_score(result)
+        g = _dep_gold_recall(task, result, facts) if facts is not None else None
+        score = g if g is not None else _extract_score(result)
         depth = task.get("chain_depth", 1)
 
         depth_scores.setdefault(depth, []).append(score)
@@ -150,15 +222,17 @@ def chain_recall_by_version_depth(
 def chain_recall_by_depth(
     session_lookup: dict[int, dict],
     tasks: dict[str, dict],
+    facts: Optional[dict] = None,
 ) -> dict[int, float]:
     """Alias for ``chain_recall_by_version_depth``; preserved for callers of
     the original metric name. Returns the same values."""
-    return chain_recall_by_version_depth(session_lookup, tasks)
+    return chain_recall_by_version_depth(session_lookup, tasks, facts)
 
 
 def chain_recall_by_session_span(
     session_lookup: dict[int, dict],
     tasks: dict[str, dict],
+    facts: Optional[dict] = None,
 ) -> dict[int, float]:
     """
     Recall as a function of session-span: the range of source sessions
@@ -188,7 +262,8 @@ def chain_recall_by_session_span(
         if result is None:
             continue
 
-        score = _extract_score(result)
+        g = _dep_gold_recall(task, result, facts) if facts is not None else None
+        score = g if g is not None else _extract_score(result)
         span_scores.setdefault(span, []).append(score)
 
     return {
@@ -250,14 +325,32 @@ def version_accuracy(
                     n_correct += 1
             continue
 
-        # Fallback: session-wide proxy (legacy behavior)
-        n_version_tests += 1
-        score = _extract_score(result)
-        if score > 0.5:
-            n_correct += 1
+        # Gold-based scan (no per-probe capture available): reconstruct the
+        # current (gold) and stale (forbidden) values from the version chain
+        # and check the agent's session output — cited the CURRENT value and
+        # NOT the stale one. This replaces the old session-headline proxy
+        # (_extract_score), which conflated revision with general recall.
+        # Caveat: scans concatenated session text, so a gold value appearing
+        # elsewhere can false-pass; still far better than an unrelated headline.
+        gold_kws, stale_kws = _trend_gold_and_stale(task, facts)
+        hay = _session_haystack(result)
+        if gold_kws and hay is not None:
+            n_version_tests += 1
+            cited_current = any(_kw_in_text(k.lower(), hay) for k in gold_kws if k)
+            cited_stale = any(_kw_in_text(k.lower(), hay) for k in stale_kws if k)
+            if cited_current and not cited_stale:
+                n_correct += 1
+        else:
+            # Last resort (no gold or no output text): legacy headline proxy.
+            n_version_tests += 1
+            if _extract_score(result) > 0.5:
+                n_correct += 1
 
     if n_version_tests == 0:
-        return 1.0  # no version tests, vacuously correct
+        # No qualifying version tests → NO COVERAGE. Return None rather than a
+        # vacuous 1.0, which falsely reads as "perfect revision tracking" in
+        # tables/plots (e.g. S1/S3 emit zero trend tasks). None = not measured.
+        return None
 
     return round(n_correct / n_version_tests, 4)
 
@@ -317,7 +410,7 @@ def interference_resistance(
     Higher = agent resists interference better.
     """
     if not interference_map:
-        return 1.0  # no interference, vacuously resistant
+        return None  # no interference pairs → NO COVERAGE (not vacuous 1.0)
 
     # Build set of facts involved in interference
     interference_fact_ids = set()
@@ -344,7 +437,7 @@ def interference_resistance(
             n_correct += 1
 
     if n_interference_tasks == 0:
-        return 1.0
+        return None  # no interference-linked tasks fired → NO COVERAGE
 
     return round(n_correct / n_interference_tasks, 4)
 
@@ -537,6 +630,51 @@ def score_execution_drift(
     }
 
 
+# Phrases that, when adjacent to a retracted keyword, indicate the agent is
+# correctly flagging the value as no-longer-current (rather than asserting it
+# as truth). Detected within a small window around each keyword occurrence;
+# if every occurrence is in retraction context, the citation does not count
+# as a forget-failure.
+_RETRACTION_MARKERS = (
+    "previously", "previous", "used to be", "used to",
+    "no longer", "no more", "outdated", "obsolete",
+    "former ", "formerly", "old value", "old number",
+    "revised", "revised to", "updated to", "changed to",
+    "changed from", "was set to", "originally",
+    "deprecated", "before the update", "superseded",
+    "was ", "now ",  # e.g. "the figure WAS $23,800" / "is NOW $26,100"
+)
+
+
+def _is_retracted_in_context(haystack_lower: str, kw_lower: str,
+                              window: int = 60) -> bool:
+    """Return True if EVERY occurrence of `kw_lower` in `haystack_lower`
+    has a retraction marker within `window` characters on either side.
+
+    Caller treats a True return as "the agent properly framed the old value
+    as retracted, so this mention shouldn't be counted as a forget-failure".
+    Returns False if any occurrence appears in plain (non-retracted)
+    context — that single occurrence is enough to fail the test.
+    """
+    pos = 0
+    occurrences: list[int] = []
+    while True:
+        idx = haystack_lower.find(kw_lower, pos)
+        if idx < 0:
+            break
+        occurrences.append(idx)
+        pos = idx + 1
+    if not occurrences:
+        return False  # no mention at all, caller handles separately
+    for idx in occurrences:
+        start = max(0, idx - window)
+        end = min(len(haystack_lower), idx + len(kw_lower) + window)
+        ctx = haystack_lower[start:end]
+        if not any(marker in ctx for marker in _RETRACTION_MARKERS):
+            return False  # this occurrence is a bare citation
+    return True
+
+
 def forget_accuracy(
     session_results: list[dict],
     dependency_graph: dict,
@@ -636,7 +774,22 @@ def forget_accuracy(
                 n_skipped += 1
                 n_checks -= 1
                 continue
-            cited = any(kw.lower() in haystack for kw in keywords if isinstance(kw, str))
+            # A keyword counts as "cited" only if at least one occurrence is
+            # in a non-retraction context. An agent that says
+            # "the previous figure of $23,800 has been revised to $26,100"
+            # mentions the old keyword but is correctly framing it as
+            # retracted; that should NOT count against forget_accuracy.
+            cited = False
+            for kw in keywords:
+                if not isinstance(kw, str):
+                    continue
+                kw_l = kw.lower()
+                if not _kw_in_text(kw_l, haystack):
+                    continue
+                if _is_retracted_in_context(haystack, kw_l):
+                    continue  # all mentions framed as retracted → safe
+                cited = True
+                break
             if not cited:
                 n_correct += 1
 
@@ -718,7 +871,22 @@ def forget_accuracy_per_session(
             if s <= inv_session:
                 continue
             n_applicable += 1
-            cited = any(kw.lower() in haystack for kw in keywords if isinstance(kw, str))
+            # A keyword counts as "cited" only if at least one occurrence is
+            # in a non-retraction context. An agent that says
+            # "the previous figure of $23,800 has been revised to $26,100"
+            # mentions the old keyword but is correctly framing it as
+            # retracted; that should NOT count against forget_accuracy.
+            cited = False
+            for kw in keywords:
+                if not isinstance(kw, str):
+                    continue
+                kw_l = kw.lower()
+                if not _kw_in_text(kw_l, haystack):
+                    continue
+                if _is_retracted_in_context(haystack, kw_l):
+                    continue  # all mentions framed as retracted → safe
+                cited = True
+                break
             if not cited:
                 n_correct += 1
         if n_applicable > 0:
@@ -772,9 +940,17 @@ def score_accumulator(
             if gold is None or not response:
                 continue
 
-            # Extract first number from response
-            nums = re.findall(r"[\-]?\d[\d,]*\.?\d*", response.replace(",", ""))
-            agent_value = float(nums[0]) if nums else None
+            # Extract the agent's numeric answer. Prefer the LAST dollar-
+            # prefixed figure — free-form answers like "you spent $43, so
+            # $186 remains" put the answer last; taking the FIRST number
+            # mis-read preamble/line-item numbers as the answer (spurious error).
+            # Fall back to the last bare number, then None.
+            dollar = re.findall(r"\$\s*(-?\d[\d,]*\.?\d*)", response)
+            if dollar:
+                agent_value = float(dollar[-1].replace(",", ""))
+            else:
+                nums = re.findall(r"-?\d[\d,]*\.?\d*", response.replace(",", ""))
+                agent_value = float(nums[-1]) if nums else None
             if agent_value is not None:
                 errors[session] = abs(agent_value - gold)
             else:
@@ -802,6 +978,81 @@ def score_accumulator(
         "mean_error": round(mean_err, 2),
     }
 
+def _binding_classify(gold, distractor, response_text: str) -> str:
+    """Classify an interference probe response as correct/confused/both/miss.
+
+    Two pathways depending on the gold/distractor type:
+      - Numeric path: gold and distractor reduce to ≥2-digit numbers. Uses
+        digit-substring with a subset guard so that e.g. gold='42' is not
+        spuriously considered present in a response that only mentions
+        distractor='42500'.
+      - Textual path: gold/distractor are non-numeric (e.g. 'John in marketing'
+        vs 'John in finance'). Uses a token-set discriminator: the answer is
+        classified by which entity's *distinguishing* tokens (those unique to
+        gold vs distractor, excluding shared tokens) appear in the response.
+    """
+    import re as _re
+    resp_text = (response_text or "")
+
+    def _digits(v):
+        return _re.sub(r"[^\d]", "", str(v)) if v is not None else ""
+
+    def _word_tokens(v):
+        return set(t for t in _re.findall(r"[a-z0-9]+", str(v).lower()) if len(t) >= 2)
+
+    gd, dd = _digits(gold), _digits(distractor)
+    resp_d = _digits(resp_text)
+
+    # Numeric path: BOTH gold and distractor have ≥2 digits → digit-substring
+    # with subset guard. The subset guard prevents misclassification when one
+    # value's digits are a substring of the other's (e.g. "42" ⊂ "42500"):
+    # we only credit a value if its digits appear AND are not entirely
+    # explainable as a substring of the other value's digits appearing in
+    # the response.
+    if len(gd) >= 2 and len(dd) >= 2:
+        gd_in = gd in resp_d
+        dd_in = dd in resp_d
+        # Subset adjustment: if dd contains gd (e.g. gd='42', dd='42500'),
+        # the gd substring match is only real if it occurs OUTSIDE the dd span.
+        if gd_in and gd in dd and dd_in:
+            # gd's only appearance might be inside dd. Check by removing dd
+            # occurrences and re-testing for gd.
+            stripped = resp_d.replace(dd, "")
+            gd_in = gd in stripped
+        if dd_in and dd in gd and gd_in:
+            stripped = resp_d.replace(gd, "")
+            dd_in = dd in stripped
+        if gd_in and dd_in:
+            return "both"
+        if gd_in:
+            return "correct"
+        if dd_in:
+            return "confused"
+        return "miss"
+
+    # Textual path: at least one side is not a usable number. Use distinguishing
+    # tokens to classify. Shared tokens (e.g. "John" appears in both
+    # "John-marketing" and "John-finance") are excluded because they don't help.
+    g_tokens = _word_tokens(gold)
+    d_tokens = _word_tokens(distractor)
+    g_only = g_tokens - d_tokens
+    d_only = d_tokens - g_tokens
+    resp_tokens = _word_tokens(resp_text)
+    g_match = bool(g_only & resp_tokens) if g_only else False
+    d_match = bool(d_only & resp_tokens) if d_only else False
+    # Edge case: if g_only and d_only are both empty (gold == distractor or
+    # both reduce to no usable tokens), we cannot classify — return "miss".
+    if not g_only and not d_only:
+        return "miss"
+    if g_match and d_match:
+        return "both"
+    if g_match:
+        return "correct"
+    if d_match:
+        return "confused"
+    return "miss"
+
+
 def score_interference_binding(session_results: list[dict]) -> dict:
     """Forced-choice interference binding from dedicated probes.
 
@@ -813,27 +1064,27 @@ def score_interference_binding(session_results: list[dict]) -> dict:
       - both     : contains both values                    — ambiguous dump
       - miss     : contains neither                         — omission / recall failure
 
+    Supports both numeric and textual gold/distractor pairs (delegates to
+    ``_binding_classify``). The textual path uses distinguishing-token
+    discrimination so name-based confusables (e.g. "John in marketing" vs
+    "John in finance") are scored correctly — previously the digit-only path
+    silently classified all non-numeric pairs as "miss".
+
     This separates genuine confusable mis-binding (``confusion_rate``) from
     omission (``miss_rate``) — a distinction ``interference_resistance`` cannot
     make, since it reuses the session's generic headline score.
     """
-    import re
-
-    def _digits(v):
-        return re.sub(r"[^\d]", "", str(v)) if v is not None else ""
-
     correct = confused = both = miss = 0
     per_session: dict[int, list[str]] = {}
     detail: list[dict] = []
     for sr in session_results:
         for p in sr.get("interference_probes", []) or []:
             sess = p.get("session", sr.get("session", -1))
-            resp = _digits(p.get("response_text", ""))
-            gd, dd = _digits(p.get("gold_value")), _digits(p.get("distractor_value"))
-            has_g = len(gd) >= 2 and gd in resp
-            has_d = len(dd) >= 2 and dd in resp
-            cls = ("both" if (has_g and has_d) else "correct" if has_g
-                   else "confused" if has_d else "miss")
+            cls = _binding_classify(
+                p.get("gold_value"),
+                p.get("distractor_value"),
+                p.get("response_text", ""),
+            )
             if cls == "correct":
                 correct += 1
             elif cls == "confused":

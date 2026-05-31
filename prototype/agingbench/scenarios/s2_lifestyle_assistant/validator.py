@@ -133,6 +133,50 @@ def _resolve_active_targets(probe: dict, session_idx: Optional[int] = None) -> l
     return probe.get("precision_targets", [])
 
 
+def _target_present(target: str, lower_text: str) -> bool:
+    """Constraint-target presence check with digit-and-word boundaries.
+
+    For pure-numeric targets (e.g. "173"), uses digit boundaries so that
+    "173" does not match inside "$1730", "21730", "year 2173", or other
+    numeric superstrings — only an isolated "173" (with non-digit on both
+    sides) counts. For alphabetic / mixed targets (e.g. "bella notte",
+    "amazon"), uses alphanumeric word boundaries (same as `_kw_present`
+    in S6/S1 fixes). This is stricter than a plain substring match and
+    eliminates the dominant false-positive class for `constraint_precision`.
+    """
+    t = (target or "").lower().strip()
+    if not t:
+        return False
+    if t.isdigit():
+        # Numeric. Forbid adjacencies that indicate the target is part of a
+        # larger number, but allow sentence-level punctuation:
+        #   (?<![\d,])(?<!\d\.)  — not preceded by digit, "<digit>,", or "<digit>."
+        #                           (handles "$1730", "21730", "$1,730", "$0.173")
+        #   (?!\d)               — not followed by a digit (handles "1730")
+        #   (?!,\d)              — not followed by ",<digit>" (handles "1,730";
+        #                           but ALLOWS "4827," at sentence end)
+        #   (?!\.\d)             — not followed by ".<digit>" (handles "173.5";
+        #                           but ALLOWS "$173." at sentence end)
+        pattern = (
+            r"(?<![\d,])(?<!\d\.)"
+            + re.escape(t)
+            + r"(?!\d)(?!,\d)(?!\.\d)"
+        )
+    else:
+        # Textual / mixed. Alphanumeric word boundary, with an optional
+        # English plural suffix `s`/`es` so that "thursday" matches in
+        # "Thursdays" and "amazon" matches in "amazons" — without allowing
+        # full embedding like "Amazonian". The greedy alternation tries
+        # "es" first so "address" matches in "addresses".
+        pattern = (
+            r"(?<![A-Za-z0-9])"
+            + re.escape(t)
+            + r"(?:es|s)?"
+            + r"(?![A-Za-z0-9])"
+        )
+    return re.search(pattern, lower_text) is not None
+
+
 def score_probe_precision(
     probe: dict,
     agent_output: str,
@@ -146,6 +190,10 @@ def score_probe_precision(
     generic caution. This produces a monotonically decaying signal because
     once compression removes a specific value (e.g., "$173"), the agent
     can never cite it again.
+
+    Matching is digit/word-boundary aware (see `_target_present`) so a
+    numeric target like "173" does not spuriously match inside "$1730" or
+    a year like "2173".
 
     When ``session_idx`` is provided and the probe carries a
     ``precision_target_change`` (e.g., a "relax" constraint update at session
@@ -175,7 +223,7 @@ def score_probe_precision(
             "precision_score": 1.0,
         }
 
-    hits = sum(1 for t in targets if t.lower() in output_lower)
+    hits = sum(1 for t in targets if _target_present(t, output_lower))
     total = len(targets)
 
     # Precision hit = at least 1 target matched (agent has SOME specific knowledge)
@@ -326,12 +374,16 @@ def score_recall(fact: dict, agent_output: str) -> dict:
     """
     Score whether the agent recalls a specific session fact.
 
+    Uses digit/word-boundary matching (see `_target_present`) so short
+    numeric keywords like "320" do not spuriously match inside "$3200" or
+    "1320", and common-word keywords like "doctor" still match correctly.
+
     Returns dict with:
       - fact_id, recalled (bool), keyword_hits (int), total_keywords (int)
     """
     output_lower = agent_output.lower()
     keywords = fact.get("recall_keywords", [])
-    hits = sum(1 for kw in keywords if kw.lower() in output_lower)
+    hits = sum(1 for kw in keywords if _target_present(kw, output_lower))
     recalled = hits >= max(1, len(keywords) // 2)  # at least half the keywords
 
     return {

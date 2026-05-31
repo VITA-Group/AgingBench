@@ -11,6 +11,7 @@ Both use case-insensitive substring matching — same approach as S1 validator.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 _S6_DIR = Path(__file__).parent
@@ -30,13 +31,30 @@ def load_system_prompt() -> str:
     return data["system_prompt"]
 
 
+def _kw_present(keyword: str, lower_text: str) -> bool:
+    """Word-boundary-aware presence check.
+
+    Prevents short-keyword substring collisions like "234" matching inside
+    "$2340" or "1234", and "37" matching inside "$3700". Adjacent
+    alphanumeric characters on either side of the keyword block the match;
+    punctuation/whitespace boundaries allow it.
+    """
+    kw = (keyword or "").lower().strip()
+    if not kw:
+        return False
+    return re.search(
+        r"(?<![A-Za-z0-9])"
+        + re.escape(kw)
+        + r"(?:es|s)?"
+        + r"(?![A-Za-z0-9])",
+        lower_text,
+    ) is not None
+
+
 def score_keywords(text: str, keywords: list[str]) -> int:
-    """Return 1 if ANY keyword is found (case-insensitive) in text, else 0."""
-    text_lower = text.lower()
-    for kw in keywords:
-        if kw.lower() in text_lower:
-            return 1
-    return 0
+    """Return 1 if ANY keyword is found (case-insensitive, word-bounded) in text, else 0."""
+    text_lower = (text or "").lower()
+    return int(any(_kw_present(kw, text_lower) for kw in keywords))
 
 
 def score_task(agent_output: str, session: dict) -> dict:
@@ -44,7 +62,7 @@ def score_task(agent_output: str, session: dict) -> dict:
     Score the primary task output against eval_keywords.
 
     Returns dict with:
-      - task_score: fraction of eval_keywords found in output
+      - task_score: fraction of eval_keywords found in output (word-bounded match)
       - keywords_found: list of matched keywords
       - keywords_missing: list of unmatched keywords
     """
@@ -52,14 +70,10 @@ def score_task(agent_output: str, session: dict) -> dict:
     if not eval_kws:
         return {"task_score": 1.0, "keywords_found": [], "keywords_missing": []}
 
-    found = []
-    missing = []
-    output_lower = agent_output.lower()
+    output_lower = (agent_output or "").lower()
+    found, missing = [], []
     for kw in eval_kws:
-        if kw.lower() in output_lower:
-            found.append(kw)
-        else:
-            missing.append(kw)
+        (found if _kw_present(kw, output_lower) else missing).append(kw)
 
     score = len(found) / len(eval_kws) if eval_kws else 1.0
     return {

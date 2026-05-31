@@ -107,7 +107,16 @@ class DependencyMixin:
         if len(available) >= 3:
             dep_types.append("synthesize")
 
-        dep_type = rng.choice(dep_types)
+        # Prefer "trend" when versioned facts exist. version_accuracy ONLY
+        # counts trend tasks, so leaving trend as one of 3-4 equiprobable picks
+        # meant whole runs often emitted zero trend tasks (S1/S3) and
+        # version_accuracy had no coverage. Biasing here gives revision runs a
+        # real version-test signal; when update_rate=0 there are no versioned
+        # facts and behavior is unchanged.
+        if versioned and rng.random() < 0.6:
+            dep_type = "trend"
+        else:
+            dep_type = rng.choice(dep_types)
 
         if dep_type == "compare":
             return self._build_compare(graph, session, available, rng)
@@ -338,12 +347,22 @@ class DependencyMixin:
         for old_fact in to_update:
             # Generate new value (modify existing keywords)
             new_keywords = []
+            # Cache new value per underlying number so different FORMATS of the
+            # same value (e.g. "429,374" and "429374") map to the SAME new
+            # number. Previously each was mutated independently, producing
+            # inconsistent v2 keywords (e.g. 473,858 vs 514899 — the latter a
+            # phantom that appears in no content).
+            _val_cache: dict = {}
             for kw in old_fact.keywords:
                 # Try to modify numerical values
                 try:
                     val = int(kw.replace(",", "").replace("$", "").replace("%", ""))
-                    delta = rng.randint(-val // 4, val // 4) or rng.choice([-1, 1])
-                    new_val = val + delta
+                    if val in _val_cache:
+                        new_val = _val_cache[val]
+                    else:
+                        delta = rng.randint(-val // 4, val // 4) or rng.choice([-1, 1])
+                        new_val = val + delta
+                        _val_cache[val] = new_val
                     # Preserve formatting
                     if "$" in kw:
                         new_kw = f"${new_val:,}" if new_val >= 1000 else f"${new_val}"

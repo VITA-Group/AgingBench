@@ -144,8 +144,15 @@ def build_memory_policy(policy_cfg: dict, project_root: Optional[Path] = None) -
         return NoMemoryPolicy()
 
     if policy_type == "append_only":
+        # Accept top_k at either memory_policy.top_k (flat) or
+        # memory_policy.retriever.top_k (nested). Both shapes appear in the
+        # existing SUT registry; the nested form was silently ignored before,
+        # so any yaml that set retriever.top_k=N actually ran with the
+        # default 5. Flat wins when both are present.
+        retriever_cfg = policy_cfg.get("retriever") or {}
+        top_k = policy_cfg.get("top_k", retriever_cfg.get("top_k", 5))
         return AppendOnlyPolicy(
-            top_k=policy_cfg.get("top_k", 5),
+            top_k=top_k,
             max_input_tokens=policy_cfg.get("max_input_tokens", 200_000),
         )
 

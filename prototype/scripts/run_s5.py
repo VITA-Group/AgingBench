@@ -149,15 +149,24 @@ def main():
     from agingbench.generators.s5_generator import S5Generator
     from agingbench.generators.pressure_config import PressureConfig
 
-    pressure_map = {
-        "none": PressureConfig.none(),
-        "light": PressureConfig.light(),
-        "medium": PressureConfig.medium(),
-        "heavy": PressureConfig.heavy(),
-    }
-    pressure = pressure_map[args.pressure]
+    # Prefer yaml-declared pressure (supports per-field overrides via
+    # _resolve_pressure). Fall back to the CLI --pressure preset only when
+    # the yaml has no `pressure` key, so existing CLI workflows still work.
+    if sut_cfg.get("pressure") is not None:
+        from agingbench.cli.loaders import _resolve_pressure
+        pressure = _resolve_pressure(sut_cfg=sut_cfg)
+        pressure_label = "yaml"
+    else:
+        pressure_map = {
+            "none": PressureConfig.none(),
+            "light": PressureConfig.light(),
+            "medium": PressureConfig.medium(),
+            "heavy": PressureConfig.heavy(),
+        }
+        pressure = pressure_map[args.pressure]
+        pressure_label = args.pressure
 
-    print(f"\nGenerating {args.domain} task stream (pressure={args.pressure})...")
+    print(f"\nGenerating {args.domain} task stream (pressure={pressure_label})...")
     gen = S5Generator(seed=sut_cfg.get("seed", 42), domain=args.domain, pressure=pressure)
     generated_data = gen.generate(n_sessions=args.sessions)
     n_tasks = len(generated_data["task_stream"]["tasks"])

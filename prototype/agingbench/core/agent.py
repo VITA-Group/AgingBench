@@ -202,9 +202,44 @@ class ReferenceAgent(AgentInterface):
                     {"role": "user", "content": "Continue. Use the Action/Final Answer format."}
                 )
 
-        # max_turns exhausted without a Final Answer; return the stripped
-        # last response so downstream scoring doesn't see <think> blocks.
-        return {"output": visible, "tool_calls": tool_calls, "turns": self.max_turns}
+        # max_turns exhausted without a Final Answer. Instead of returning
+        # the raw "Thought: ... Action: ..." protocol text (which contaminates
+        # downstream scoring — graders see ReAct syntax instead of an answer),
+        # issue one final forcing prompt that requires a Final Answer right
+        # now from whatever the agent has gathered. If even that fails to
+        # produce a parseable answer, mark the result with `exhausted=True`
+        # so scoring can distinguish framework-exhaustion from a genuine
+        # confident-but-wrong response.
+        messages.append({
+            "role": "user",
+            "content": (
+                "You have used all your reasoning turns. Based on what you "
+                "have already observed, you MUST now commit to a single best "
+                "answer. Reply with exactly one line in the format:\n"
+                "Final Answer: <your answer>\n"
+                "Do not emit any more Thoughts or Actions."
+            ),
+        })
+        forced_response = self.llm.chat(messages)
+        forced_visible = strip_thinking(forced_response, self.llm)
+        final = self._parse_final_answer(forced_visible)
+        if final is not None:
+            return {
+                "output": final,
+                "tool_calls": tool_calls,
+                "turns": self.max_turns,
+                "exhausted": True,
+            }
+        # Last resort: the agent wouldn't finalize. Return the forced response
+        # (stripped) so scoring at least sees text the agent generated under
+        # the "give a final answer" pressure rather than ReAct protocol
+        # residue. The exhausted flag still tells scoring this is incomplete.
+        return {
+            "output": forced_visible or visible,
+            "tool_calls": tool_calls,
+            "turns": self.max_turns,
+            "exhausted": True,
+        }
 
     # ---------------------------------------------------------------- helpers
 

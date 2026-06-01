@@ -129,7 +129,11 @@ def run(sut_path: str, cycles: int, output_dir: Path, generated: bool = False,
         from agingbench.generators.s1_generator import S1Generator
         from agingbench.cli.loaders import _resolve_pressure
         pressure = _resolve_pressure(sut_cfg=sut_cfg)
-        gen_data = S1Generator(seed=seed, pressure=pressure).generate(n_cycles)
+        gen_data = S1Generator(
+            seed=seed,
+            pressure=pressure,
+            dense_revision=sut_cfg.get("dense_revision", False),
+        ).generate(n_cycles)
         source_doc = gen_data["source_doc"]
         probes = gen_data["probes"]
     else:

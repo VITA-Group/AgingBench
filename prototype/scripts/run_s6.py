@@ -102,13 +102,20 @@ def run_single_sut(sut_path: Path, n_sessions: int, output_base: str, oracle: bo
         generated_data = None
         if generated:
             from agingbench.generators.s6_generator import S6Generator
-            from agingbench.generators.pressure_config import PressureConfig
-            pressure = PressureConfig.medium()  # default; override via code for heavy/light
+            from agingbench.cli.loaders import _resolve_pressure
+            # Read pressure from sut_cfg (yaml). Previously hard-coded
+            # PressureConfig.medium() — silently ignored confusable knobs,
+            # update_rate, forget_rate, etc. set in the yaml.
+            pressure = _resolve_pressure(sut_cfg=sut_cfg)
             generated_data = S6Generator(seed=seed, pressure=pressure).generate(n_sessions)
             if seed_i == 0:
                 dep_summary = generated_data.get("dependency_graph", {}).get("summary", {})
                 print(f"Generated {n_sessions} sessions (deps={dep_summary.get('total_dependency_tasks', 0)}, "
-                      f"versioned={dep_summary.get('total_versioned', 0)})")
+                      f"versioned={dep_summary.get('total_versioned', 0)}); "
+                      f"pressure: confusable_start={pressure.confusable_start_session}, "
+                      f"n_pairs={pressure.n_confusable_pairs}, "
+                      f"update_rate={pressure.update_rate}, forget_rate={pressure.forget_rate}, "
+                      f"similar_names={getattr(pressure, 'confusable_similar_names', False)}")
 
         # Run
         seed_dir = output_dir / f"seed_{seed_i}" if n_seeds > 1 else output_dir

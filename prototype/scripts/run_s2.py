@@ -65,9 +65,14 @@ def main():
     if args.generated:
         from agingbench.generators.s2_generator import S2Generator
         from agingbench.generators.pressure_config import PressureConfig
+        from agingbench.cli.loaders import _resolve_pressure
+        # Read pressure from sut_cfg (yaml) — previously hard-coded medium,
+        # which silently ignored every pressure knob set in the yaml.
+        pressure = _resolve_pressure(sut_cfg=sut_cfg)
         generated_data = S2Generator(
             seed=sut_cfg.get("seed", 42),
-            pressure=PressureConfig.medium(),
+            pressure=pressure,
+            dense_accumulator=sut_cfg.get("dense_accumulator", False),
         ).generate(args.sessions)
         n_acc = len(generated_data.get("accumulator_probes", []))
         dep_s = generated_data.get("dependency_graph", {}).get("summary", {})

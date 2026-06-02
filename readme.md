@@ -31,6 +31,7 @@ We are committed to actively maintaining this repository as a foundation for ALE
 
 ## 📢 Updates
 
+* **v0.3.1** — We are currently refactoring our codebase for cleaning and easy-to-use.
 * **v0.3.0** — Initial public release (2026-05-25). Seven core scenarios (S1–S7) across the four aging mechanisms, plus the *S8 SWE-bench-Aging* community extension. AgingCard schema v1.0.0, `agingbench` + `agingbench-lite` CLIs in a single `pip install`, behavioral-DAG telemetry-mode post-hoc trace analysis. Full log will be updated in [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 ---

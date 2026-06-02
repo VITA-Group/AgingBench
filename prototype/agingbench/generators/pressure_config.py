@@ -83,6 +83,75 @@ class PressureConfig:
     # (per-session competitors), at no extra agent cost for S5. Default off so
     # existing generic-pool runs remain bit-for-bit reproducible.
     confusable_topic_matched: bool = False
+    # Fan-out for confusable_high_similarity: number of qualifier variants per
+    # base. Default 2 (one gold + one distractor — the original 2-way pair).
+    # K > 2 produces K facts on the same base term (phase-1 ... phase-K
+    # marketing budget), each with its own value and probe. Tests the fan
+    # effect: as K grows, transformer attention has to discriminate among K
+    # nearly-identical contexts using only the qualifier token. Predicted
+    # threshold ~10-20 for visible recall drop on Llama-3.1-8B class models.
+    # Only meaningful when confusable_high_similarity=True.
+    confusable_fan_count: int = 2
+    # When True (and confusable_fan_count > 2), qualifiers are drawn from a
+    # pool of 100 distinct English words (animals/colors/elements/etc.) instead
+    # of the default ``phase-1 ... phase-K`` numeric sequence. Tests whether
+    # the fan-effect interference at large K is driven by sub-token digit
+    # confusion (e.g. phase-51 collapsing into phase-5 / phase-11 because the
+    # digit tokens overlap) vs a generic content-addressability limit.
+    # Predicted: if word qualifiers restore 100% recall at the same K where
+    # phase-N qualifiers failed, then the failure mode is digit-token
+    # interference specifically — not a generic attention-mass dilution.
+    confusable_word_qualifiers: bool = False
+    # 0-indexed position within the K-fan-out to probe. None defaults to the
+    # MIDDLE (fan_count // 2) — same as before this knob existed. Setting to
+    # 0 probes the first qualifier (start of each base's block); K-1 probes
+    # the last. Used to test the "lost in the middle" hypothesis: does the
+    # fan-effect interference at K=100 disappear when the gold qualifier
+    # sits at the start or end of the in-memory block, rather than the
+    # middle? Only meaningful when confusable_high_similarity=True and
+    # confusable_fan_count > 2.
+    confusable_probe_index: Optional[int] = None
+    # ─── S1 v2 extension knobs (all off by default → backward compatible) ───
+    # When ≥ 2, S1Generator draws components from an extended pool instead
+    # of the original 20-entry pool. Valid values:
+    #   1 (default) — PROJECT_COMPONENTS, 20 generic-infra entries.
+    #   2 — PROJECT_COMPONENTS_V2, 50 generic-infra entries.
+    #   3 — PROJECT_COMPONENTS_V3, 100 entries (V2 + 50 research-
+    #       infrastructure components: training pipelines, eval harnesses,
+    #       experiment trackers, arXiv watchers, etc.). Use this when the
+    #       S1 "research literature" framing should actually be carried by
+    #       the content, not just the scenario label.
+    # S3/S6 currently use the V1 pool unconditionally (don't honor this knob).
+    project_components_pool_version: int = 1
+    # When ≥ 2, S1Generator uses the 13-entry _BATCH_TEMPLATES_V2 (5 original
+    # + 8 new shapes: incident postmortem, capacity planning, A/B test,
+    # SOC 2 audit, cost optimization, roadmap revision, customer feedback,
+    # ownership transition). Reduces visible template repetition at n > 5
+    # cycles. NB: V2 templates reference additional placeholders that V1
+    # does not, so _gen_cycle_values has a v2-extras path gated on this.
+    s1_batch_templates_version: int = 1
+    # When True, S1Generator emits additional probe types beyond the
+    # default per-keyword recall: COMPARE (which component had max X),
+    # TREND (did X improve from cycle A to B), INVERSE (which component
+    # had value Y). All fire only at cycle ≥ 2 (need prior content).
+    s1_rich_probes_enabled: bool = False
+    # When True, S1Generator runs a post-pass that attaches
+    # forbidden_keywords to recall probes whose underlying fact gets
+    # revised later in the run. Lets revision-aging scorers cleanly
+    # penalize stale-value recall instead of relying on multi-gold
+    # keyword matching alone.
+    s1_forbidden_keywords_on_recall: bool = False
+    # Unique-singleton control probes for the crowding-out test. When > 0 and
+    # ``confusable_similar_names`` is True, the generator injects N lonely
+    # person facts (single name, no near-duplicate competitor in memory) with
+    # the SAME fact-shape as the confusable pairs (name + extension/desk/ID +
+    # value). They get probed at the SAME ``confusable_probe_lags`` as the
+    # binding probes, into the SAME ``interference_probes`` stream, but tagged
+    # ``probe_type="unique_control"`` with a phantom distractor. This gives a
+    # within-session controlled contrast — same fact age, same memory bloat,
+    # same question form — to isolate confusable-pair interference from generic
+    # bloat-driven retrieval failure. Default 0 → no controls (backward compat).
+    n_unique_controls: int = 0
 
     def __post_init__(self) -> None:
         """Validate cross-knob compatibility.

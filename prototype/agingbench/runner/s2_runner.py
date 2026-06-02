@@ -27,6 +27,7 @@ from .base import BaseRunner, RunResult
 from .trace import TraceLogger
 from ..metrics.aging import AgingCurve, compute_half_life, compute_decay_slope
 from ..core.memory.base import MemoryPolicy
+from ..core.memory.eval_proxy import EvalTextMemoryProxy
 from ..core.memory.append_only import AppendOnlyPolicy
 from ..core.agent import AgentInterface, ReferenceAgent
 from ..core.tools import ToolSpec, ToolRegistry
@@ -487,9 +488,14 @@ class S2Runner(BaseRunner):
                 return self.memory_policy.read() or self._current_profile_text
 
             tool_registry = _build_tool_registry(_memory_reader, tool_kind=self.tool_kind)
+            # C1-C4 control: the agent's system prompt must show the SAME
+            # mode-dependent memory the tool/runner uses (memory_text), not the
+            # raw SUT policy — otherwise oracle conditions leak the compacted
+            # store into the system prompt. In C1 memory_text == policy.read(),
+            # so this is a no-op for the baseline; only C2/C3/C4 are corrected.
             agent = self.agent_class(
                 llm=self.llm,
-                memory_policy=self.memory_policy,
+                memory_policy=EvalTextMemoryProxy(self.memory_policy, memory_text),
                 tools=tool_registry,
                 max_turns=8,
             )

@@ -13,6 +13,7 @@ from .dependency_mixin import DependencyMixin
 from .fact_graph import FactGraph
 from .pools import (
     FIRST_NAMES, LAST_NAMES, TECH_FRAMEWORKS, PROJECT_COMPONENTS,
+    get_project_components,
     random_dollar, random_percent, random_latency_ms, random_count,
     random_date, ensure_non_round, random_person, sample_unique,
 )
@@ -53,6 +54,68 @@ _BATCH_TEMPLATES = [
     ),
 ]
 
+# V2 extension (opt-in via PressureConfig.s1_batch_templates_version=2).
+# 5 original templates + 8 new content shapes. NB: V2 templates use
+# additional placeholders (p_level, root_cause, mttr, user_count,
+# load_factor, experiment_name, metric_name, p_value, decision, n_findings,
+# strategy, savings, feature_count, pushed_count, push_date, nps,
+# complaint, csat, old_person, n_sessions_xfer) — fetched via
+# _gen_cycle_values_v2_extras only when V2 is active, so V1's rng state is
+# untouched.
+_BATCH_TEMPLATES_V2 = _BATCH_TEMPLATES + [
+    (
+        "P{p_level} Incident — {component}",
+        "P{p_level} incident in {component}: root cause was {root_cause}. "
+        "MTTR: {mttr} min. Affected {user_count} users. Postmortem cost: ${spent}."
+    ),
+    (
+        "{component} Capacity Planning Report",
+        "{component} capacity analysis: peak concurrent users {throughput}, "
+        "P99 latency {latency}ms under {load_factor}x normal load. "
+        "Headroom: {percent}. Recommended scale-up: {node_count} nodes."
+    ),
+    (
+        "{component} A/B Test Results — {experiment_name}",
+        "{component} A/B test '{experiment_name}' concluded. Variant B improved "
+        "{metric_name} by {percent}. Sample size: {throughput}, p-value: {p_value}. "
+        "Decision: {decision}."
+    ),
+    (
+        "{component} SOC 2 Audit Report",
+        "{component} SOC 2 audit completed by {person}. {n_findings} findings, "
+        "{critical_count} critical. Remediation cost: ${spent}. Re-audit: {milestone_date}."
+    ),
+    (
+        "{component} Cost Optimization Summary",
+        "{component} cloud spend reduced from ${total}/mo to ${spent}/mo via "
+        "{strategy}. Projected savings: ${savings}/yr. Owner: {person}."
+    ),
+    (
+        "{component} Roadmap Revision — {phase}",
+        "{component} roadmap revised for {phase}. {feature_count} features pulled "
+        "forward to {milestone_date}, {pushed_count} features pushed to {push_date}. "
+        "Sign-off: {person}."
+    ),
+    (
+        "{component} Customer Feedback Q-Roll-Up",
+        "{component} NPS this quarter: {nps}. Top complaint: {complaint}. "
+        "Resolution SLA met for {percent} of {throughput} tickets. CSAT: {csat}."
+    ),
+    (
+        "{component} Ownership Transition",
+        "{component} ownership transferred from {old_person} to {person}. "
+        "Knowledge transfer sessions: {n_sessions_xfer}. Migration cost: ${spent}. "
+        "Effective: {milestone_date}."
+    ),
+]
+assert len(_BATCH_TEMPLATES_V2) == 13, (
+    f"_BATCH_TEMPLATES_V2 expected 13 entries; got {len(_BATCH_TEMPLATES_V2)}"
+)
+
+
+def _get_batch_templates(version: int):
+    return {1: _BATCH_TEMPLATES, 2: _BATCH_TEMPLATES_V2}[version]
+
 
 class S1Generator(BaseGenerator, DependencyMixin):
     """Generate S1 research literature scenario data."""
@@ -76,14 +139,29 @@ class S1Generator(BaseGenerator, DependencyMixin):
         all_facts = []
         used_keywords = set()
 
-        components = sample_unique(PROJECT_COMPONENTS, n_sessions, self.rng)
+        components = sample_unique(
+            get_project_components(
+                getattr(self.pressure, "project_components_pool_version", 1)
+            ),
+            n_sessions,
+            self.rng,
+        )
 
+        tmpl_pool = _get_batch_templates(
+            getattr(self.pressure, "s1_batch_templates_version", 1)
+        )
         for cycle in range(n_sessions):
             component = components[cycle % len(components)]
-            tmpl_title, tmpl_content = self.rng.choice(_BATCH_TEMPLATES)
+            tmpl_title, tmpl_content = self.rng.choice(tmpl_pool)
 
-            # Generate unique values for this cycle
+            # Generate unique values for this cycle. Always call the V1 path
+            # first (preserves rng ordering for legacy yamls), then top up
+            # with V2 extras only when V2 templates are enabled. Without the
+            # gating, V1 yamls would consume extra rng entropy for unused
+            # placeholders and shift downstream output.
             vals = self._gen_cycle_values(component, cycle)
+            if getattr(self.pressure, "s1_batch_templates_version", 1) >= 2:
+                vals.update(self._gen_cycle_values_v2_extras(component, cycle))
             title = tmpl_title.format(**vals)
             content = tmpl_content.format(**vals)
 
@@ -101,19 +179,29 @@ class S1Generator(BaseGenerator, DependencyMixin):
                 "content": content,
                 "keywords": keywords,
                 "n_keywords": len(keywords),
+                "component": component,  # explicit anchor for rich probes
             })
 
-            # Register keywords in the FactGraph
+            # Register keywords in the FactGraph. Use the FULL content (not
+            # content[:120]) so that version_random_facts' keyword replacement
+            # can find values located past char 120 — the previous truncation
+            # silently broke revision rendering for any keyword whose position
+            # in the body exceeded the cap, leaving the new value invisible
+            # in the rendered update text and making revision-aware probes
+            # promote to a gold value that doesn't appear anywhere.
             graph.register_fact(
                 session=cycle,
                 domain="technical",
-                content=f"{title}: {content[:120]}",
+                content=f"{title}: {content}",
                 keywords=keywords,
             )
 
             # Generate probes from keywords
             for j, kw in enumerate(keywords[:3]):
-                probe_q = self._keyword_to_question(kw, vals, component)
+                if getattr(self.pressure, "s1_rich_probes_enabled", False):
+                    probe_q = self._keyword_to_question_v2(kw, vals, component)
+                else:
+                    probe_q = self._keyword_to_question(kw, vals, component)
                 all_probes.append({
                     "probe_id": f"s1_c{cycle}_p{j}",
                     "constraint_id": f"kw_{cycle}_{j}",
@@ -211,11 +299,15 @@ class S1Generator(BaseGenerator, DependencyMixin):
                 for inv in invalidations:
                     batches[-1]["content"] += f"\n{inv['text']}"
 
-            # Inject interference facts (confusable cross-domain pairs)
-            if cycle >= self.pressure.confusable_start_session:
-                pairs = self.inject_interference(graph, cycle, self.rng, self.pressure)
-                for pair in pairs:
-                    batches[-1]["content"] += f"\n{pair['text_a']}\n{pair['text_b']}"
+            # NB: S1 does NOT inject interference. The cross-domain
+            # CONFUSABLE_TERMS distractors broke the "research literature"
+            # framing (bolting "budget for marketing $X" onto a research-
+            # memo batch made no sense), and the corresponding
+            # interference_resistance / score_interference_binding metrics
+            # were essentially vacuous on transformer LLMs at the default
+            # configs (the K=100 fan-effect experiments confirmed this).
+            # PressureConfig.n_confusable_pairs / confusable_start_session
+            # are still honored by other scenarios (S2-S6).
 
         # Cross-cycle queries
         cross_queries = []
@@ -231,6 +323,20 @@ class S1Generator(BaseGenerator, DependencyMixin):
                 "requires_cycles": required,
                 "keywords": req_kws,
             })
+
+        # ─── Step C: rich probe types (compare / inverse) ───────────────
+        # Gated on s1_rich_probes_enabled. Uses ONLY deterministic ops over
+        # `batches` (no rng calls), so adding these probes does not perturb
+        # any other generation seed state.
+        if getattr(self.pressure, "s1_rich_probes_enabled", False):
+            all_probes.extend(self._build_rich_probes(batches))
+
+        # ─── Step D: forbidden_keywords retroactive pass ────────────────
+        # Walk graph for revised facts; if an earlier recall probe targeted
+        # the OLD value of a now-revised fact, attach forbidden_keywords
+        # so revision scorers can penalize stale recall directly.
+        if getattr(self.pressure, "s1_forbidden_keywords_on_recall", False):
+            self._attach_forbidden_keywords_retroactively(all_probes, graph)
 
         result = {
             "paper_batches": {
@@ -269,6 +375,173 @@ class S1Generator(BaseGenerator, DependencyMixin):
             "milestone_date": random_date(self.rng),
         }
 
+    def _build_rich_probes(self, batches: list[dict]) -> list[dict]:
+        """Build COMPARE + INVERSE probes from accumulated batches.
+
+        Uses only deterministic operations on existing batch content —
+        no rng calls, so adding these probes does not perturb other
+        generation that uses self.rng. Each probe is positioned at a
+        cycle index (asked at that cycle and onward by the runner).
+        """
+        rich: list[dict] = []
+
+        # COMPARE: at each cycle t ≥ 2, ask "of components in cycles 0..t-1,
+        # which had the highest numeric value?" Gold = the component name
+        # whose first numeric keyword is max in the prior window. We use ANY
+        # numeric keyword (not just percent) so the probe fires even when
+        # templates without a % placeholder were picked — otherwise compare
+        # probes never emit in template-mixed runs.
+        def _first_numeric(kws):
+            for k in kws:
+                s = k.replace(",", "").rstrip("%").rstrip("$")
+                try:
+                    return float(s)
+                except ValueError:
+                    continue
+            return None
+
+        for t in range(2, len(batches)):
+            window = batches[:t]
+            cand = []
+            for b in window:
+                v = _first_numeric(b["keywords"])
+                if v is not None and b.get("component"):
+                    cand.append((v, b["component"], b["cycle"]))
+            if len(cand) < 2:
+                continue
+            v_max, comp_max, c_max = max(cand, key=lambda x: x[0])
+            rich.append({
+                "probe_id": f"s1_t{t}_compare",
+                "constraint_id": f"compare_{t}",
+                "question": (
+                    f"Of the components reviewed in cycles 0 through {t-1}, "
+                    f"which had the highest primary metric reported?"
+                ),
+                "canonical_answer": comp_max,
+                "keywords": [comp_max],
+                "probe_type": "compare",
+                "ask_at_cycle": t,
+            })
+
+        # INVERSE: at each cycle t ≥ 2, pick a memorable numeric value from a
+        # prior batch and ask "which component had value X?" Gold = that
+        # component name.
+        for t in range(2, len(batches)):
+            window = batches[:t]
+            for b in window:
+                if not b.get("component"):
+                    continue
+                # Prefer comma-separated 5+ digit numbers (high recognizability)
+                target = next(
+                    (k for k in b["keywords"]
+                     if "," in k and len(k.replace(",", "")) >= 4),
+                    None,
+                )
+                if not target:
+                    continue
+                rich.append({
+                    "probe_id": f"s1_t{t}_inverse_c{b['cycle']}",
+                    "constraint_id": f"inverse_{t}_{b['cycle']}",
+                    "question": (
+                        f"Which component had a value of {target} reported "
+                        f"in one of the earlier cycles?"
+                    ),
+                    "canonical_answer": b["component"],
+                    "keywords": [b["component"]],
+                    "probe_type": "inverse",
+                    "ask_at_cycle": t,
+                })
+                break  # at most one inverse probe per (t, source-cycle)
+
+        return rich
+
+    def _attach_forbidden_keywords_retroactively(
+        self, probes: list[dict], graph
+    ) -> None:
+        """For each revised fact, promote any probe whose `keywords` are
+        the OLD value to: (1) target the NEW value as gold, and (2) carry
+        the OLD value in `forbidden_keywords`. Mirrors S6's
+        _sync_probes_after_revisions: the basic per-keyword recall probes
+        are emitted at cycle K against the value-at-cycle-K; if the fact
+        is later revised at cycle K+n, the probe's gold becomes stale and
+        the agent should cite the NEW value, not the original. Without
+        this sync, recall_rate penalizes correct revision."""
+        for f in graph.facts.values():
+            if f.replaced_by is None:
+                continue  # not revised
+            new_f = graph.facts[f.replaced_by]
+            stale_kws = set(f.keywords) - set(new_f.keywords)
+            new_kws = set(new_f.keywords) - set(f.keywords)
+            if not stale_kws or not new_kws:
+                continue
+            stale_sorted = sorted(stale_kws)
+            new_sorted = sorted(new_kws)
+            for p in probes:
+                if p.get("forbidden_keywords"):
+                    continue  # already revision-aware (trend dep probes)
+                probe_kws = p.get("keywords") or []
+                # Probe targets a stale value → flip it to the new value.
+                if any(kw in stale_kws for kw in probe_kws):
+                    p["keywords"] = new_sorted
+                    if "canonical_answer" in p:
+                        p["canonical_answer"] = " / ".join(new_sorted)
+                    p["forbidden_keywords"] = stale_sorted
+                    p["revision_source_fact"] = f.id
+                    p["revision_target_fact"] = new_f.id
+
+    def _gen_cycle_values_v2_extras(self, component: str, cycle: int) -> dict:
+        """Extra placeholders needed by V2 batch templates only.
+
+        Called only when ``pressure.s1_batch_templates_version >= 2`` so that
+        V1 yamls do not consume the extra rng entropy this would otherwise
+        introduce. Each call consumes ~20 fresh rng draws after the V1 pool;
+        same seed + V2 produces identical V2 output across runs.
+        """
+        return {
+            "p_level": str(self.rng.choice([0, 1, 2])),
+            "root_cause": self.rng.choice([
+                "connection pool exhaustion", "memory leak in worker",
+                "schema migration drift", "stale cache invalidation",
+                "third-party API outage", "DNS misconfiguration",
+                "race condition on retry path", "log volume blew past quota",
+            ]),
+            "mttr": str(self.rng.randint(5, 240)),
+            "user_count": f"{random_count(self.rng, 100, 50_000):,}",
+            "load_factor": str(self.rng.choice([2, 3, 5, 10])),
+            "experiment_name": self.rng.choice([
+                "Atlas", "Beacon", "Cobalt", "Delta", "Echo", "Falcon",
+                "Granite", "Helix", "Iris", "Juniper",
+            ]),
+            "metric_name": self.rng.choice([
+                "conversion rate", "click-through", "session length",
+                "retention D7", "checkout success", "page-load p95",
+            ]),
+            "p_value": f"0.{self.rng.randint(1, 49):03d}",
+            "decision": self.rng.choice([
+                "ship variant B", "extend the test", "ship variant A",
+                "abandon both",
+            ]),
+            "n_findings": str(self.rng.randint(2, 18)),
+            "strategy": self.rng.choice([
+                "reserved-instance migration", "spot-fleet adoption",
+                "right-sizing initiative", "egress traffic dedup",
+                "log-retention policy cut", "image-build cache reuse",
+            ]),
+            "savings": f"{random_dollar(self.rng, 20_000, 500_000):,}",
+            "feature_count": str(self.rng.randint(1, 6)),
+            "pushed_count": str(self.rng.randint(1, 4)),
+            "push_date": random_date(self.rng),
+            "nps": str(self.rng.randint(15, 78)),
+            "complaint": self.rng.choice([
+                "slow checkout flow", "missing export button",
+                "confusing tier comparison", "weak mobile experience",
+                "intermittent 5xx on submit",
+            ]),
+            "csat": f"{self.rng.randint(70, 96)}%",
+            "old_person": random_person(self.rng),
+            "n_sessions_xfer": str(self.rng.randint(2, 8)),
+        }
+
     def _extract_unique_keywords(self, vals: dict, used: set,
                                   content: str = "") -> list[str]:
         """Extract 4-6 keywords that haven't been used before.
@@ -304,3 +577,112 @@ class S1Generator(BaseGenerator, DependencyMixin):
         if "." in keyword and not keyword.endswith("%"):
             return f"What was {component}'s memory usage?"
         return f"What specific metric was reported for {component}?"
+
+    # ─── V2 probe-question templates (12 role-based shapes) ─────────────
+    # Maps each vals key to one or more question phrasings; matches the
+    # keyword's role (not just its surface shape) so the probe is specific
+    # to what the agent actually saw. Gated on s1_rich_probes_enabled.
+    _ROLE_QUESTIONS: dict[str, list[str]] = {
+        "percent": [
+            "What rate or percentage was reported for {component}?",
+            "What was {component}'s test coverage, cache hit rate, or "
+            "utilization figure?",
+        ],
+        "latency": [
+            "What was {component}'s latency in milliseconds?",
+            "How many ms did {component} take to respond at p50?",
+        ],
+        "old_latency": [
+            "What was {component}'s ORIGINAL (pre-optimization) latency in ms?",
+        ],
+        "memory": [
+            "How many GB of memory did {component} use?",
+        ],
+        "old_memory": [
+            "What was {component}'s ORIGINAL (pre-optimization) memory footprint in GB?",
+        ],
+        "throughput": [
+            "How many requests, records, or items did {component} process?",
+            "What throughput figure was reported for {component}?",
+        ],
+        "spent": [
+            "How much was spent on {component}?",
+            "What dollar figure was attributed to {component}'s spending?",
+        ],
+        "total": [
+            "What was the TOTAL budget or allocation reported for {component}?",
+        ],
+        "remaining": [
+            "How much was REMAINING in the budget for {component}?",
+        ],
+        "approval": [
+            "What dollar amount was APPROVED for {component}?",
+        ],
+        "vuln_count": [
+            "How many vulnerabilities were found in {component}'s security audit?",
+        ],
+        "critical_count": [
+            "How many CRITICAL findings did {component}'s audit report?",
+        ],
+        "downtime": [
+            "How many minutes of downtime did {component} experience during "
+            "its deployment?",
+        ],
+        "node_count": [
+            "How many nodes were provisioned for {component}?",
+        ],
+        # ─── V2-batch-templates extras ───
+        "mttr": [
+            "What was the MTTR (in minutes) for the {component} incident?",
+        ],
+        "user_count": [
+            "How many users were affected by the {component} incident?",
+        ],
+        "load_factor": [
+            "Under what load factor was {component}'s capacity tested?",
+        ],
+        "n_findings": [
+            "How many findings did {component}'s SOC 2 audit produce?",
+        ],
+        "savings": [
+            "What annual savings did {component}'s cost optimization yield?",
+        ],
+        "nps": [
+            "What was {component}'s NPS score this quarter?",
+        ],
+        "csat": [
+            "What was {component}'s CSAT score this quarter?",
+        ],
+        "feature_count": [
+            "How many features were pulled forward for {component}?",
+        ],
+    }
+
+    def _keyword_to_question_v2(self, keyword: str, vals: dict, component: str) -> str:
+        """Role-based probe-question dispatcher.
+
+        Reverse-maps ``keyword`` to its role in the ``vals`` dict (e.g.,
+        '299' might be the value of vals['latency']). Then selects a
+        role-specific question template — much more diverse and specific
+        than V1's 4-shape branching. Falls back to V1's heuristics for
+        unrecognized keys.
+        """
+        # Reverse lookup: which val key produced this keyword?
+        # Strip $ commas % for comparison.
+        def _norm(s: str) -> str:
+            return s.strip().lstrip("$").rstrip("%").replace(",", "")
+
+        kw_norm = _norm(keyword)
+        for role, val in vals.items():
+            if val is None:
+                continue
+            if _norm(str(val)) == kw_norm and role in self._ROLE_QUESTIONS:
+                phrasings = self._ROLE_QUESTIONS[role]
+                # Deterministic pick (by hash of keyword) so the same
+                # keyword always maps to the same phrasing — keeps the
+                # probe stream stable across runs.
+                idx = abs(hash(keyword)) % len(phrasings)
+                return phrasings[idx].format(component=component)
+
+        # Fallback: legacy heuristics from V1.
+        return self._keyword_to_question(keyword, vals, component)

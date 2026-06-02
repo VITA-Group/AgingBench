@@ -4,12 +4,18 @@ run_s1.py — End-to-end entry point for S1 (Research Literature).
 Equivalent to `agingbench run --scenario s1_research_literature --sut <yaml>`
 but exposes scenario-specific knobs (--cycles, --compare).
 
+Default mode is `--generated` (programmatic generator, seed-dependent, reproducible
+across machines). Pass `--no-generated` to fall back to the curated disk data.
+
 Usage:
-  # Baseline (no memory, should stay flat near 1.0)
+  # Baseline (no memory, should stay flat near 1.0) — generated mode by default
   python run_s1.py --sut agingbench/registry/suts/llama3/llama3_no_memory.yaml
 
   # Primary condition (summarize_store — decay expected by cycle 3-6)
   python run_s1.py --sut agingbench/registry/suts/llama3/llama3_summarize_store.yaml
+
+  # Curated-data run (legacy disk-loaded session_facts.json, etc.)
+  python run_s1.py --sut <yaml> --no-generated
 
   # Quick calibration run (3 cycles)
   python run_s1.py --sut agingbench/registry/suts/llama3/llama3_summarize_store.yaml --cycles 3
@@ -220,6 +226,15 @@ def run(sut_path: str, cycles: int, output_dir: Path, generated: bool = False,
     if gen_data and "dependency_graph" in gen_data and session_results:
         from agingbench.metrics.dependency_scorer import score_dependency_chain
         dep_metrics = score_dependency_chain(session_results, gen_data["dependency_graph"])
+        # S1 does not emit interference content, so strip the
+        # interference-related fields the shared scorer would otherwise
+        # include (they'd report vacuous all-zero values for S1 and could
+        # be mistaken for a real signal).
+        for k in ("interference_resistance",
+                  "interference_resistance_per_session",
+                  "score_interference_binding",
+                  "interference_binding"):
+            dep_metrics.pop(k, None)
         stats["dependency_metrics"] = dep_metrics
         with open(output_dir / "dependency_metrics.json", "w") as f:
             json.dump(dep_metrics, f, indent=2)
@@ -267,8 +282,9 @@ def main():
                              "as context and score the response. End-to-end W+R+U; "
                              "default is memory-based substring check (W+R only). "
                              "Adds ~(N_kw_probes * N_cycles + N_trend_probes) LLM calls.")
-    parser.add_argument("--generated", action="store_true",
-                        help="Use S1Generator (seed-dependent) instead of curated disk data")
+    parser.add_argument("--generated", action=argparse.BooleanOptionalAction, default=True,
+                        help="Use S1Generator (seed-dependent) instead of curated disk data. "
+                             "Default: --generated. Pass --no-generated to use curated.")
     parser.add_argument("--compare", nargs="+", metavar="METRICS_JSON",
                         help="Compare mode: pass 2+ metrics.json paths to overlay curves")
     args = parser.parse_args()

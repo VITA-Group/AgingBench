@@ -513,10 +513,39 @@ class S2Generator(BaseGenerator, DependencyMixin):
                         "category": "interference",
                     })
 
-        # Generate accumulator track (Ledger-QA pattern for revision aging)
+        # Generate accumulator track (Ledger-QA pattern for revision aging).
+        # NB: this MUTATES the chosen budget constraint's rule + _probe_data
+        # when the initial value needs scaling to keep the ledger positive
+        # over long horizons (n_sessions=10+). The mutation flips e.g. $309
+        # → $579 in the constraint, but eval_probes were already snapshotted
+        # above with the OLD value, so the post-mutation re-sync below is
+        # essential — without it, the eval probe targets a value the agent
+        # never sees in memory (since memory carries the mutated $579 rule).
         accumulator_probes = self._generate_accumulator_track(
             n_sessions, constraints, sessions, graph
         )
+
+        # Re-sync eval_probes against any post-mutation constraint state.
+        # _generate_accumulator_track may have rewritten budget_constraint's
+        # rule, precision_targets, anti_patterns, etc. Pull the latest values
+        # back into the matching eval_probe so the scorer's gold matches the
+        # constraint the agent actually reads.
+        for ep in eval_probes:
+            cid = ep["constraint_id"]
+            c = next((c for c in constraints if c["id"] == cid), None)
+            if c is None:
+                continue
+            pd = c.get("_probe_data") or {}
+            # Resync the fields the accumulator-track mutation touches.
+            ep["constraint_rule"] = c["rule"][:80]
+            if isinstance(pd.get("precision_targets"), list):
+                ep["precision_targets"] = list(pd["precision_targets"])
+            if isinstance(pd.get("anti_patterns"), list):
+                ep["violation_anti_patterns"] = list(pd["anti_patterns"])
+            if isinstance(pd.get("text"), str):
+                ep["text"] = pd["text"]
+            if isinstance(pd.get("gold"), str):
+                ep["gold_answer"] = pd["gold"]
 
         # Inject accumulator probes into session tasks so the runner executes them
         for probe in accumulator_probes:

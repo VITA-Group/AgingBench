@@ -245,8 +245,17 @@ class S5Generator(BaseGenerator, DependencyMixin):
 
             # 1 update task (if there are facts to update, starting from block 2)
             if block >= 2 and facts_registry:
-                updatable = [f for f in facts_registry
-                             if f["session_block"] < block - 1 and not f.get("updated")]
+                # Exclude facts already invalidated by the DependencyMixin's
+                # invalidate_random_facts in a prior block — graph.update_fact
+                # now raises ValueError on invalidated facts (silent revival
+                # was a bug), so we must skip them here.
+                def _still_active(f):
+                    fid = f.get("id")
+                    if fid in graph.facts and graph.facts[fid].invalidated_at is not None:
+                        return False
+                    return f["session_block"] < block - 1 and not f.get("updated")
+
+                updatable = [f for f in facts_registry if _still_active(f)]
                 if updatable:
                     old_fact = self.rng.choice(updatable)
                     update = self._generate_update(old_fact, block)

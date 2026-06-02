@@ -2,9 +2,16 @@
 """
 Run S2 scenario with a real LLM.
 
+Default mode is `--generated` (programmatic generator, seed-dependent, reproducible
+across machines). Pass `--no-generated` to fall back to the curated disk data.
+
 Usage:
+    # Generated mode (default)
     python run_s2.py --sut agingbench/registry/suts/deepseek14b/lossy_compress.yaml
     python run_s2.py --sut agingbench/registry/suts/deepseek14b/lossy_compress.yaml --sessions 3
+
+    # Curated-data mode (legacy disk-loaded eval_probes.json, etc.)
+    python run_s2.py --sut <yaml> --no-generated
 """
 
 import argparse
@@ -23,8 +30,9 @@ def main():
     parser.add_argument("--sessions", type=int, default=10, help="Number of sessions (default: 10)")
     parser.add_argument("--output", default="", help="Output directory")
     parser.add_argument("--oracle", action="store_true", help="Oracle mode (always use fresh profile)")
-    parser.add_argument("--generated", action="store_true",
-                        help="Use programmatic generator instead of curated data")
+    parser.add_argument("--generated", action=argparse.BooleanOptionalAction, default=True,
+                        help="Use programmatic generator instead of curated data. "
+                             "Default: --generated. Pass --no-generated to use curated.")
     args = parser.parse_args()
 
     import yaml

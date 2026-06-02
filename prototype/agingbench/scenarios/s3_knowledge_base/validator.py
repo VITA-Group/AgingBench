@@ -46,23 +46,107 @@ def _active_keywords(decision: dict, at_session: Optional[int] = None) -> list[s
     return active
 
 
+_MONTH_NAMES = {
+    "jan": 1, "january": 1, "feb": 2, "february": 2, "mar": 3, "march": 3,
+    "apr": 4, "april": 4, "may": 5, "jun": 6, "june": 6, "jul": 7, "july": 7,
+    "aug": 8, "august": 8, "sep": 9, "sept": 9, "september": 9,
+    "oct": 10, "october": 10, "nov": 11, "november": 11, "dec": 12, "december": 12,
+}
+
+
+def _normalize_dates(text: str) -> set[str]:
+    """Extract all dates from ``text`` and return as a set of canonical
+    ``YYYY-MM-DD`` strings. Handles three common forms:
+      * ``2026-08-07`` / ``2026/08/07`` (ISO + slash variants)
+      * ``August 7, 2026`` / ``Aug 7 2026`` (month-name forms)
+      * ``8/7/2026`` (US numeric)
+    """
+    out: set[str] = set()
+    if not text:
+        return out
+    # ISO + slash YYYY-MM-DD
+    for m in re.finditer(r"(20\d{2})[-/](\d{1,2})[-/](\d{1,2})", text):
+        y, mo, d = m.groups()
+        out.add(f"{y}-{int(mo):02d}-{int(d):02d}")
+    # Month-name forms: "August 7, 2026", "Aug 7 2026", "August 7th 2026"
+    pat = (r"(" + "|".join(_MONTH_NAMES) + r")\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(20\d{2})")
+    for m in re.finditer(pat, text.lower()):
+        mo_name, d, y = m.groups()
+        out.add(f"{y}-{_MONTH_NAMES[mo_name]:02d}-{int(d):02d}")
+    # US numeric M/D/YYYY (lenient — only if year is in range)
+    for m in re.finditer(r"(?<!\d)(\d{1,2})/(\d{1,2})/(20\d{2})(?!\d)", text):
+        mo, d, y = m.groups()
+        out.add(f"{y}-{int(mo):02d}-{int(d):02d}")
+    return out
+
+
 def score_query(response: str, query: dict) -> float:
     """
-    Score a single query response using hybrid keyword + semantic matching.
-    Returns float in [0, 1] — keyword match gives 1.0, semantic gives partial credit.
+    Score a single query response.
+
+    Four-stage scoring, tightened to eliminate the dominant false-positive
+    class from the prior implementation:
+
+      1. Word-boundary exact keyword match (digit-flank-safe via ``_present``).
+         Returns 1.0 on any keyword hit.
+
+      2. Numeric normalization. Comma-stripped numeric keywords (e.g. ``351254``
+         from gold ``"351,254"``) are checked against numbers extracted from
+         response; handles formatting paraphrases like ``$351,254`` vs ``351254``.
+
+      3. Date normalization. Dates are canonicalised to ``YYYY-MM-DD`` from
+         either side, so gold ``"2026-08-07"`` matches response ``"August 7, 2026"``.
+         Date paraphrases were the dominant TRUE-positive class previously
+         caught by the loose semantic fallback; they need explicit handling.
+
+      4. Strict semantic fallback against KEYWORDS ONLY (no question text).
+         Threshold raised from 0.60 to 0.78. The prior implementation included
+         ``query["question"]`` in the semantic reference, which conflated topic
+         match with answer match — agent responses staying on-topic but citing
+         wrong values (e.g. "no updated figure...52, 32" against gold ``"65, 39"``)
+         scored partial-credit despite containing no gold value. Removing the
+         question from the reference + raising threshold eliminates this class.
     """
+    if not response:
+        return 0.0
     text = response.lower()
-    # Keyword match (fast path)
-    for kw in query["keywords"]:
-        if kw.lower() in text:
+    keywords = query.get("keywords") or []
+    if not keywords:
+        return 0.0
+
+    # 1. Word-boundary keyword match (digit-flank-safe)
+    for kw in keywords:
+        if _present(kw, text):
             return 1.0
 
-    # Semantic fallback (handles paraphrasing)
+    # 2. Numeric normalization — handles paraphrases like ``$340K``
+    #    or ``340,000`` matching gold ``"340000"``. Extract digit-only
+    #    runs from response (commas stripped), compare to digit-only gold.
+    response_nums: set[str] = set()
+    for m in re.findall(r"\d[\d,]*", text):
+        norm = m.replace(",", "")
+        if len(norm) >= 3:  # filter tiny accidental matches
+            response_nums.add(norm)
+    for kw in keywords:
+        kw_clean = kw.replace(",", "").replace("$", "").strip()
+        if kw_clean.isdigit() and len(kw_clean) >= 3 and kw_clean in response_nums:
+            return 1.0
+
+    # 3. Date normalization — accept date-format paraphrases by canonicalising
+    #    both sides. Only fires if a gold keyword parses as a date.
+    response_dates = _normalize_dates(response)
+    if response_dates:
+        for kw in keywords:
+            gold_dates = _normalize_dates(kw)
+            if gold_dates & response_dates:
+                return 1.0
+
+    # 4. Strict semantic fallback — keywords only, threshold 0.78
     try:
         from agingbench.metrics.semantic_scorer import semantic_score
-        reference = query["question"] + " " + " ".join(query["keywords"])
-        sim = semantic_score(response, reference, threshold=0.60)
-        if sim >= 0.60:
+        reference = " ".join(keywords)
+        sim = semantic_score(response, reference, threshold=0.78)
+        if sim >= 0.78:
             return sim
     except Exception:
         pass

@@ -67,6 +67,7 @@ from .trace import TraceLogger
 from ..metrics.aging import AgingCurve
 from ..metrics.g4_metrics import compute_shock, compute_recovery
 from ..core.memory.base import MemoryPolicy
+from ..core.memory.eval_proxy import EvalTextMemoryProxy
 from ..core.memory.append_only import AppendOnlyPolicy
 from ..core.agent import AgentInterface, ReferenceAgent
 from ..core.tools import ToolRegistry, ToolSpec
@@ -527,9 +528,18 @@ class S4Runner(BaseRunner):
 
             # Build agent with read_file + list_files tools
             tools = self._build_tools(snapshot_files)
+            # C1-C4 control: system-prompt memory must match the mode-dependent
+            # memory_text (also injected into the user context below), not the
+            # raw SUT policy. In C1 memory_text == policy.read() → no-op for the
+            # baseline; C2/C3/C4 are corrected.
+            # NOTE (separate, unfixed confound): the `dep_recall` headline is fed
+            # `dep_context` identically in EVERY condition (see context build
+            # below), so it is largely blind to the MemoryPolicy IV. The clean
+            # signal is `dependency_probe`. This proxy does NOT fix that — it
+            # only closes the dual-memory-channel leak.
             agent = self.agent_class(
                 llm=self.llm,
-                memory_policy=self.memory_policy,
+                memory_policy=EvalTextMemoryProxy(self.memory_policy, memory_text),
                 tools=tools,
                 max_turns=6,
             )

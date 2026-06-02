@@ -2,8 +2,8 @@
 agingbench/runner/runner.py — S1 ScenarioRunner (formerly P2).
 
 Implements the S1 cycle state machine for the Research Literature Agent
-scenario. Tracks memory_bloat per cycle (G3-M2). Uses structured trace
-logging with OpenInference-aligned field names including token counts.
+scenario. Uses structured trace logging with OpenInference-aligned field
+names including token counts.
 """
 
 from __future__ import annotations
@@ -17,7 +17,6 @@ from typing import Callable, Optional
 from .base import BaseRunner, RunResult
 from .trace import TraceLogger
 from ..metrics.aging import AgingCurve, compute_half_life, compute_decay_slope
-from ..metrics.g3_metrics import compute_memory_bloat
 from ..metrics.dependency_scorer import _kw_in_text
 from ..core.memory.base import MemoryPolicy
 from ..core.memory.summarize_store import SummarizeStorePolicy
@@ -215,9 +214,9 @@ class S1Runner(BaseRunner):
         """Run the S1 loop for n_cycles.
 
         Returns a dict with: keyword_curve, task_curve, lag_recall_curve,
-        recall_matrix, session_results, keyword_raw, task_raw, lag_recall_raw,
-        bloat_raw. The CLI _run_s1 unpacks this so every measured signal is
-        persisted in metrics.json (no per-cycle data is silently dropped).
+        recall_matrix, session_results, keyword_raw, task_raw, lag_recall_raw.
+        The CLI _run_s1 unpacks this so every measured signal is persisted
+        in metrics.json (no per-cycle data is silently dropped).
         """
         import random as _random
         # Seed all sources of runtime randomness so multi-seed runs differ.
@@ -264,7 +263,6 @@ class S1Runner(BaseRunner):
         exposures: list[int] = []
         scores: list[float] = []
         task_scores_by_cycle: list[float] = []
-        bloat_series: list[int] = []
         # Lag-curve tracking: recall_matrix[cycle][lag] = 0/1
         recall_matrix: list[dict] = []
         # Per-cycle structured records (mirrors session_results in S2-S7)
@@ -356,10 +354,6 @@ class S1Runner(BaseRunner):
                     batch = self.paper_batches[cycle]
                     new_batch_text = f"\n\n--- {batch['title']} ---\n{batch['content']}"
                     eval_text += new_batch_text
-
-            # ---- Track memory_bloat (G3-M2) ----
-            bloat = compute_memory_bloat(eval_text)
-            bloat_series.append(bloat)
 
             # ---- Build the per-cycle responder once. None unless
             # agent_class is set; helpers fall back to direct llm.chat.
@@ -472,7 +466,6 @@ class S1Runner(BaseRunner):
                 probe_scores=probe_scores,
                 m=round(m, 4),
                 n_probes=len(probe_scores),
-                memory_bloat=bloat,
                 # §5.2 exposure axis: t_writes tracks long-term memory writes
                 t_writes=getattr(self.memory_policy, "n_writes", 0),
             )
@@ -543,13 +536,16 @@ class S1Runner(BaseRunner):
                 "n_revised": 0, "n_unrevised": 0,
             }
 
-            session_results.append({
+            # Snapshot-vs-headline coupling: in the default (non-paper_batches)
+            # path, keyword_m IS m_snapshot — emitting both is pure
+            # redundancy. Only surface keyword_m_snapshot when the
+            # longitudinal-cohort path is active (paper_batches=True), where
+            # keyword_m becomes m_longitudinal and m_snapshot is the
+            # genuinely-distinct snapshot diagnostic.
+            _entry = {
                 "session": cycle,
                 # Headline — whichever of snapshot/longitudinal is active.
                 "keyword_m": round(m, 4),
-                # Snapshot: fraction of the fixed probe set findable in
-                # eval_text right now. Binary per probe.
-                "keyword_m_snapshot": round(m_snapshot, 4),
                 "probe_based_passed": int(sum(probe_scores)),
                 "probe_based_total": len(probe_scores),
                 # Per-probe trend results: each entry is the faithful
@@ -570,7 +566,6 @@ class S1Runner(BaseRunner):
                 "cohort_survived": cohort_survived if self.paper_batches else None,
                 "cohort_total": cohort_total if self.paper_batches else None,
                 "task_m": round(task_m, 4),
-                "memory_bloat": bloat,
                 "lag_recall": {int(k): round(v, 4) for k, v in lag_recall.items()},
                 "lag_recall_avg": round(
                     sum(lag_recall.values()) / len(lag_recall), 4
@@ -587,11 +582,16 @@ class S1Runner(BaseRunner):
                 # See agingbench.scenarios.s1_research_literature.revision_metrics
                 # for the full method.
                 "revision_aging": revision_trident,
-            })
+            }
+            # Only emit the snapshot field when it's genuinely different from
+            # the headline (paper_batches/longitudinal mode). In the default
+            # path it equals keyword_m exactly.
+            if m_longitudinal is not None:
+                _entry["keyword_m_snapshot"] = round(m_snapshot, 4)
+            session_results.append(_entry)
 
             self.tracer.log("cycle_end", parent_span_id=cycle_span, cycle=cycle,
-                            m=round(m, 4), task_m=round(task_m, 4),
-                            memory_bloat=bloat)
+                            m=round(m, 4), task_m=round(task_m, 4))
 
             lag_str = ""
             if lag_recall:
@@ -600,7 +600,7 @@ class S1Runner(BaseRunner):
             task_str = f"  task_m={task_m:.3f}" if self.tasks else ""
             print(f"  [S1] Cycle {cycle:2d}  keyword_m={m:.3f}  "
                   f"({sum(probe_scores)}/{len(probe_scores)} probes){task_str}{lag_str}  "
-                  f"bloat={bloat}  text_len={len(eval_text)}")
+                  f"text_len={len(eval_text)}")
             _progress(
                 f"cycle {cycle + 1}/{n_cycles + 1} scored: keyword_m={m:.3f}",
                 cycle_t0,
@@ -696,7 +696,6 @@ class S1Runner(BaseRunner):
             parent_span_id=run_span,
             keyword_curve=list(zip(keyword_curve.exposures, keyword_curve.scores)),
             task_curve=list(zip(task_curve.exposures, task_curve.scores)) if task_curve else [],
-            bloat_series=bloat_series,
             recall_matrix=[e["lag_recall"] for e in recall_matrix],
             lag_recall_curve=list(zip(lag_recall_curve.exposures, lag_recall_curve.scores)),
             half_life=compute_half_life(keyword_curve),
@@ -732,7 +731,6 @@ class S1Runner(BaseRunner):
                                   task_scores_by_cycle)) if task_scores_by_cycle else [],
             "lag_recall_raw": list(zip(exposures[:len(lag_recall_scores)],
                                         lag_recall_scores)),
-            "bloat_raw": list(zip(exposures, bloat_series)),
             "attribution_schema": "v2_clean",
             "attribution_mode": _attr_mode,
             # True when oracle_retrieval was requested on S1 — the run used

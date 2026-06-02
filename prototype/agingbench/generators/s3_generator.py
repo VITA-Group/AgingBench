@@ -87,6 +87,7 @@ class S3Generator(BaseGenerator, DependencyMixin):
         all_transcripts = []
         all_queries = []
         all_binding_probes = []  # per-session forced-choice interference probes
+        unique_control_names_used: set[str] = set()  # ensure singletons stay singletons across sessions
         decision_idx = 0
 
         for t in range(n_sessions):
@@ -205,6 +206,33 @@ class S3Generator(BaseGenerator, DependencyMixin):
                             "distractor_value": distractor,
                             "probe_type": "interference_binding",
                         })
+
+                # Unique-singleton controls — same fact-shape, no near-duplicate
+                # in memory. Injected at the SAME session as the binding pairs
+                # so fact age + bloat track together; probed at the SAME lags
+                # via the same interference_probes stream. The phantom
+                # distractor is a random number that does not appear in memory,
+                # so score_interference_binding will return correct or miss
+                # (never confused/both) for these probes.
+                controls = self.inject_unique_controls(
+                    graph, t, self.rng, self.pressure,
+                    existing_control_names=unique_control_names_used,
+                )
+                if controls:
+                    ctrl_lines = [c["text_a"] for c in controls]
+                    transcript["transcript"] += "\n\nDirectory updates: " + " ".join(ctrl_lines)
+                    for j, c in enumerate(controls):
+                        gold = c["fact_a"]["value"]
+                        phantom = c.get("phantom_distractor", "0000")
+                        session_binding_probes.append({
+                            "probe_id": f"s{t}_uctrl_{j}",
+                            "question": c["probe_question"],
+                            "keywords": [str(gold)],
+                            "gold_value": gold,
+                            "distractor_value": phantom,
+                            "probe_type": "unique_control",
+                        })
+                        unique_control_names_used.add(c["shared_term"])
 
             all_queries.append({"session": t, "queries": session_queries})
             # Per-session binding probes (NEW key, separate from `queries`).

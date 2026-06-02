@@ -339,7 +339,10 @@ class S6Runner(BaseRunner, DiagnosticMixin):
                 probe_result = agent.run_session(
                     probe["question"], session_id=session_idx
                 )
-                scored = score_recall_probe(probe_result["output"], probe)
+                # at_session = current eval time, so a probe re-asked before a
+                # revision is scored against the pre-revision value and one
+                # re-asked after against the post-revision value (time-correct).
+                scored = score_recall_probe(probe_result["output"], probe, at_session=session_idx)
                 # Carry the raw probe answer so forget_accuracy's text scan and
                 # the per-probe token diagnostics below see it.
                 scored["agent_answer"] = probe_result["output"]

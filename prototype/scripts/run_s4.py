@@ -2,9 +2,17 @@
 """
 Run S4 scenario — Software Engineering Agent.
 
+Default mode is `--generated` (programmatic generator, seed-dependent, reproducible
+across machines). Pass `--no-generated` to fall back to the curated disk data
+(tasks.json + snapshots/).
+
 Usage:
+    # Generated mode (default)
     python scripts/run_s4.py --sut agingbench/registry/suts/llama3/lossy_compress.yaml
     python scripts/run_s4.py --sut agingbench/registry/suts/llama3/lossy_compress.yaml --sessions 4
+
+    # Curated-data mode (legacy disk-loaded canned scenario)
+    python scripts/run_s4.py --sut <yaml> --no-generated
 """
 
 import argparse
@@ -22,8 +30,9 @@ def main():
     parser.add_argument("--sessions", type=int, default=8)
     parser.add_argument("--output", default="")
     parser.add_argument("--oracle", action="store_true")
-    parser.add_argument("--generated", action="store_true",
-                        help="Use programmatic generator instead of curated data")
+    parser.add_argument("--generated", action=argparse.BooleanOptionalAction, default=True,
+                        help="Use programmatic generator instead of curated data. "
+                             "Default: --generated. Pass --no-generated to use curated.")
     args = parser.parse_args()
 
     import yaml

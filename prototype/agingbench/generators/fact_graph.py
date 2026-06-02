@@ -27,7 +27,12 @@ class Fact:
     version: int = 1                           # 1 = original, 2+ = updated
     replaces: Optional[str] = None             # previous version's fact_id
     replaced_by: Optional[str] = None          # next version's fact_id (set later)
-    interference_group: Optional[str] = None   # shared term for confusable pairs
+    # All shared-term groups this fact participates in. A fact can be in
+    # multiple groups when fan-mode interference (confusable_fan_count > 2)
+    # pairs the gold against many distractors — previously this field stored
+    # only the LAST group, losing prior ones. Stored as a list (not a set)
+    # to preserve insertion order for deterministic export.
+    interference_groups: list[str] = field(default_factory=list)
     invalidated_at: Optional[int] = None       # session when retracted (None = still valid)
 
 
@@ -109,8 +114,21 @@ class FactGraph:
 
         The old fact gets `replaced_by` set; the new fact gets `replaces` set.
         Returns the new Fact.
+
+        Raises ValueError when ``old_id`` is already invalidated — silently
+        succeeding would bypass the retraction (the new version has no
+        invalidated_at set, so get_current_facts_at would treat the chain as
+        live again). Callers should explicitly choose between retracting
+        (invalidate) and revising (update); never both on the same fact.
         """
         old = self.facts[old_id]
+        if old.invalidated_at is not None:
+            raise ValueError(
+                f"Cannot update fact {old_id!r}: already invalidated at "
+                f"session {old.invalidated_at}. Updating would silently revive "
+                f"the chain. Register a new fact instead, or revert the "
+                f"invalidation first."
+            )
         if new_id is None:
             new_id = f"fact_{self._counter}"
             self._counter += 1
@@ -181,7 +199,15 @@ class FactGraph:
         return [f for f in self.facts.values() if f.version > 1]
 
     def get_updatable_facts(self, before_session: int) -> list[Fact]:
-        """Get facts from before `session` that haven't been updated yet."""
+        """Get facts from before `session` that haven't been updated yet.
+
+        Note: filters to ``version == 1`` only. As a consequence, the
+        random-sampling pool used by version_random_facts can never select
+        a v2 fact to make a v3, which CAPS revision-chain depth at 2 for
+        pressure-driven updates (even when pressure.max_chain_depth > 2).
+        Deeper chains can still be built by calling ``update_fact()``
+        directly with a v2 id (as S7's hand-curated generator does).
+        """
         return [
             f for f in self.facts.values()
             if f.session < before_session
@@ -240,7 +266,18 @@ class FactGraph:
         fact_ids: list[str],
         dep_type: str = "standalone",
     ) -> DependencyEdge:
-        """Record that a task depends on specific facts."""
+        """Record that a task depends on specific facts.
+
+        Snapshot semantics: ``chain_depth`` and ``fact_versions_required``
+        are computed AT EDGE-CREATION TIME and never updated. If the fact
+        is later revised (a new version registered after this call), the
+        edge keeps its original version number — it represents "the task,
+        when emitted, depended on version N of this fact." Downstream
+        scorers (dependency_scorer.version_accuracy) intentionally rely on
+        this: they ask whether the agent cited the version that was
+        current when the probe was authored, not the current version at
+        scoring time.
+        """
         # Compute chain depth: max version depth across all dependencies
         max_depth = 0
         versions_required = {}
@@ -280,8 +317,14 @@ class FactGraph:
             "domains": [fa.domain, fb.domain],
             "values": [fa.keywords[0] if fa.keywords else "", fb.keywords[0] if fb.keywords else ""],
         })
-        fa.interference_group = shared_term
-        fb.interference_group = shared_term
+        # Append (with dedup) instead of overwrite: in fan-mode the gold fact
+        # is paired against many distractors via repeated add_interference
+        # calls, and the prior single-string field silently kept only the
+        # LAST shared_term.
+        if shared_term not in fa.interference_groups:
+            fa.interference_groups.append(shared_term)
+        if shared_term not in fb.interference_groups:
+            fb.interference_groups.append(shared_term)
 
     # ------------------------------------------------------------------ export
 

@@ -5,8 +5,12 @@ Run S6 scenario — Naturalistic Aging (WebArena-derived multi-domain workflows)
 Track B: measures whether memory aging occurs in realistic, non-adversarial
 task sequences where memory carryover is rational.
 
+Default mode is `--generated` (programmatic generator, seed-dependent, reproducible
+across machines). Pass `--no-generated` to fall back to the curated disk data
+(session_tasks.json).
+
 Usage:
-    # Single SUT
+    # Generated mode (default — single SUT)
     python run_s6.py --sut agingbench/registry/suts/gpt4o_summarize_store.yaml
 
     # Quick validation (3 sessions)
@@ -17,6 +21,9 @@ Usage:
 
     # Full run with oracle ablation
     python run_s6.py --sut agingbench/registry/suts/gpt4o_lossy_compress.yaml --oracle
+
+    # Curated-data mode (legacy disk-loaded WebArena-style multi-domain tasks)
+    python run_s6.py --sut <yaml> --no-generated
 
 Environment:
     ANTHROPIC_API_KEY  — required for Claude models
@@ -250,8 +257,9 @@ def main():
     parser.add_argument("--sessions", type=int, default=15, help="Number of sessions (default: 15)")
     parser.add_argument("--output", default="", help="Output directory base")
     parser.add_argument("--oracle", action="store_true", help="Oracle mode (no compression loss)")
-    parser.add_argument("--generated", action="store_true",
-                        help="Use programmatic generator instead of curated data")
+    parser.add_argument("--generated", action=argparse.BooleanOptionalAction, default=True,
+                        help="Use programmatic generator instead of curated data. "
+                             "Default: --generated. Pass --no-generated to use curated.")
     parser.add_argument("--seeds", type=int, default=1,
                         help="Number of seeds for CI (default: 1)")
     args = parser.parse_args()

@@ -83,26 +83,55 @@ def score_task(agent_output: str, session: dict) -> dict:
     }
 
 
-def score_recall_probe(agent_output: str, probe: dict) -> dict:
+def _active_keywords(probe: dict, at_session=None) -> list:
+    """Keywords valid at evaluation session ``at_session`` (time-correct
+    revision scoring). When the probe carries ``keywords_history`` (a list of
+    (session, kws) tuples recorded by the generator on each
+    version_random_facts revision), return the latest entry whose session is
+    <= ``at_session`` — so a probe re-asked BEFORE a revision is scored against
+    the pre-revision value and one re-asked AFTER against the post-revision
+    value. Falls back to ``probe["keywords"]`` when there is no history
+    (non-revised probes) or no session. Mirrors s3 validator._active_keywords.
+    """
+    history = probe.get("keywords_history")
+    if not history or at_session is None:
+        return probe.get("keywords", [])
+    active = probe.get("keywords", [])
+    for sess, kws in history:
+        if sess <= at_session:
+            active = kws
+        else:
+            break
+    return active
+
+
+def score_recall_probe(agent_output: str, probe: dict, at_session=None) -> dict:
     """
     Score a single recall probe response.
+
+    When ``at_session`` is given and the probe carries ``keywords_history``,
+    scores against the value active at that evaluation session (time-correct
+    revision scoring — fixes penalizing a correct contemporaneous answer);
+    otherwise against ``probe["keywords"]``.
 
     Returns dict with:
       - probe_id: str
       - recalled: 1 if any keyword found, 0 otherwise
-      - keywords: the probe's keyword list
+      - keywords: the keyword list actually scored against
     """
-    recalled = score_keywords(agent_output, probe["keywords"])
+    active = _active_keywords(probe, at_session)
+    recalled = score_keywords(agent_output, active)
     return {
         "probe_id": probe["probe_id"],
         "recalled": recalled,
-        "keywords": probe["keywords"],
+        "keywords": active,
     }
 
 
 def score_recall_batch(
     probe_outputs: list[str],
     probes: list[dict],
+    at_session=None,
 ) -> dict:
     """
     Score a batch of recall probes.
@@ -123,7 +152,7 @@ def score_recall_batch(
 
     per_probe = []
     for output, probe in zip(probe_outputs, probes):
-        per_probe.append(score_recall_probe(output, probe))
+        per_probe.append(score_recall_probe(output, probe, at_session=at_session))
 
     n_recalled = sum(1 for p in per_probe if p["recalled"])
     return {

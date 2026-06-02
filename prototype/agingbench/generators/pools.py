@@ -235,6 +235,84 @@ PROJECT_COMPONENTS = [
     "Logging Infrastructure", "Security Scanner",
 ]
 
+# V2 extension (opt-in via PressureConfig.project_components_pool_version=2).
+# Includes the original 20 entries plus 30 more spanning observability,
+# data-platform, security, ops, and developer-tools domains. The V1 pool is
+# preserved unchanged so existing seeds reproduce bit-for-bit.
+PROJECT_COMPONENTS_V2 = PROJECT_COMPONENTS + [
+    "Service Mesh", "Message Bus", "Event Store", "Time-Series DB",
+    "Vector Store", "Graph Database", "Object Storage", "CDN Edge Node",
+    "Build Pipeline", "Artifact Registry", "Container Registry",
+    "Kubernetes Operator", "Helm Chart Renderer", "Service Catalog",
+    "Identity Provider", "Authorization Service", "Audit Logger",
+    "Compliance Scanner", "Vulnerability Scanner", "License Compliance",
+    "Data Loss Prevention", "Threat Intelligence Feed", "Honeypot",
+    "Bug Bounty Triage", "Incident Manager", "On-Call Pager",
+    "Status Dashboard", "Synthetic Monitor", "Real User Monitor",
+    "Distributed Tracer",
+]
+assert len(PROJECT_COMPONENTS_V2) == 50, (
+    f"PROJECT_COMPONENTS_V2 expected 50 entries; got {len(PROJECT_COMPONENTS_V2)}"
+)
+
+# V3 extension (opt-in via PressureConfig.project_components_pool_version=3).
+# Includes the V2 50 entries plus 50 RESEARCH-INFRASTRUCTURE components so the
+# S1 "Research Literature Aging" framing is actually carried by the content,
+# not just the scenario label. The new entries are systems/pipelines/tools
+# that research labs build and operate, paired with the existing operational
+# templates (latency, throughput, deployment, audit, etc.). V1/V2 are
+# preserved unchanged for reproducibility.
+PROJECT_COMPONENTS_V3 = PROJECT_COMPONENTS_V2 + [
+    # ML training infrastructure (12)
+    "Training Pipeline", "Distributed Trainer", "Checkpoint Manager",
+    "Gradient Accumulator", "Mixed-Precision Trainer",
+    "DataLoader Service", "Tokenization Pipeline", "Embedding Cache",
+    "LoRA Adapter Registry", "Quantization Service",
+    "Distillation Pipeline", "Optimizer State Sharder",
+    # Experimentation infrastructure (12)
+    "Experiment Tracker", "Hyperparameter Search Engine", "Ablation Runner",
+    "A/B Experiment Service", "Multi-Armed Bandit Service",
+    "Pre-Registration Vault", "Reproducibility Sandbox", "Seed Manager",
+    "Result Aggregator", "Plot Generator", "Metric Logger",
+    "Diagnostic Probe Suite",
+    # Evaluation infrastructure (8)
+    "Benchmark Harness", "Eval Harness", "Leaderboard Service",
+    "Human Eval Platform", "LLM-as-Judge Service", "Calibration Calculator",
+    "Statistical Significance Suite", "Cross-Validation Splitter",
+    # Data + model infrastructure (10)
+    "Model Registry", "Dataset Catalog", "Data Lineage Tracker",
+    "Annotation Platform", "Active Learning Loop",
+    "Synthetic Data Generator", "Prompt Library", "RAG Index",
+    "Reward Model Service", "Foundation Model Cache",
+    # Research process tooling (8)
+    "Citation Graph Service", "Literature Mining Tool", "arXiv Watcher",
+    "Conference Submission Tracker", "Peer Review Workflow",
+    "Notebook Server", "Jupyter Hub", "Paper Drafting Assistant",
+]
+assert len(PROJECT_COMPONENTS_V3) == 100, (
+    f"PROJECT_COMPONENTS_V3 expected 100 entries; got {len(PROJECT_COMPONENTS_V3)}"
+)
+
+
+def get_project_components(version: int = 1) -> list[str]:
+    """Resolve the PROJECT_COMPONENTS pool for a given version.
+
+    Version 1 (default) returns the original 20-entry generic infra pool.
+    Version 2 returns the 50-entry extended generic pool.
+    Version 3 returns the 100-entry pool that adds RESEARCH-INFRASTRUCTURE
+    components (training pipelines, eval harnesses, experiment trackers,
+    arXiv watchers, etc.) — making the S1 "Research Literature Aging"
+    framing genuinely carried by the content.
+
+    Versions are append-only; rng calls with same seed + same version
+    produce identical output. Switching versions changes output.
+    """
+    return {
+        1: PROJECT_COMPONENTS,
+        2: PROJECT_COMPONENTS_V2,
+        3: PROJECT_COMPONENTS_V3,
+    }[version]
+
 PROJECT_MILESTONES = [
     "Alpha Release", "Beta Launch", "Public Preview", "GA Release",
     "Phase 1 Completion", "Phase 2 Kickoff", "Security Audit",

@@ -89,7 +89,7 @@ class S6Generator(BaseGenerator, DependencyMixin):
             if updates:
                 update_text = "\n".join(u["text"] for u in updates)
                 session["environment_data"] = session.get("environment_data", "") + "\n\n" + update_text
-                self._sync_probes_after_revisions(sessions, all_facts, graph, updates)
+                self._sync_probes_after_revisions(sessions, all_facts, graph, updates, i)
 
             # Apply selective forgetting (revision aging)
             invalidations = self.invalidate_random_facts(graph, i, self.rng, self.pressure)
@@ -109,8 +109,13 @@ class S6Generator(BaseGenerator, DependencyMixin):
             if i >= self.pressure.confusable_start_session:
                 pairs = self.inject_interference(graph, i, self.rng, self.pressure)
                 if pairs:
+                    # When inject_interference produced a fan-out (K > 2
+                    # qualifiers per base), emit all K facts. Otherwise the
+                    # legacy gold+distractor pair.
                     interf_text = "\n".join(
-                        f"{p['text_a']}\n{p['text_b']}" for p in pairs
+                        "\n".join(p["fan_texts"]) if p.get("fan_texts")
+                        else f"{p['text_a']}\n{p['text_b']}"
+                        for p in pairs
                     )
                     session["environment_data"] = session.get("environment_data", "") + "\n\n" + interf_text
                     # Forced binding probes (gold+distractor) are emitted for
@@ -496,6 +501,7 @@ class S6Generator(BaseGenerator, DependencyMixin):
         all_facts: list[dict],
         graph: FactGraph,
         updates: list[dict],
+        revision_session: int,
     ) -> None:
         """Propagate `version_random_facts` updates to the originating
         session's `recall_probes` and `all_facts` registry entry, so the
@@ -525,7 +531,17 @@ class S6Generator(BaseGenerator, DependencyMixin):
             for probe in sessions[origin].get("recall_probes", []):
                 pkws = probe.get("keywords") or []
                 if pkws and set(pkws) <= old_set:
-                    probe["keywords"] = _remap(pkws)
+                    # Time-versioned gold (mirrors S3/S5): lazily seed history
+                    # with the pre-revision value at the fact's origin session,
+                    # then append the post-revision value at the revision
+                    # session, so the validator can score each re-asked probe
+                    # against the value active at THAT eval session (not the
+                    # final value). Non-revised probes carry no history and the
+                    # validator falls back to probe["keywords"].
+                    new_pkws = _remap(pkws)
+                    hist = probe.setdefault("keywords_history", [(origin, list(pkws))])
+                    hist.append((revision_session, list(new_pkws)))
+                    probe["keywords"] = new_pkws
                     # Binding probes carry parallel gold fields for fact_a;
                     # keep them in sync (substring remap) so the binding scorer
                     # and the P3 oracle don't use stale gold and penalize the
@@ -545,7 +561,10 @@ class S6Generator(BaseGenerator, DependencyMixin):
                     continue
                 fkws = fact.get("keywords") or []
                 if fkws and set(fkws) <= old_set:
-                    fact["keywords"] = _remap(fkws)
+                    new_fkws = _remap(fkws)
+                    fhist = fact.setdefault("keywords_history", [(origin, list(fkws))])
+                    fhist.append((revision_session, list(new_fkws)))
+                    fact["keywords"] = new_fkws
                     kf = fact.get("key_fact", "")
                     for old_kw, new_kw in zip(old_kws, new_kws):
                         if old_kw != new_kw and old_kw in kf:

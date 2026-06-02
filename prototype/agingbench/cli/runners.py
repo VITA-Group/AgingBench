@@ -552,13 +552,57 @@ def _run_s2(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
 
 # ------------------------------------------------------------------ S3 runner
 
+def _build_tier2_adapter(adapter_cfg: dict, workspace_dir):
+    """Build a Tier-2 AgentAdapter from a SUT ``adapter:`` block.
+
+    Shared by scenario CLI runners that support black-box agents. Threads the
+    Level-A condenser knobs (condenser / condenser_max_size / condenser_keep_first)
+    through to OpenHands so in-context memory compression is a controlled factor.
+    """
+    atype = adapter_cfg.get("type", "openhands")
+    if atype == "openhands":
+        from agingbench.core.adapters.openhands_adapter import OpenHandsAdapter
+        return OpenHandsAdapter(
+            model=adapter_cfg.get("model", "gpt-4o-mini"),
+            cwd=str(workspace_dir),
+            max_turns=adapter_cfg.get("max_turns", 30),
+            bridge_python=adapter_cfg.get("bridge_python"),
+            system_prompt=adapter_cfg.get("system_prompt"),
+            api_key_env=adapter_cfg.get("api_key_env", "OPENAI_API_KEY"),
+            reasoning_effort=adapter_cfg.get("reasoning_effort"),
+            preset=adapter_cfg.get("preset"),
+            subprocess_timeout=adapter_cfg.get("subprocess_timeout", 1800),
+            condenser=adapter_cfg.get("condenser"),
+            condenser_max_size=adapter_cfg.get("condenser_max_size"),
+            condenser_keep_first=adapter_cfg.get("condenser_keep_first"),
+        )
+    if atype == "react":
+        from agingbench.core.adapters.react_file_adapter import ReactFileAdapter
+        from agingbench.core.llm import load_llm
+        llm = load_llm(adapter_cfg.get("model_cfg")
+                       or {"provider": "litellm", "model": adapter_cfg.get("model", "gpt-4o-mini")})
+        return ReactFileAdapter(llm=llm, workspace_dir=str(workspace_dir),
+                                max_turns=adapter_cfg.get("max_turns", 15))
+    if atype == "custom":
+        from agingbench.core.agent_adapter import build_custom_adapter
+        return build_custom_adapter(adapter_cfg, workspace_dir)
+    raise ValueError(f"Tier-2 adapter dispatch: unknown adapter type '{atype}'")
+
+
 def _run_s3(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
             n_cycles: int, oracle_mode: bool = False, oracle_retrieval: bool = False,
             oracle_store: bool = False, incontext_ceiling: bool = False,
             ceiling_max_tokens: int = 100_000,
             agent_class=None,
             generated: bool = False, gen_sessions: int = 0) -> dict:
-    """Execute S3 scenario (Project Knowledge Base Agent) and return metrics dict."""
+    """Execute S3 scenario (Project Knowledge Base Agent) and return metrics dict.
+
+    Two execution modes, selected by the SUT config:
+      * Tier-1 (default): ReferenceAgent + a controlled MemoryPolicy.
+      * Tier-2: a black-box AgentAdapter (e.g. OpenHands) when the SUT carries an
+        ``adapter:`` block — memory is owned by the agent; use the ``condenser:``
+        knobs to control its in-context compression (Level A).
+    """
     oracle_mode = oracle_mode or sut_cfg.get("oracle_mode", False)
     oracle_retrieval = oracle_retrieval or sut_cfg.get("oracle_retrieval", False)
     from agingbench.core.llm import load_llm
@@ -567,9 +611,6 @@ def _run_s3(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
     from agingbench.runner.trace import TraceLogger
     from agingbench.metrics.aging import summarize
     from agingbench.report.plot import compare_curves
-
-    llm = load_llm(sut_cfg["model"])
-    memory_policy = build_memory_policy(sut_cfg["memory_policy"], PROJECT_ROOT)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     trace_path = output_dir / "trace.jsonl"
@@ -585,22 +626,45 @@ def _run_s3(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
                                      pressure=_resolve_pressure(sut_cfg, scenario_cfg)).generate(gen_n)
         n_sessions = gen_n
 
+    adapter_cfg = sut_cfg.get("adapter")
     with TraceLogger(str(trace_path)) as tracer:
-        agent_cls_kwarg = {"agent_class": agent_class} if agent_class else {}
-        runner = S3Runner(
-            memory_policy=memory_policy,
-            llm=llm,
-            tracer=tracer,
-            sut_id=sut_cfg["sut_id"],
-            oracle_mode=oracle_mode,
-            oracle_retrieval=oracle_retrieval,
-            generated_data=generated_data,
-            **agent_cls_kwarg,
-        )
-        result = runner.run(
-            n_sessions=n_sessions,
-            seed=sut_cfg.get("seed", 42),
-        )
+        if adapter_cfg:
+            # Tier-2: black-box agent owns its memory; Level-A condenser control.
+            from agingbench.core.memory.no_memory import NoMemoryPolicy
+            workspace_dir = output_dir / "workspace"
+            workspace_dir.mkdir(parents=True, exist_ok=True)
+            adapter = _build_tier2_adapter(adapter_cfg, workspace_dir)
+            runner = S3Runner(
+                memory_policy=NoMemoryPolicy(),
+                llm=None,
+                tracer=tracer,
+                sut_id=sut_cfg["sut_id"],
+                generated_data=generated_data,
+            )
+            result = runner.run_adapter(
+                adapter,
+                n_sessions=n_sessions,
+                seed=sut_cfg.get("seed", 42),
+                reset_every=int(adapter_cfg.get("reset_every", 0) or 0),
+            )
+        else:
+            llm = load_llm(sut_cfg["model"])
+            memory_policy = build_memory_policy(sut_cfg["memory_policy"], PROJECT_ROOT)
+            agent_cls_kwarg = {"agent_class": agent_class} if agent_class else {}
+            runner = S3Runner(
+                memory_policy=memory_policy,
+                llm=llm,
+                tracer=tracer,
+                sut_id=sut_cfg["sut_id"],
+                oracle_mode=oracle_mode,
+                oracle_retrieval=oracle_retrieval,
+                generated_data=generated_data,
+                **agent_cls_kwarg,
+            )
+            result = runner.run(
+                n_sessions=n_sessions,
+                seed=sut_cfg.get("seed", 42),
+            )
 
     fidelity_curve = result["fidelity_curve"]
 

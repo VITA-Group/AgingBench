@@ -27,6 +27,46 @@ from .fact_graph import FactGraph, Fact
 from .pressure_config import PressureConfig
 
 
+# 100 distinct English single-word qualifiers — animals, colors, foods,
+# elements, countries, etc. — chosen for token-level distinctness so the
+# fan-effect interference test can isolate digit-token confusion (the
+# default ``phase-1 ... phase-K`` qualifiers) from generic attention-mass
+# dilution. No alphabetic prefix collisions (e.g. "phone"/"phase"); no
+# shared suffixes that would re-introduce sub-token overlap.
+_WORD_QUALIFIERS: list[str] = [
+    # animals (20)
+    "tiger", "elephant", "rabbit", "eagle", "wolf", "dolphin", "owl",
+    "panda", "kangaroo", "giraffe", "lobster", "crocodile", "hedgehog",
+    "raccoon", "ostrich", "platypus", "weasel", "lemur", "bison", "moose",
+    # colors / shades (15)
+    "crimson", "azure", "magenta", "ochre", "teal", "violet", "scarlet",
+    "khaki", "coral", "maroon", "turquoise", "burgundy", "lavender",
+    "amber", "olive",
+    # foods (15)
+    "pizza", "tofu", "ramen", "burrito", "yogurt", "muffin", "lasagna",
+    "kimchi", "guacamole", "espresso", "croissant", "biscotti", "falafel",
+    "cupcake", "schnitzel",
+    # countries / regions (15)
+    "Canada", "Brazil", "Egypt", "Vietnam", "Norway", "Argentina", "Kenya",
+    "Mongolia", "Iceland", "Thailand", "Morocco", "Portugal", "Finland",
+    "Croatia", "Ecuador",
+    # elements / minerals (15)
+    "carbon", "helium", "uranium", "quartz", "silver", "tungsten",
+    "platinum", "bismuth", "obsidian", "chromium", "mercury", "graphite",
+    "neon", "cobalt", "iodine",
+    # household objects (10)
+    "lantern", "anchor", "umbrella", "ladder", "bicycle", "telescope",
+    "compass", "violin", "kettle", "harmonica",
+    # nature (10)
+    "canyon", "glacier", "meadow", "tundra", "savanna", "lagoon",
+    "geyser", "fjord", "volcano", "rainforest",
+]
+assert len(_WORD_QUALIFIERS) >= 100, (
+    f"_WORD_QUALIFIERS pool has {len(_WORD_QUALIFIERS)} entries; "
+    f"need ≥ 100 for the fan-effect digit-confusion control."
+)
+
+
 # ------------------------------------------------------------------ templates
 
 COMPARE_TEMPLATES = [
@@ -479,26 +519,113 @@ class DependencyMixin:
                           ("North-region", "South-region"), ("east-team", "west-team"),
                           ("phase-1", "phase-2"), ("January", "February")]
             avail_bases = [b for b in bases if b not in existing_groups]
+            fan_count = max(2, int(getattr(pressure, "confusable_fan_count", 2)))
+
+            if fan_count == 2:
+                # Original 2-way pair behavior — unchanged for backward compat.
+                for base in avail_bases[:n_needed]:
+                    q1, q2 = rng.choice(qual_pairs)
+                    v1 = rng.randint(200, 900)
+                    while v1 % 5 == 0:
+                        v1 += rng.randint(1, 4)
+                    # v2 within ~5% of v1 (close magnitude → genuinely confusable)
+                    delta = max(2, rng.randint(2, max(3, v1 // 20)))
+                    v2 = v1 + (delta if rng.random() < 0.5 else -delta)
+                    while v2 % 5 == 0 or v2 == v1:
+                        v2 += rng.randint(1, 4)
+                    f1 = graph.register_fact(session=session, domain=q1,
+                        content=f"The {q1} {base} is ${v1:,}.", keywords=[f"${v1:,}", str(v1)])
+                    f2 = graph.register_fact(session=session, domain=q2,
+                        content=f"The {q2} {base} is ${v2:,}.", keywords=[f"${v2:,}", str(v2)])
+                    graph.add_interference(f1.id, f2.id, base)
+                    results.append({
+                        "shared_term": base,
+                        "fact_a": {"id": f1.id, "domain": q1, "value": f"${v1:,}"},
+                        "fact_b": {"id": f2.id, "domain": q2, "value": f"${v2:,}"},
+                        "text_a": f1.content, "text_b": f2.content,
+                    })
+                return results
+
+            # Fan mode (K > 2): K qualifiers per base → K facts → 1 binding
+            # probe on the MIDDLE qualifier (avoiding primacy/recency edge
+            # advantages). Qualifiers default to programmatic ``phase-1 ...
+            # phase-K`` (multi-digit). When confusable_word_qualifiers=True,
+            # use a pool of 100 distinct English words instead — tests whether
+            # K=100 fan-effect failures are driven by sub-token digit
+            # confusion (phase-51 ≈ phase-5 / phase-11 / phase-31) rather than
+            # generic attention-mass dilution.
+            use_words = bool(getattr(
+                pressure, "confusable_word_qualifiers", False
+            ))
             for base in avail_bases[:n_needed]:
-                q1, q2 = rng.choice(qual_pairs)
-                v1 = rng.randint(200, 900)
-                while v1 % 5 == 0:
-                    v1 += rng.randint(1, 4)
-                # v2 within ~5% of v1 (close magnitude → genuinely confusable)
-                delta = max(2, rng.randint(2, max(3, v1 // 20)))
-                v2 = v1 + (delta if rng.random() < 0.5 else -delta)
-                while v2 % 5 == 0 or v2 == v1:
-                    v2 += rng.randint(1, 4)
-                f1 = graph.register_fact(session=session, domain=q1,
-                    content=f"The {q1} {base} is ${v1:,}.", keywords=[f"${v1:,}", str(v1)])
-                f2 = graph.register_fact(session=session, domain=q2,
-                    content=f"The {q2} {base} is ${v2:,}.", keywords=[f"${v2:,}", str(v2)])
-                graph.add_interference(f1.id, f2.id, base)
+                if use_words:
+                    quals = _WORD_QUALIFIERS[:fan_count]
+                    if len(quals) < fan_count:
+                        raise ValueError(
+                            f"confusable_word_qualifiers pool has only "
+                            f"{len(_WORD_QUALIFIERS)} entries; "
+                            f"requested fan_count={fan_count}."
+                        )
+                else:
+                    quals = [f"phase-{k}" for k in range(1, fan_count + 1)]
+                # Probe position: middle by default; configurable via the
+                # confusable_probe_index knob to test "lost in the middle".
+                _probe_idx_cfg = getattr(pressure, "confusable_probe_index", None)
+                if _probe_idx_cfg is None:
+                    probe_idx_override = None
+                else:
+                    if _probe_idx_cfg < 0:
+                        probe_idx_override = fan_count + _probe_idx_cfg
+                    else:
+                        probe_idx_override = _probe_idx_cfg
+                    probe_idx_override = max(0, min(fan_count - 1, probe_idx_override))
+                values: list[int] = []
+                while len(values) < fan_count:
+                    v = rng.randint(200, 900)
+                    if v % 5 == 0:
+                        v += rng.randint(1, 4)
+                    if all(abs(v - u) >= 2 for u in values):
+                        values.append(v)
+                probe_idx = (
+                    fan_count // 2 if probe_idx_override is None
+                    else probe_idx_override
+                )
+                fact_ids: list[str] = []
+                contents: list[str] = []
+                for q, v in zip(quals, values):
+                    f = graph.register_fact(
+                        session=session, domain=q,
+                        content=f"The {q} {base} is ${v:,}.",
+                        keywords=[f"${v:,}", str(v)],
+                    )
+                    fact_ids.append(f.id)
+                    contents.append(f.content)
+                gold_id = fact_ids[probe_idx]
+                for i, fid in enumerate(fact_ids):
+                    if i != probe_idx:
+                        graph.add_interference(gold_id, fid, base)
+                gold_q, gold_v = quals[probe_idx], values[probe_idx]
+                dist_i = 0 if probe_idx != 0 else 1
                 results.append({
                     "shared_term": base,
-                    "fact_a": {"id": f1.id, "domain": q1, "value": f"${v1:,}"},
-                    "fact_b": {"id": f2.id, "domain": q2, "value": f"${v2:,}"},
-                    "text_a": f1.content, "text_b": f2.content,
+                    "fact_a": {"id": gold_id, "domain": gold_q,
+                               "value": f"${gold_v:,}"},
+                    "fact_b": {"id": fact_ids[dist_i], "domain": quals[dist_i],
+                               "value": f"${values[dist_i]:,}"},
+                    "text_a": contents[probe_idx], "text_b": contents[dist_i],
+                    "probe_question": (
+                        f"What is the exact {gold_q} {base}? "
+                        f"Reply with the exact value only."
+                    ),
+                    # All K qualifier facts for this base. Consumers (e.g.
+                    # s6_generator) write the full list into env_data so the
+                    # agent sees the entire fan-out, not just gold+distractor.
+                    "fan_texts": contents,
+                    "fan_distractors": [
+                        {"qualifier": q, "value": f"${v:,}"}
+                        for i, (q, v) in enumerate(zip(quals, values))
+                        if i != probe_idx
+                    ],
                 })
             return results
 
@@ -556,6 +683,80 @@ class DependencyMixin:
                 ),
             })
 
+        return results
+
+    # ------------------------------------------------------------------ unique-singleton controls
+
+    # Pool of "lonely" people — no near-duplicate names — used as within-session
+    # controls for the crowding-out test. These names are deliberately distinct
+    # from the similar-name pairs in ``inject_interference`` (no John/Jon, Sara/
+    # Sarah, etc.) so they probe SAME-shape facts (name + attribute + value)
+    # without a confusable competitor in memory.
+    _UNIQUE_CONTROL_NAMES = [
+        "Priya Iyengar", "Tomohiro Watanabe", "Olusola Adebayo", "Mei-Ling Tan",
+        "Aleksandr Volkov", "Beatrice Fournier", "Kwame Asante", "Larissa Petrov",
+        "Mateusz Kowalczyk", "Yuki Hashimoto", "Ingrid Bjornsen", "Rafael Quintero",
+        "Xiomara Vasquez", "Devanshi Rao", "Hiroko Yamamoto", "Anya Kapoor",
+        "Tarek Mansour", "Solange Mbeki", "Naveen Sundaram", "Camila Restrepo",
+    ]
+
+    def inject_unique_controls(
+        self,
+        graph,
+        session: int,
+        rng: random.Random,
+        pressure: PressureConfig,
+        existing_control_names: Optional[set] = None,
+    ) -> list[dict]:
+        """Inject unique-singleton control people (no near-duplicate in memory).
+
+        Mirrors ``inject_interference``'s similar-name branch — same fact shape
+        (name + attribute + value), same attribute pool — but each control name
+        is a singleton with no confusable partner. Used as the WITHIN-session
+        control arm of the crowding-out test: at any given session and bloat
+        level, the controls show whether bloat-driven retrieval failure is
+        confusable-specific (controls fine, binding probes collapse) or generic
+        (both collapse together).
+
+        Returns control probe dicts in the same schema as the binding probes
+        emitted by ``inject_interference``, tagged ``probe_type=unique_control``
+        with a phantom distractor (a random non-existent number) so the existing
+        ``score_interference_binding`` classifies them into correct/miss without
+        false confusion hits.
+        """
+        n_controls = int(getattr(pressure, "n_unique_controls", 0) or 0)
+        if n_controls <= 0:
+            return []
+
+        attrs = ["extension", "desk number", "employee ID"]
+        existing = existing_control_names or set()
+        n_existing = len(existing)
+        n_needed = n_controls - n_existing
+        if n_needed <= 0:
+            return []
+        avail = [n for n in self._UNIQUE_CONTROL_NAMES if n not in existing]
+        results = []
+        for name in avail[:n_needed]:
+            attr = rng.choice(attrs)
+            val = rng.randint(1000, 9999)
+            phantom = rng.randint(1000, 9999)
+            while phantom == val:
+                phantom = rng.randint(1000, 9999)
+            f = graph.register_fact(
+                session=session, domain=name,
+                content=f"{name} is in the office directory; {attr}: {val}.",
+                keywords=[str(val)],
+            )
+            results.append({
+                "shared_term": name,
+                "fact_a": {"id": f.id, "domain": name, "value": str(val)},
+                "fact_b": None,
+                "text_a": f.content,
+                "text_b": "",
+                "probe_question": f"What is {name}'s {attr}? Reply with the exact number only.",
+                "phantom_distractor": str(phantom),
+                "is_unique_control": True,
+            })
         return results
 
     # ------------------------------------------------------------------ invalidation

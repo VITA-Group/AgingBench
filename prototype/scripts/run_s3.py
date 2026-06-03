@@ -29,7 +29,6 @@ def main():
     parser.add_argument("--sut", required=True, help="Path to SUT YAML config")
     parser.add_argument("--sessions", type=int, default=12)
     parser.add_argument("--output", default="")
-    parser.add_argument("--oracle", action="store_true")
     parser.add_argument("--generated", action=argparse.BooleanOptionalAction, default=True,
                         help="Use programmatic generator instead of curated data. "
                              "Default: --generated. Pass --no-generated to use curated.")
@@ -51,11 +50,11 @@ def main():
 
     print(f"{'='*60}")
     print(f"S3 — Project Knowledge Base Agent")
-    print(f"SUT: {sut_id}  Sessions: {args.sessions}  Oracle: {args.oracle}  Generated: {args.generated}")
+    print(f"SUT: {sut_id}  Sessions: {args.sessions}  Generated: {args.generated}")
     print(f"Output: {output_dir}")
     print(f"{'='*60}")
 
-    stats = _run_s3(sut_cfg, scenario_cfg, output_dir, args.sessions, args.oracle,
+    stats = _run_s3(sut_cfg, scenario_cfg, output_dir, args.sessions,
                      generated=args.generated, gen_sessions=args.sessions)
 
     print(f"\n{'='*60}")

@@ -89,6 +89,20 @@ def build_aging_card(metrics: dict,
     extra_links = dict(extra_links or {})
     extra_provenance = dict(extra_provenance or {})
 
+    # Build the mechanism block up-front so we can flag mechanisms that the run
+    # never exercised. The block is always shape-complete (all four keys
+    # present, fields None when unmeasured) for cross-scenario consistency —
+    # but an all-None block reads as "measured and came out empty" to anyone
+    # skimming the card. Emit an explicit, machine-filterable transparency
+    # warning instead, so a vacuous maintenance/interference block is never
+    # mistaken for a real zero. (e.g. an S6 run with no lifecycle shocks, or
+    # S1 which by design injects no interference content.)
+    mechanism_block = _build_mechanism_block(metrics, dependency_metrics)
+    for _m in _unexercised_mechanisms(mechanism_block):
+        _w = f"mechanism_not_exercised:{_m}"
+        if _w not in warnings:
+            warnings.append(_w)
+
     card = {
         "schema_version": AGING_CARD_SCHEMA_VERSION,
         "card_type": AGING_CARD_CARD_TYPE,
@@ -102,11 +116,11 @@ def build_aging_card(metrics: dict,
         "sut": _build_sut_block(sut_cfg, metrics),
 
         "seed": _coerce_int(seed if seed is not None else sut_cfg.get("seed"), default=0),
-        "n_sessions": _coerce_int(metrics.get("n_sessions") or metrics.get("n_checkpoints"), default=0),
+        "n_sessions": _true_n_sessions(metrics),
         "pressure": _build_pressure_block(pressure),
 
         "headline": _build_headline_block(metrics),
-        "mechanism_metrics": _build_mechanism_block(metrics, dependency_metrics),
+        "mechanism_metrics": mechanism_block,
         "cost_and_efficiency": _build_cost_block(metrics, trace_path=trace_path),
 
         "checkpoints": list(metrics.get("checkpoints") or []),
@@ -240,13 +254,106 @@ def _infer_aging_detected(metrics: dict) -> Optional[bool]:
     return False
 
 
+def _true_n_sessions(metrics: dict) -> int:
+    """Number of sessions actually RUN — one ``session_results`` entry per
+    session.
+
+    Must NOT be derived from ``n_checkpoints`` / the headline curve: a SPARSE
+    headline curve undercounts. S6's recall (compression) curve skips any
+    session whose stable-fact pool is empty (MED-1: an empty pool is None, not
+    a fabricated 1.0), so ``n_checkpoints`` can be < sessions run. Authority
+    order: explicit n_sessions → len(session_results) → len(task_raw, which is
+    dense across all sessions) → checkpoints count.
+    """
+    explicit = _coerce_int(metrics.get("n_sessions"), default=0)
+    if explicit:
+        return explicit
+    sr = metrics.get("session_results")
+    if isinstance(sr, list) and sr:
+        return len(sr)
+    for key in ("task_raw", "checkpoints"):
+        L = metrics.get(key)
+        if isinstance(L, list) and L:
+            return len(L)
+    return _coerce_int(metrics.get("n_checkpoints"), default=0)
+
+
+def _unexercised_mechanisms(mech: dict) -> list[str]:
+    """Return the names of mechanisms whose block carries NO measured signal.
+
+    Used to attach ``mechanism_not_exercised:<name>`` transparency warnings so a
+    shape-complete-but-all-None block is never read as a measured zero. Each
+    mechanism has its own "was this measured" predicate (a bare ``n_probes=0``
+    or empty ``shock_sessions`` does NOT count as exercised; a real ``0.0``
+    accuracy DOES).
+    """
+    out: list[str] = []
+
+    comp = mech.get("compression") or {}
+    if not comp.get("trajectory") and comp.get("score") is None:
+        out.append("compression")
+
+    intf = mech.get("interference") or {}
+    if not intf.get("n_probes") and not any(
+        intf.get(k) is not None for k in
+        ("binding_accuracy", "confusion_rate", "miss_rate",
+         "resistance", "resistance_legacy")
+    ):
+        out.append("interference")
+
+    rev = mech.get("revision") or {}
+    if not any(
+        rev.get(k) is not None for k in
+        ("version_accuracy", "forget_accuracy", "accumulator_abs_error",
+         "accumulator_rel_error", "compounding_detected", "compounding_score",
+         "stale_residue_rate", "stale_residue_count",
+         "revision_fidelity_excess", "coverage_verdict")
+    ) and not rev.get("compounding_trajectory"):
+        out.append("revision")
+
+    maint = mech.get("maintenance") or {}
+    if not maint.get("shock_sessions") and not any(
+        maint.get(k) is not None for k in ("pre_shock", "post_shock", "delta")
+    ):
+        out.append("maintenance")
+
+    return out
+
+
 def _build_mechanism_block(metrics: dict, dep: dict) -> dict:
     """
-    Map the four aging mechanisms to the available metric fields. Fields are
-    None when the source data does not contain them — this is normal for
+    Map the four aging mechanisms to the available metric fields. All four
+    blocks (compression, interference, revision, maintenance) are always
+    present so the card shape is consistent across scenarios — fields are
+    None when the source data does not contain them, which is normal for
     scenarios that don't exercise every mechanism.
+
+    Per-scenario notes:
+      • S1 surfaces the baseline-corrected revision-aging trident
+        (stale_residue_rate, revision_fidelity_excess, coverage_verdict)
+        from the LAST cycle's session_results[*].revision_aging dict.
+      • S1's interference + maintenance blocks stay all-None by design
+        (interference content not injected; no lifecycle shocks).
     """
     accum = (dep.get("accumulator_metrics") if isinstance(dep, dict) else None) or {}
+
+    # Surface the trident from the final cycle's revision_aging entry (S1).
+    trident_final = {}
+    sr = metrics.get("session_results") or []
+    if sr:
+        last = sr[-1] if isinstance(sr[-1], dict) else {}
+        trident_final = last.get("revision_aging") or {}
+
+    # Canonical interference signal = forced-choice binding accuracy from
+    # dedicated probes (resists the confusable). The legacy
+    # interference_resistance reuses the session's generic headline score and
+    # does NOT measure confusable selection, so it is demoted to a *_legacy
+    # field and only used as a fallback when no binding probes ran.
+    _ib = (dep.get("interference_binding") if isinstance(dep, dict) else None) or {}
+    _resistance_legacy = dep.get("interference_resistance") if isinstance(dep, dict) else None
+    _resistance = _ib.get("binding_accuracy")
+    if _resistance is None:
+        _resistance = _resistance_legacy
 
     return {
         "compression": {
@@ -254,14 +361,46 @@ def _build_mechanism_block(metrics: dict, dep: dict) -> dict:
             "trajectory": list(metrics.get("checkpoints") or []),
         },
         "interference": {
-            "resistance": dep.get("interference_resistance") if isinstance(dep, dict) else None,
-            "n_probes": dep.get("n_interference_probes") if isinstance(dep, dict) else None,
+            "resistance": _resistance,                 # binding_accuracy (canonical)
+            "binding_accuracy": _ib.get("binding_accuracy"),
+            "confusion_rate": _ib.get("confusion_rate"),
+            "miss_rate": _ib.get("miss_rate"),
+            "n_probes": _ib.get("n_probes") if _ib.get("n_probes") is not None
+                        else (dep.get("n_interference_probes") if isinstance(dep, dict) else None),
+            "resistance_legacy": _resistance_legacy,   # session-score proxy (deprecated)
         },
         "revision": {
             "version_accuracy": dep.get("version_accuracy") if isinstance(dep, dict) else None,
             "forget_accuracy": dep.get("forget_accuracy") if isinstance(dep, dict) else None,
             "accumulator_abs_error": accum.get("mean_error"),
+            # Cross-SUT-comparable relative error: mean(|err|/max(|gold|,1)).
+            # The abs_error field above stays in raw units (dollars) for
+            # backward-compatibility; this one is the apples-to-apples signal.
+            "accumulator_rel_error": accum.get("mean_relative_error"),
             "compounding_detected": accum.get("compounding_detected"),
+            # Continuous companion to the strict-monotonic flag — least-squares
+            # slope of error vs session. Positive ⇒ trending upward; catches
+            # noisy upward trends the binary flag misses.
+            "compounding_slope": accum.get("compounding_slope"),
+            # ─── S2's compounding curve (revision multi-dep signal) ─────
+            # Compounding probes pass only if every declared dependency is
+            # still recallable; the curve decays multiplicatively as facts
+            # age out. None when the scenario didn't generate compounding
+            # probes (most non-S2 scenarios).
+            "compounding_score": (
+                (metrics.get("compounding_checkpoints") or [[None, None]])[-1][1]
+                if metrics.get("compounding_checkpoints")
+                else None
+            ),
+            "compounding_trajectory": list(metrics.get("compounding_checkpoints") or []),
+            # ─── Trident (S1's baseline-corrected revision signal) ──────
+            # Pulled from the final cycle's revision_aging dict so the
+            # card's headline revision number reflects end-of-run state.
+            # All four may be None if the run didn't enable revisions.
+            "stale_residue_rate": trident_final.get("stale_residue_rate"),
+            "stale_residue_count": trident_final.get("stale_residue_count"),
+            "revision_fidelity_excess": trident_final.get("revision_fidelity_excess"),
+            "coverage_verdict": trident_final.get("coverage_verdict"),
         },
         "maintenance": {
             "pre_shock": metrics.get("pre_shock"),
@@ -321,14 +460,10 @@ def _build_cost_block(metrics: dict,
     sr_out = sr_out or None
     sr_response = sr_response or None
 
-    # Best-effort session count: explicit field > checkpoints count > len(sr)
-    n_sessions_candidate = (
-        _coerce_int(metrics.get("n_sessions"), default=0)
-        or _coerce_int(metrics.get("n_checkpoints"), default=0)
-        or len(metrics.get("checkpoints") or [])
-        or len(sr)
-        or 1
-    )
+    # True session count for per-session token averages — must use the dense
+    # session count, not the (possibly sparse) headline-curve checkpoint count,
+    # or tokens_per_session_mean is inflated. See _true_n_sessions.
+    n_sessions_candidate = _true_n_sessions(metrics) or len(sr) or 1
 
     # Path 2: walk trace.jsonl, sum per-call usage. Best-effort; failures are
     # silent (cost block remains null rather than crashing card emission).
@@ -380,16 +515,24 @@ def _build_cost_block(metrics: dict,
     tokens_total = (total_in or 0) + (total_out or 0)
     tps_mean = (tokens_total / n_sessions_candidate) if tokens_total else None
 
-    return {
+    block = {
         "total_input_tokens": total_in,
         "total_output_tokens": total_out,
         "total_response_tokens": total_resp,
         "tokens_per_session_mean": tps_mean,
         "total_cost_usd": total_cost,
-        "latency_ms_p50": latency_p50,
-        "latency_ms_p95": latency_p95,
         "total_calls": total_calls,
     }
+    # Latency fields are ADVISORY — they only populate when per-call
+    # duration_ms was instrumented by the LLM client. When latency wasn't
+    # recorded (the common case for local/HF inference), emitting them as
+    # null reads as "we measured latency and found nothing" — better to
+    # omit so absence is unambiguous. They appear iff there's a value.
+    if latency_p50 is not None:
+        block["latency_ms_p50"] = latency_p50
+    if latency_p95 is not None:
+        block["latency_ms_p95"] = latency_p95
+    return block
 
 
 def _aggregate_cost_from_trace(trace_path: Optional[Path]) -> dict:

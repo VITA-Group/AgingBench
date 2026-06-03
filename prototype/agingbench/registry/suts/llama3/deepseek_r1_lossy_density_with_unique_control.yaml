@@ -1,0 +1,34 @@
+sut_id: deepseek_r1_lossy_density_with_unique_control
+description: >
+  Lossy-compression + DeepSeek-R1-Distill-Qwen-14B arm of the paired-control
+  crowding-out test. Pairs the Llama-3.1-8B lossy run as a model-scale + family
+  ablation: does preferential compression of confusables hold for a different
+  model family (Qwen-derived, reasoning-trained)?
+
+  Memory policy + pressure mirror the Llama-3.1-8B lossy SUT exactly; only the
+  LLM changes.
+
+model:
+  provider: local_hf
+  model_id: deepseek-ai/DeepSeek-R1-Distill-Qwen-14B
+  max_new_tokens: 4000
+  temperature: 0.0
+
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+  word_budget: 300
+
+pressure:
+  preset: medium
+  tokens_per_session: 2000
+  dependency_density: 0.5
+  confusable_start_session: 1
+  n_confusable_pairs: 8
+  n_unique_controls: 8
+  update_rate: 0.0
+  forget_rate: 0.0
+  confusable_similar_names: true
+  confusable_probe_lags: [2, 4, 6, 8]
+
+seed: 42

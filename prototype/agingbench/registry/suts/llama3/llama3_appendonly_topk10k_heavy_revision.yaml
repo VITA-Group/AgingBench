@@ -1,0 +1,29 @@
+sut_id: llama3_appendonly_topk10k_heavy_revision
+description: >
+  U-aging isolation arm — append_only + top_k=10000 keeps every raw entry,
+  paired with update_rate=1.0 to force every fact through revision. With
+  compression off, memory contains BOTH old and new versions of every
+  revised fact verbatim, so any response-side failure is utilization
+  (agent fails to pick latest among multiple in-memory versions), not
+  write/compaction loss. Matches llama3_lossy_compress_heavy_revision's
+  pressure to enable A/B comparison: revision aging under W-channel
+  pressure (lossy) vs under U-channel exposure (append_only).
+
+model:
+  provider: local_hf
+  model_id: NousResearch/Meta-Llama-3.1-8B-Instruct
+  max_new_tokens: 1024
+  temperature: 0.0
+
+memory_policy:
+  type: append_only
+  top_k: 10000
+
+pressure:
+  preset: heavy
+  update_rate: 1.0
+  warmup_sessions: 0
+  dependency_density: 0.3
+  n_confusable_pairs: 2
+
+seed: 42

@@ -1,0 +1,36 @@
+sut_id: openhands_gpt4omini_s3_condenser_none
+description: >
+  OpenHands + gpt-4o-mini on S3 (Project Knowledge Base), Level-A condenser
+  control = OFF (NoOpCondenser). In-context history accumulates uncompressed;
+  this is the no-compression baseline for the condenser sweep. Headline signal
+  for the sweep is query_accuracy (recall under the condenser regime);
+  fidelity-on-notes is a secondary, condenser-independent signal.
+  NOTE: with reset_every=0 a long run can approach the model context window
+  since nothing is compacted — raise reset_every or use a summarizing arm if so.
+
+model:
+  provider: litellm
+  model: gpt-4o-mini
+  max_tokens: 2048
+
+adapter:
+  type: openhands
+  model: gpt-4o-mini
+  max_turns: 30
+  api_key_env: OPENAI_API_KEY
+  subprocess_timeout: 1800
+  # --- Level-A memory-compression control ---
+  condenser: none            # default | none | llm_summary
+  reset_every: 0             # 0 = never reset conversation; condenser governs memory
+  system_prompt: |
+    You are a long-running project knowledge-base assistant. Across many
+    sessions you receive meeting transcripts and must answer team questions
+    about prior decisions (owners, dates, dollar amounts, version numbers).
+    Rules:
+      1. Maintain a knowledge base in notes/decisions.md. After each meeting,
+         record every decision and revise any earlier decision that changed.
+      2. Before answering ANY question, consult your notes and prior context.
+         Do not guess; cite the specific value.
+      3. Keep entries concise and unambiguous (one decision per line).
+
+seed: 42

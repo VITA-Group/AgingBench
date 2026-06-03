@@ -141,6 +141,16 @@ class PressureConfig:
     # penalize stale-value recall instead of relying on multi-gold
     # keyword matching alone.
     s1_forbidden_keywords_on_recall: bool = False
+    # Designate the first K facts emitted in S1 as "high-churn": they get
+    # force-revised at every subsequent cycle in addition to stochastic
+    # revisions. Each high-churn fact ends the run with a guaranteed
+    # version chain of depth (cycles - introduced_cycle). Without this,
+    # the natural revision path is capped at depth=2 by
+    # FactGraph.get_updatable_facts' `version == 1` filter, leaving
+    # chain_recall_by_version_depth with a single populated bucket. Set
+    # > 0 to surface depth-aging in the dependency metrics. Default 0
+    # preserves bit-for-bit backwards compatibility.
+    s1_high_churn_count: int = 0
     # Unique-singleton control probes for the crowding-out test. When > 0 and
     # ``confusable_similar_names`` is True, the generator injects N lonely
     # person facts (single name, no near-duplicate competitor in memory) with

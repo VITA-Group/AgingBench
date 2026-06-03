@@ -75,7 +75,6 @@ class SelfPlanningRunner(BaseRunner):
         llm,
         tracer: TraceLogger,
         sut_id: str = "unknown",
-        oracle_mode: bool = False,
         agent_class: type[AgentInterface] = ReferenceAgent,
         generated_data: dict | None = None,
         curated_data: dict | None = None,
@@ -87,7 +86,6 @@ class SelfPlanningRunner(BaseRunner):
         if self.llm is not None:
             self.llm.tracer = self.tracer
         self.sut_id = sut_id
-        self.oracle_mode = oracle_mode
         self.agent_class = agent_class
 
         self._model_id = getattr(llm, "model_id", None) or getattr(llm, "model", "unknown")
@@ -134,7 +132,6 @@ class SelfPlanningRunner(BaseRunner):
             sut_id=self.sut_id, scenario=f"self_planning_{self.wrapped_scenario}",
             seed=seed, n_sessions=n_sessions,
             policy=type(self.memory_policy).__name__,
-            oracle_mode=self.oracle_mode,
         )
 
         for t in range(n_sessions):

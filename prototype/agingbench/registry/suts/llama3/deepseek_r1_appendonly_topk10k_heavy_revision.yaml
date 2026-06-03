@@ -1,0 +1,27 @@
+sut_id: deepseek_r1_appendonly_topk10k_heavy_revision
+description: >
+  Reasoning-model arm of the U-aging isolation experiment. Mirrors
+  llama3_appendonly_topk10k_heavy_revision's memory policy and pressure
+  exactly; only the LLM changes (Llama-3.1-8B → DeepSeek-R1-Distill-Qwen-14B,
+  a reasoning model with explicit <think>...</think> chain-of-thought).
+  Tests whether U-aging (version-discrimination failure despite gold in
+  memory) is bottlenecked by the LLM's reasoning capability or by the
+  read-memory tool surface.
+
+model:
+  provider: local_hf
+  model_id: deepseek-ai/DeepSeek-R1-Distill-Qwen-14B
+  max_new_tokens: 4000
+
+memory_policy:
+  type: append_only
+  top_k: 10000
+
+pressure:
+  preset: heavy
+  update_rate: 1.0
+  warmup_sessions: 0
+  dependency_density: 0.3
+  n_confusable_pairs: 2
+
+seed: 42

@@ -1,0 +1,20 @@
+sut_id: gpt_oss_120b_lossy_vllm
+description: "gpt-oss-120B (MXFP4, harmony), lossy summarize_store — served by vLLM with tensor-parallelism. Needs vLLM >=0.10.1."
+model:
+  provider: vllm
+  model: openai/gpt-oss-120b
+  api_base: http://localhost:8000/v1
+  max_tokens: 5000
+  temperature: 0.0
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+  word_budget: 300
+seed: 42
+# Launch (set --tensor-parallel-size to your GPU count; 120B needs multi-GPU):
+#   vllm serve openai/gpt-oss-120b --port 8000 \
+#     --served-model-name openai/gpt-oss-120b \
+#     --enable-reasoning --reasoning-parser openai_gptoss \
+#     --tensor-parallel-size 3
+# The post-`assistantfinal` channel comes back as message.content (the answer);
+# the analysis channel comes back as reasoning_content.

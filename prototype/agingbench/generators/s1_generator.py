@@ -138,6 +138,10 @@ class S1Generator(BaseGenerator, DependencyMixin):
         all_probes = []
         all_facts = []
         used_keywords = set()
+        # Root fact ids designated for forced multi-depth revision chains.
+        # Populated as facts are registered, up to pressure.s1_high_churn_count.
+        # See _force_revise_high_churn for the cycle-by-cycle extension pass.
+        high_churn_roots: list[str] = []
 
         components = sample_unique(
             get_project_components(
@@ -189,14 +193,29 @@ class S1Generator(BaseGenerator, DependencyMixin):
             # in the body exceeded the cap, leaving the new value invisible
             # in the rendered update text and making revision-aware probes
             # promote to a gold value that doesn't appear anywhere.
-            graph.register_fact(
+            registered = graph.register_fact(
                 session=cycle,
                 domain="technical",
                 content=f"{title}: {content}",
                 keywords=keywords,
             )
+            # Designate the first K facts as high-churn roots — they get
+            # force-revised every subsequent cycle to grow guaranteed
+            # depth chains. Only requires fact has at least one numeric
+            # keyword (otherwise revision mutation is a no-op anyway).
+            target = int(getattr(self.pressure, "s1_high_churn_count", 0) or 0)
+            if (
+                target > 0
+                and len(high_churn_roots) < target
+                and any(self._numeric_token_or_none(k) is not None for k in keywords)
+            ):
+                high_churn_roots.append(registered.id)
 
-            # Generate probes from keywords
+            # Generate probes from keywords. `ask_at_cycle` tags the earliest
+            # cycle when this probe's source content is available — so the
+            # runner can filter out probes about future facts at score time,
+            # making response-based scoring symmetric with memory-based
+            # (which only counts cohort_keywords[c] for c <= current cycle).
             for j, kw in enumerate(keywords[:3]):
                 if getattr(self.pressure, "s1_rich_probes_enabled", False):
                     probe_q = self._keyword_to_question_v2(kw, vals, component)
@@ -208,6 +227,7 @@ class S1Generator(BaseGenerator, DependencyMixin):
                     "question": probe_q,
                     "canonical_answer": kw,
                     "keywords": [kw],
+                    "ask_at_cycle": cycle,
                 })
 
             # Session fact
@@ -218,7 +238,6 @@ class S1Generator(BaseGenerator, DependencyMixin):
                 "text": f"In cycle {cycle}, {content[:100]}",
                 "recall_question": f"What happened in cycle {cycle} with {component}?",
                 "recall_keywords": keywords[:2],
-                "recall_anti_keywords": [],
             })
 
             # Apply dependency task replacement after warmup
@@ -233,6 +252,7 @@ class S1Generator(BaseGenerator, DependencyMixin):
                         "canonical_answer": dep_task["reference_answer"],
                         "keywords": dep_task["eval_keywords"],
                         "dep_type": meta.get("dep_type"),
+                        "ask_at_cycle": cycle,
                     }
                     # Trend probes test revision-via-DAG: the agent should cite
                     # the CURRENT version (keywords) and NOT the pre-revision
@@ -245,6 +265,14 @@ class S1Generator(BaseGenerator, DependencyMixin):
 
             # Apply version updates
             updates = self.version_random_facts(graph, cycle, self.rng, self.pressure)
+            # Force-revise high-churn roots to grow multi-depth chains.
+            # Append to the same updates list so the dense_revision probe
+            # loop below treats them identically. Skip roots already
+            # revised stochastically this cycle.
+            force_updates = self._force_revise_high_churn(
+                graph, cycle, high_churn_roots, updates
+            )
+            updates.extend(force_updates)
             if updates:
                 for u in updates:
                     batches[-1]["content"] += f"\n{u['text']}"
@@ -291,6 +319,7 @@ class S1Generator(BaseGenerator, DependencyMixin):
                         "keywords": novel_only,
                         "forbidden_keywords": stale_only,
                         "dep_type": "trend",
+                        "ask_at_cycle": cycle,
                     })
 
             # Apply selective forgetting (revision aging)
@@ -455,6 +484,111 @@ class S1Generator(BaseGenerator, DependencyMixin):
 
         return rich
 
+    @staticmethod
+    def _numeric_token_or_none(kw: str) -> int | None:
+        """Return the integer value if kw is a mutatable numeric token,
+        else None. Strips $/,/% so '$1,234' and '1234' both parse."""
+        try:
+            return int(kw.replace(",", "").replace("$", "").replace("%", ""))
+        except (ValueError, TypeError):
+            return None
+
+    def _force_revise_high_churn(
+        self,
+        graph,
+        cycle: int,
+        root_ids: list[str],
+        existing_updates: list[dict],
+    ) -> list[dict]:
+        """Grow multi-depth revision chains on designated high-churn roots.
+
+        FactGraph.get_updatable_facts caps natural revisions at depth=2
+        (its ``version == 1`` filter), so without this pass the
+        chain_recall_by_version_depth metric only ever sees depth-2
+        buckets. This helper walks each designated root to its current
+        head, mutates its numeric keywords with the same delta logic
+        version_random_facts uses, and emits an update dict in the same
+        shape — so the caller's dense_revision probe loop emits depth-N
+        revision probes naturally.
+
+        Skip rules:
+          - Root already revised stochastically this cycle (avoid
+            double-mutation, which would lose one version's discriminating
+            tokens to set-difference cancellation).
+          - Head fact was introduced this cycle (can't revise within the
+            same session it was registered).
+          - Mutation produces no actual value change.
+          - Mutation produces an unscorable short numeric (mirrors the
+            ``_short_num`` guard in dependency_mixin.version_random_facts).
+        """
+        if not root_ids:
+            return []
+        # Roots already revised stochastically this cycle — walk each
+        # update's old_fact_id back to its root.
+        already: set[str] = set()
+        for u in existing_updates:
+            f = graph.facts.get(u["old_fact_id"])
+            while f is not None and f.replaces is not None:
+                f = graph.facts.get(f.replaces)
+            if f is not None:
+                already.add(f.id)
+
+        def _short_num(v: str) -> bool:
+            s = v.replace(",", "")
+            return s.isdigit() and len(s) < 3
+
+        extra: list[dict] = []
+        for root_id in root_ids:
+            if root_id in already:
+                continue
+            head = graph.get_current_version(root_id)
+            if head.session >= cycle:
+                continue  # can't revise in same cycle as introduction
+            # Mutate head's numeric keywords (mirrors version_random_facts).
+            new_keywords: list[str] = []
+            _cache: dict[int, int] = {}
+            for kw in head.keywords:
+                val = self._numeric_token_or_none(kw)
+                if val is None:
+                    new_keywords.append(kw)
+                    continue
+                if val in _cache:
+                    new_val = _cache[val]
+                else:
+                    delta = self.rng.randint(-val // 4, val // 4) or self.rng.choice([-1, 1])
+                    new_val = val + delta
+                    _cache[val] = new_val
+                if "$" in kw:
+                    new_kw = f"${new_val:,}" if new_val >= 1000 else f"${new_val}"
+                elif "%" in kw:
+                    new_kw = f"{new_val}%"
+                elif "," in kw:
+                    new_kw = f"{new_val:,}"
+                else:
+                    new_kw = str(new_val)
+                new_keywords.append(new_kw)
+            if new_keywords == head.keywords:
+                continue
+            if any(_short_num(k) for k in new_keywords):
+                continue
+            new_content = head.content
+            for old_kw, new_kw in zip(head.keywords, new_keywords):
+                new_content = new_content.replace(old_kw, new_kw)
+            new_fact = graph.update_fact(
+                old_id=head.id,
+                new_content=new_content,
+                new_keywords=new_keywords,
+                session=cycle,
+            )
+            extra.append({
+                "old_fact_id": head.id,
+                "old_keywords": list(head.keywords),
+                "new_fact_id": new_fact.id,
+                "new_keywords": new_keywords,
+                "text": f"UPDATE: {new_content} (revised from earlier analysis)",
+            })
+        return extra
+
     def _attach_forbidden_keywords_retroactively(
         self, probes: list[dict], graph
     ) -> None:
@@ -550,16 +684,34 @@ class S1Generator(BaseGenerator, DependencyMixin):
         rendered template are returned. This prevents phantom keywords (values
         present in `vals` but not used by the chosen template) from inflating
         the denominator of cumulative keyword recall scoring.
+
+        Purely-numeric values shorter than 3 characters (e.g. '2', '14') are
+        rejected at emission time. The scoring layer uses a digit-flank guard
+        ('2' must NOT match inside '20'), so single-digit numerics would
+        always fail the survival check even when the underlying fact IS in
+        memory — they'd push keyword_m below 1.0 at cycle 0 by construction.
+        Mirrors the trident's _MIN_DISCRIMINATING_LEN filter.
         """
         content_lower = content.lower() if content else ""
         def _in_content(val: str) -> bool:
             return (not content) or (val.lower() in content_lower)
 
+        def _emittable(val: str) -> bool:
+            """A purely-numeric value must be at least 3 chars to be a useful
+            discriminator under digit-flank-safe matching."""
+            if not val:
+                return False
+            # Strip thousands separators so '1,847' counts as 4 digits.
+            v = val.replace(",", "")
+            if v.isdigit() and len(v) < 3:
+                return False
+            return True
+
         candidates = []
         for key in ["percent", "latency", "memory", "throughput", "spent",
                      "remaining", "vuln_count", "downtime"]:
             val = vals.get(key, "")
-            if val and val not in used and _in_content(val):
+            if val and val not in used and _emittable(val) and _in_content(val):
                 candidates.append(val)
         # Also add component name (always rendered into title at minimum,
         # but most templates also mention it in the body).

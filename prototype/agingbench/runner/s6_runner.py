@@ -48,6 +48,7 @@ from ..scenarios.s6_naturalistic.validator import (
     score_task,
     score_recall_probe,
     build_recall_matrix_entry,
+    partition_recall,
 )
 
 
@@ -82,12 +83,6 @@ class S6Runner(BaseRunner, DiagnosticMixin):
         agent_class: type[AgentInterface] = ReferenceAgent,
         generated_data: dict | None = None,
         maintenance_events: list | None = None,
-        # Legacy oracle params — accepted but ignored with deprecation warning.
-        oracle_mode: bool = False,
-        oracle_retrieval: bool = False,
-        oracle_store: bool = False,
-        incontext_ceiling: bool = False,
-        ceiling_max_tokens: int = 100_000,
     ):
         self.memory_policy = memory_policy
         self.llm = llm
@@ -98,18 +93,6 @@ class S6Runner(BaseRunner, DiagnosticMixin):
         self.diagnose = diagnose
         self.agent_class = agent_class
         self.maintenance_events = maintenance_events or []
-
-        # Warn on deprecated oracle params (soft-deprecate, not hard-break).
-        _legacy = {"oracle_mode": oracle_mode, "oracle_retrieval": oracle_retrieval,
-                   "oracle_store": oracle_store, "incontext_ceiling": incontext_ceiling}
-        _active = [k for k, v in _legacy.items() if v]
-        if _active:
-            import warnings
-            warnings.warn(
-                f"S6Runner: legacy oracle flags {_active} are deprecated and "
-                f"ignored. Use diagnose=True for P1/P2/P3 error partitioning.",
-                DeprecationWarning, stacklevel=2,
-            )
 
         # Load scenario data (from generator or curated files)
         if generated_data:
@@ -179,19 +162,14 @@ class S6Runner(BaseRunner, DiagnosticMixin):
         exposures: list[int] = []
         task_scores: list[float] = []
         recall_scores: list[float] = []
+        # Recall (compression) curve gets its own exposure axis: sessions with
+        # no measurable stable-fact pool are skipped, not counted as 1.0.
+        recall_exposures: list[int] = []
         recall_matrix: dict[int, dict[int, float]] = {}
         session_results: list[dict] = []
 
         # P1/P2/P3 diagnostic partitioning accumulators (only when diagnose=True)
         diagnostic_partitions: list[dict] = []
-
-        # ---- Full trajectory log (content-level, separate from trace) ----
-        trajectory_path = self.tracer.path.parent / "trajectory.jsonl"
-        traj_f = open(trajectory_path, "w", buffering=1)
-        def _log_traj(event_type: str, **fields):
-            import json as _json
-            record = {"event": event_type, "timestamp": time.time(), **fields}
-            traj_f.write(_json.dumps(record, ensure_ascii=False) + "\n")
 
         run_span = self.tracer.log(
             "run_start",
@@ -273,9 +251,6 @@ class S6Runner(BaseRunner, DiagnosticMixin):
 
             # Log memory state before task
             memory_before = _memory_reader()
-            _log_traj("memory_snapshot", session=session_idx, phase="before_task",
-                      memory_text=memory_before, memory_tokens=len(memory_before.split()))
-
             # ---- Run primary task ----
             _progress(f"session {session_idx + 1}: primary task start", session_t0)
             task_result = agent.run_session(full_task, session_id=session_idx)
@@ -287,11 +262,6 @@ class S6Runner(BaseRunner, DiagnosticMixin):
             )
 
             # Log agent output
-            _log_traj("agent_output", session=session_idx, phase="primary_task",
-                      prompt=full_task[:500], output=task_output,
-                      turns=task_result.get("turns", 0),
-                      tool_calls=task_result.get("tool_calls", []))
-
             # Score primary task
             task_eval = score_task(task_output, session_data)
 
@@ -343,6 +313,15 @@ class S6Runner(BaseRunner, DiagnosticMixin):
                 # revision is scored against the pre-revision value and one
                 # re-asked after against the post-revision value (time-correct).
                 scored = score_recall_probe(probe_result["output"], probe, at_session=session_idx)
+                # Mechanics failure: agent exhausted its turn budget or returned
+                # no usable text — an availability failure, NOT a recall outcome;
+                # excluded from recall + binding below.
+                _mech_fail = (bool(probe_result.get("exhausted"))
+                              or not (probe_result.get("output") or "").strip())
+                scored["mechanics_failure"] = _mech_fail
+                # Revised facts carry keywords_history -> they belong to the
+                # revision axis (version_accuracy), not the compression headline.
+                scored["is_revised"] = bool(probe.get("keywords_history"))
                 # Carry the raw probe answer so forget_accuracy's text scan and
                 # the per-probe token diagnostics below see it.
                 scored["agent_answer"] = probe_result["output"]
@@ -364,14 +343,8 @@ class S6Runner(BaseRunner, DiagnosticMixin):
                         "response_text": probe_result["output"],
                         "gold_value": probe.get("gold_value"),
                         "distractor_value": probe.get("distractor_value"),
+                        "mechanics_failure": _mech_fail,
                     })
-                _log_traj("recall_probe", session=session_idx,
-                          probe_id=probe.get("probe_id", ""),
-                          question=probe["question"],
-                          agent_answer=probe_result["output"][:300],
-                          recalled=scored["recalled"],
-                          keywords=probe.get("keywords", []),
-                          origin_session=scored.get("origin_session", -1))
 
                 if (
                     probe_i == 1
@@ -398,8 +371,6 @@ class S6Runner(BaseRunner, DiagnosticMixin):
                     p1_results=probe_results,  # reuse P1 scores already computed
                 )
                 diagnostic_partitions.append(diag_result["partition"])
-                _log_traj("diagnostic_partition",
-                          **diag_result["partition"])
                 _progress(
                     f"session {session_idx + 1}: diagnostic done "
                     f"P1={diag_result['partition']['acc_p1']:.3f} "
@@ -408,35 +379,35 @@ class S6Runner(BaseRunner, DiagnosticMixin):
                     session_t0,
                 )
 
-            # Build recall matrix row
+            # Build recall matrix row + the de-blended recall metrics. The
+            # four-mechanism partition (compression / interference / revision +
+            # mechanics-failure exclusion) lives in validator.partition_recall
+            # so it is unit-testable; see that helper for the rationale.
+            matrix_row = {}
+            _rp = partition_recall(probe_results)
+            recall_all = _rp["recall_all"]
+            recall_excl_binding = _rp["recall_excl_binding"]
+            recall_compression = _rp["recall_compression"]   # HEADLINE
+            n_mech_fail = _rp["n_mechanics_failures"]
             if probe_results:
                 matrix_row = build_recall_matrix_entry(
                     session_idx, self.sessions, probe_results
                 )
                 recall_matrix[session_idx] = matrix_row
-                # Headline recall counts ALL probes (a confused binding answer
-                # is a recall failure → interference lowers the headline).
-                overall_recall = sum(
-                    p["recalled"] for p in probe_results
-                ) / len(probe_results)
-                # Also report recall over the non-binding subset, so the
-                # original cross-domain recall stays comparable across configs
-                # with vs without the confusable-name pairs.
-                _nb = [p for p in probe_results
-                       if p.get("probe_type") != "interference_binding"]
-                recall_excl_binding = (
-                    round(sum(p["recalled"] for p in _nb) / len(_nb), 4)
-                    if _nb else None
-                )
             else:
                 recall_matrix[session_idx] = {}
-                recall_excl_binding = None
-                overall_recall = 1.0
 
-            # Record scores
+            # Float display value for logs/print (0.0 when no measurable pool).
+            overall_recall = recall_all if recall_all is not None else 0.0
+
+            # Record scores. task_curve spans every session; the recall
+            # (compression) curve only includes sessions with a measurable
+            # STABLE-fact pool — an empty pool is NOT scored as perfect recall.
             exposures.append(session_idx)
             task_scores.append(task_eval["task_score"])
-            recall_scores.append(round(overall_recall, 4))
+            if recall_compression is not None:
+                recall_exposures.append(session_idx)
+                recall_scores.append(recall_compression)
 
             # Concatenate task + probe outputs (truncated) for forget_accuracy.
             probe_text = " ".join(
@@ -463,8 +434,18 @@ class S6Runner(BaseRunner, DiagnosticMixin):
                     "is_cross_reference", False
                 ),
                 "task_score": task_eval["task_score"],
+                # HEADLINE compression metric: stable-fact recall (binding +
+                # revised probes excluded; mechanics failures excluded).
+                "recall_compression": recall_compression,
+                # All-probe live recall (kept for back-compat / blended view).
                 "recall_rate": round(overall_recall, 4),
+                "recall_rate_all": recall_all,
                 "recall_rate_excl_binding": recall_excl_binding,
+                "mechanics_failure_rate": (
+                    round(n_mech_fail / len(probe_results), 4)
+                    if probe_results else None
+                ),
+                "n_mechanics_failures": n_mech_fail,
                 "recall_matrix_row": matrix_row if probe_results else {},
                 "n_probes_total": len(probe_results),
                 "n_probes_recalled": sum(
@@ -540,14 +521,6 @@ class S6Runner(BaseRunner, DiagnosticMixin):
                 if session_results:
                     session_results[-1]["memory_write_tokens"] = out_tok
 
-                _log_traj("compression", session=session_idx,
-                          input_text=interaction_text,
-                          output_text=compressed or "",
-                          input_tokens=in_tok, output_tokens=out_tok,
-                          compression_ratio=round(
-                              len(interaction_text.split()) / max(len((compressed or "").split()), 1), 2
-                          ))
-
                 self.tracer.log_llm_call(
                     parent_span_id=session_span,
                     model=self._model_id,
@@ -582,8 +555,10 @@ class S6Runner(BaseRunner, DiagnosticMixin):
             scenario=self.SCENARIO_ID,
             sut_id=self.sut_id,
         )
+        # recall_scores is sparse: only sessions with a measurable STABLE-fact
+        # pool contribute, so it pairs with recall_exposures (NOT exposures).
         recall_curve = AgingCurve(
-            exposures=exposures,
+            exposures=recall_exposures,
             scores=recall_scores,
             scenario=self.SCENARIO_ID,
             sut_id=self.sut_id,
@@ -596,7 +571,7 @@ class S6Runner(BaseRunner, DiagnosticMixin):
             "run_end",
             parent_span_id=run_span,
             task_curve=list(zip(exposures, task_scores)),
-            recall_curve=list(zip(exposures, recall_scores)),
+            recall_curve=list(zip(recall_exposures, recall_scores)),
             recall_matrix={
                 str(k): v for k, v in recall_matrix.items()
             },
@@ -605,27 +580,16 @@ class S6Runner(BaseRunner, DiagnosticMixin):
         )
 
         # Close trajectory log
-        _log_traj("run_end", n_sessions=actual_sessions,
-                  m_final=recall_curve.scores[-1] if recall_curve.scores else 0)
-        traj_f.close()
         _progress(f"run complete: m_final={recall_curve.scores[-1] if recall_curve.scores else 0:.3f}")
-
-        # --- attribution provenance stamp (see flag_attribution_schema_v1.py) ---
-        # S6's legacy oracle / ceiling flags are deprecated (ignored at __init__).
-        # The only attribution variant the current runner produces is baseline,
-        # optionally augmented by P1/P2/P3 partitioning when --diagnose is on.
-        _attr_mode = "diagnose_p1_p2_p3" if self.diagnose else "c1_baseline"
 
         result = {
             "task_curve": task_curve,
             "recall_curve": recall_curve,
             "task_raw": list(zip(exposures, task_scores)),
-            "recall_raw": list(zip(exposures, recall_scores)),
+            "recall_raw": list(zip(recall_exposures, recall_scores)),
             "recall_matrix": recall_matrix,
             "lag_curves": lag_curves,
             "session_results": session_results,
-            "attribution_schema": "v2_clean",
-            "attribution_mode": _attr_mode,
         }
 
         # Compute and attach full error partition when --diagnose was used.

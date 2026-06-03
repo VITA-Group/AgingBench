@@ -83,6 +83,16 @@ class OpenHandsAdapter(AgentAdapter):
           bridge_python: /path/to/python   # optional; defaults to openhands env
           system_prompt: "..."         # optional; overrides default notes-policy prompt
           api_key_env: OPENAI_API_KEY  # optional; which env var holds the key
+          condenser: none              # optional; "default"|"none"|"llm_summary"
+          condenser_max_size: 80       # optional; llm_summary trigger (events)
+          condenser_keep_first: 4      # optional; llm_summary head events kept
+
+    Level-A memory-compression control: `condenser` selects how OpenHands
+    compacts its own in-context event history. "default" inherits the preset's
+    baked-in LLMSummarizingCondenser(80, 4); "none" disables compaction;
+    "llm_summary" runs a controlled-budget summarizer. The chosen regime and
+    whether it fired are returned in each AgentResponse.metadata["condenser"] /
+    ["condensations"].
     """
 
     def __init__(
@@ -96,6 +106,9 @@ class OpenHandsAdapter(AgentAdapter):
         reasoning_effort: Optional[str] = None,  # "low" | "medium" | "high"
         preset: Optional[str] = None,             # "default" | "gpt5" | None (auto-detect)
         subprocess_timeout: int = 1800,           # per-turn wall-clock cap (s)
+        condenser: Optional[str] = None,          # "default"|"none"|"llm_summary"
+        condenser_max_size: Optional[int] = None, # llm_summary trigger size
+        condenser_keep_first: Optional[int] = None,  # llm_summary head kept
         **kwargs,
     ):
         self._cwd = Path(cwd or os.getcwd()).resolve()
@@ -122,6 +135,10 @@ class OpenHandsAdapter(AgentAdapter):
         self._reasoning_effort = reasoning_effort
         self._preset = preset
         self._subprocess_timeout = subprocess_timeout
+        # Level-A condenser control (in-context memory compression).
+        self._condenser = condenser or "default"
+        self._condenser_max_size = condenser_max_size
+        self._condenser_keep_first = condenser_keep_first
 
         self._persistence_dir = self._cwd / ".openhands_persist"
         self._persistence_dir.mkdir(parents=True, exist_ok=True)
@@ -152,6 +169,9 @@ class OpenHandsAdapter(AgentAdapter):
             "max_iterations": self._max_turns,
             "reasoning_effort": self._reasoning_effort,
             "preset": self._preset,
+            "condenser": self._condenser,
+            "condenser_max_size": self._condenser_max_size,
+            "condenser_keep_first": self._condenser_keep_first,
         }
 
         t0 = time.time()
@@ -196,6 +216,9 @@ class OpenHandsAdapter(AgentAdapter):
                 "iterations": resp.get("iterations", 0),
                 "num_turns": resp.get("iterations", 0),  # alias for cross-framework consistency
                 "model": self._model,
+                # Level-A observability: which condenser ran and whether it fired.
+                "condenser": resp.get("condenser", {"kind": self._condenser}),
+                "condensations": resp.get("condensations", 0),
             },
         )
 

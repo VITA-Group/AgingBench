@@ -502,17 +502,6 @@ class S2Generator(BaseGenerator, DependencyMixin):
                         "category": "invalidation",
                     })
 
-            # Inject interference facts (confusable cross-domain pairs)
-            if t >= self.pressure.confusable_start_session and t < len(sessions):
-                pairs = self.inject_interference(graph, t, self.rng, self.pressure)
-                for pair in pairs:
-                    sessions[t]["tasks"].append({
-                        "id": f"s{t}_interf",
-                        "text": f"{pair['text_a']} {pair['text_b']}",
-                        "constraints_tested": [],
-                        "category": "interference",
-                    })
-
         # Generate accumulator track (Ledger-QA pattern for revision aging).
         # NB: this MUTATES the chosen budget constraint's rule + _probe_data
         # when the initial value needs scaling to keep the ledger positive
@@ -733,7 +722,6 @@ class S2Generator(BaseGenerator, DependencyMixin):
                 "text": text,
                 "recall_question": question,
                 "recall_keywords": kws,
-                "recall_anti_keywords": [],
             })
         return facts
 

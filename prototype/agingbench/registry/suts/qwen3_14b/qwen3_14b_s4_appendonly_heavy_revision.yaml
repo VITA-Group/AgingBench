@@ -1,0 +1,27 @@
+sut_id: qwen3_14b_s4_appendonly_heavy_revision
+description: >
+  S4 capability isolation arm — replaces Llama-3.1-8B with Qwen3-14B
+  (larger non-reasoning model) on the same append-only + heavy-revision
+  + topic-matched configuration. Tests whether the omission-failure
+  pattern (miss_rate=1.0 on binding probes in the Llama-8B run) is
+  bottlenecked by model size / capability.
+
+model:
+  provider: local_hf
+  model_id: Qwen/Qwen3-14B
+  max_new_tokens: 1024
+  temperature: 0.0
+
+memory_policy:
+  type: append_only
+  top_k: 10000
+
+pressure:
+  preset: heavy
+  update_rate: 1.0
+  warmup_sessions: 0
+  dependency_density: 0.3
+  n_confusable_pairs: 2
+  confusable_topic_matched: true
+
+seed: 42

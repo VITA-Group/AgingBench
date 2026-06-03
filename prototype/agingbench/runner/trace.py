@@ -36,15 +36,16 @@ from typing import Any, Optional
 def _trace_preview_chars() -> int:
     """Max chars persisted for input.value/output.value previews.
 
-    Default 300 (unchanged historical behavior). Override with the env var
-    AGINGBENCH_TRACE_PREVIEW_CHARS — e.g. a large value to capture full
-    prompts/responses for a reference trace. Existing runs are unaffected
-    unless the env var is set.
+    Default 0 (no truncation — full prompts/responses are written). Set the
+    env var AGINGBENCH_TRACE_PREVIEW_CHARS to a positive integer N to cap each
+    preview at N characters (useful when trace.jsonl size becomes a concern).
+    A value <= 0 disables truncation.
     """
     try:
-        return int(os.environ.get("AGINGBENCH_TRACE_PREVIEW_CHARS", "300"))
+        n = int(os.environ.get("AGINGBENCH_TRACE_PREVIEW_CHARS", "0"))
     except (TypeError, ValueError):
-        return 300
+        return 0
+    return n if n > 0 else 0
 
 
 def _span_id() -> str:
@@ -126,8 +127,14 @@ class TraceLogger:
             "gen_ai.request.model": model,
             "gen_ai.usage.input_tokens": input_tokens,
             "gen_ai.usage.output_tokens": output_tokens,
-            "input.value": input_preview[:_trace_preview_chars()],
-            "output.value": output_preview[:_trace_preview_chars()],
+            "input.value": (
+                input_preview[:_trace_preview_chars()]
+                if _trace_preview_chars() > 0 else input_preview
+            ),
+            "output.value": (
+                output_preview[:_trace_preview_chars()]
+                if _trace_preview_chars() > 0 else output_preview
+            ),
         }
         if duration_ms is not None:
             attrs["gen_ai.usage.duration_ms"] = float(duration_ms)

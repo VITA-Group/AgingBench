@@ -95,87 +95,21 @@ def _trajectory_curve(
     )
 
 
-def _emit_mechanism_aging_plot(
-    primary_curve,
-    dep_metrics: dict,
-    output_dir: Path,
-    sut_id: str,
-    scenario: str,
-    title: str,
-    shock_sessions: list | None = None,
-):
-    """Write <output_dir>/aging_curve_mechanisms.png overlaying the headline
-    curve with per-mechanism sub-metric trajectories.
-
-    This is the figure that visually validates Table 2 claims:
-      - Compression:   primary headline curve (passed in)
-      - Interference:  interference_resistance_per_session (if data present)
-      - Revision:      version_accuracy_per_session  +/or  forget_accuracy_per_session
-      - Maintenance:   vertical red dashed lines at shock_sessions
-
-    Curves whose trajectory dict is empty are skipped silently.
-    """
-    from agingbench.report.plot import compare_curves
-    curves = [primary_curve]
-    labels = [f"{primary_curve.metric_name} (headline)"
-              if getattr(primary_curve, "metric_name", "")
-              else "headline"]
-
-    interf = _trajectory_curve(
-        dep_metrics.get("interference_resistance_per_session") or {},
-        sut_id, scenario, "interference_resistance",
-    )
-    if interf is not None:
-        curves.append(interf)
-        labels.append("interference_resistance")
-
-    vacc = _trajectory_curve(
-        dep_metrics.get("version_accuracy_per_session") or {},
-        sut_id, scenario, "version_accuracy",
-    )
-    if vacc is not None:
-        curves.append(vacc)
-        labels.append("version_accuracy")
-
-    forget = _trajectory_curve(
-        dep_metrics.get("forget_accuracy_per_session") or {},
-        sut_id, scenario, "forget_accuracy",
-    )
-    if forget is not None:
-        curves.append(forget)
-        labels.append("forget_accuracy")
-
-    if len(curves) == 1 and not shock_sessions:
-        # Nothing extra to show — the headline plot already has this.
-        return
-
-    compare_curves(
-        curves,
-        str(output_dir / "aging_curve_mechanisms.png"),
-        title=title,
-        labels=labels,
-        shock_sessions=shock_sessions,
-    )
+# NOTE: the former _emit_mechanism_aging_plot helper (which wrote
+# aging_curve_mechanisms.png) was removed. No scenario plots per-mechanism
+# trajectories anymore — that data is carried in aging_card.json's
+# mechanism_metrics block and dependency_metrics.json's *_per_session series.
+# _trajectory_curve above is still used by the S2 dual-axis plot.
 
 
 # ------------------------------------------------------------------ S1 runner
 
 def _run_s1(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
-            n_cycles: int, oracle_mode: bool = False, oracle_retrieval: bool = False,
-            oracle_store: bool = False, incontext_ceiling: bool = False,
-            ceiling_max_tokens: int = 100_000,
+            n_cycles: int,
             agent_class=None,
             generated: bool = False, gen_sessions: int = 0,
             score_via_response: bool = False) -> dict:
     """Execute S1 scenario (Research Literature Agent) and return metrics dict."""
-    # SUT YAML can force oracle mode via top-level `oracle_mode: true` /
-    # `oracle_retrieval: true`, letting users define a reusable "oracle source"
-    # or "oracle retrieval" SUT variant without CLI flags. Never demotes a
-    # CLI-enabled flag.
-    oracle_mode = oracle_mode or sut_cfg.get("oracle_mode", False)
-    oracle_retrieval = oracle_retrieval or sut_cfg.get("oracle_retrieval", False)
-    oracle_store = oracle_store or sut_cfg.get("oracle_store", False)
-    incontext_ceiling = incontext_ceiling or sut_cfg.get("incontext_ceiling", False)
     score_via_response = score_via_response or sut_cfg.get(
         "score_via_response", False)
     from agingbench.core.llm import load_llm
@@ -232,11 +166,6 @@ def _run_s1(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
             tracer=tracer,
             sut_id=sut_cfg["sut_id"],
             tasks=tasks,
-            oracle_mode=oracle_mode,
-            oracle_retrieval=oracle_retrieval,
-            oracle_store=oracle_store,
-            incontext_ceiling=incontext_ceiling,
-            ceiling_max_tokens=ceiling_max_tokens,
             generated_data=gen_data,  # pass full generator output so runner uses seed-dependent paper_batches + session_facts
             score_via_response=score_via_response,
         )
@@ -292,25 +221,6 @@ def _run_s1(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
         stats["task_decay_slope"] = round(compute_decay_slope(task_curve), 5)
         stats["task_checkpoints"] = list(zip(task_curve.exposures, task_curve.scores))
 
-    # Attribution provenance (see s1_runner.run return dict). Guarded
-    # because legacy runs returned a tuple rather than a dict.
-    if isinstance(result, dict):
-        if "attribution_schema" in result:
-            stats["attribution_schema"] = result["attribution_schema"]
-        if "attribution_mode" in result:
-            stats["attribution_mode"] = result["attribution_mode"]
-        if result.get("ceiling_max_tokens") is not None:
-            stats["ceiling_max_tokens"] = result["ceiling_max_tokens"]
-        # S1-specific: c2_abstain_s1 flags runs where oracle_retrieval was
-        # requested but aliased to oracle_store (single-blob memory has no
-        # distinct retrieve step). Propagated so downstream plots/tables can
-        # honestly merge C2 and C3 bars for S1.
-        if "c2_abstain_s1" in result:
-            stats["c2_abstain_s1"] = result["c2_abstain_s1"]
-
-    if oracle_mode:
-        stats["oracle_mode"] = True
-
     if gen_data and "dependency_graph" in gen_data:
         from agingbench.metrics.dependency_scorer import score_dependency_chain
         # Use actual session_results (which include task_outputs_text for
@@ -320,6 +230,25 @@ def _run_s1(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
             for exp, score in zip(keyword_curve.exposures, keyword_curve.scores)
         ]
         dep_metrics = score_dependency_chain(dep_session_results, gen_data["dependency_graph"])
+        # S1 emits no interference content — drop the vacuous all-zero
+        # interference fields so they aren't read as signal.
+        for k in ("interference_resistance",
+                  "interference_resistance_per_session",
+                  "score_interference_binding",
+                  "interference_binding"):
+            dep_metrics.pop(k, None)
+        # chain_recall_by_depth is just an alias for chain_recall_by_version_depth.
+        dep_metrics.pop("chain_recall_by_depth", None)
+        # per_hop_analysis is uniformly "insufficient_data" on S1; omit it.
+        php = dep_metrics.get("per_hop_analysis") or {}
+        if php.get("common_failure_pattern") == "insufficient_data" and not php.get("hop_recall"):
+            dep_metrics.pop("per_hop_analysis", None)
+        # Omit empty/None metrics so absence is unambiguous, not "ran, found nothing".
+        for k in ("forget_accuracy_per_session",):
+            if dep_metrics.get(k) == {}:
+                dep_metrics.pop(k)
+        if dep_metrics.get("forget_accuracy") is None:
+            dep_metrics.pop("forget_accuracy", None)
         stats["dependency_metrics"] = dep_metrics
         with open(output_dir / "dependency_metrics.json", "w") as f:
             json.dump(dep_metrics, f, indent=2)
@@ -335,8 +264,6 @@ def _run_s1(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
         json.dump(stats, f, indent=2)
 
     title = f"S1 Aging — {sut_cfg['sut_id']}"
-    if oracle_mode:
-        title += " (oracle)"
     # Ensure the headline curve carries its metric name for axis-aware plotting
     keyword_curve.metric_name = "keyword_m"
     if task_curve:
@@ -351,16 +278,8 @@ def _run_s1(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
     else:
         plot_curve(keyword_curve, str(output_dir / "aging_curve.png"), title=title)
 
-    # Mechanism-coverage plot (Table 2: compression + revision via DAG)
-    dep_metrics = stats.get("dependency_metrics") or {}
-    _emit_mechanism_aging_plot(
-        primary_curve=keyword_curve,
-        dep_metrics=dep_metrics,
-        output_dir=output_dir,
-        sut_id=sut_cfg["sut_id"],
-        scenario="s1_research_literature",
-        title=f"{title} — mechanism trajectories",
-    )
+    # NOTE: per-mechanism trajectories are not plotted; they live as data in
+    # aging_card.json's mechanism_metrics (and dependency_metrics.json).
 
     return stats
 
@@ -368,16 +287,10 @@ def _run_s1(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
 # ------------------------------------------------------------------ S2 runner
 
 def _run_s2(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
-            n_cycles: int, oracle_mode: bool = False, oracle_retrieval: bool = False,
-            oracle_store: bool = False, incontext_ceiling: bool = False,
-            ceiling_max_tokens: int = 100_000,
+            n_cycles: int,
             agent_class=None,
             generated: bool = False, gen_sessions: int = 0) -> dict:
     """Execute S2 scenario (Personal Finance & Lifestyle Assistant) and return metrics dict."""
-    oracle_mode = oracle_mode or sut_cfg.get("oracle_mode", False)
-    oracle_retrieval = oracle_retrieval or sut_cfg.get("oracle_retrieval", False)
-    oracle_store = oracle_store or sut_cfg.get("oracle_store", False)
-    incontext_ceiling = incontext_ceiling or sut_cfg.get("incontext_ceiling", False)
     from agingbench.core.llm import load_llm
     from agingbench.core.memory.base import build_memory_policy
     from agingbench.runner.s2_runner import S2Runner
@@ -410,17 +323,17 @@ def _run_s2(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
 
     with TraceLogger(str(trace_path)) as tracer:
         agent_cls_kwarg = {"agent_class": agent_class} if agent_class else {}
+        # Honor optional agent knobs from the SUT yaml (agent.tool_kind /
+        # agent.interaction_format), matching scripts/run_s2.py.
+        _agent_cfg = sut_cfg.get("agent") if isinstance(sut_cfg.get("agent"), dict) else {}
         runner = S2Runner(
             memory_policy=memory_policy,
             llm=llm,
             tracer=tracer,
             sut_id=sut_cfg["sut_id"],
-            oracle_mode=oracle_mode,
-            oracle_retrieval=oracle_retrieval,
-            oracle_store=oracle_store,
-            incontext_ceiling=incontext_ceiling,
-            ceiling_max_tokens=ceiling_max_tokens,
             generated_data=generated_data,
+            tool_kind=(_agent_cfg or {}).get("tool_kind", "read"),
+            interaction_format=(_agent_cfg or {}).get("interaction_format", "with_tool_findings"),
             **agent_cls_kwarg,
         )
         result = runner.run(
@@ -429,7 +342,6 @@ def _run_s2(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
         )
 
     cvr_curve = result["cvr_curve"]
-    tus_curve = result["tus_curve"]
     precision_curve = result["precision_curve"]
     lag_recall_curve = result["lag_recall_curve"]
     compounding_curve = result["compounding_curve"]
@@ -444,27 +356,15 @@ def _run_s2(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
     stats["scenario"] = "s2_lifestyle_assistant"
     stats["metric_group"] = "G2"
     stats["headline_metric"] = "constraint_precision"
-    stats["cvr_raw"] = result["cvr_raw"]
-    stats["adherence_raw"] = result["adherence_raw"]
-    stats["precision_raw"] = result["precision_raw"]
-    stats["tus_raw"] = result["tus_raw"]
-    stats["lag_recall_raw"] = result["lag_recall_raw"]
-    stats["compounding_raw"] = result["compounding_raw"]
+    # Parallel trajectory for the AgingCard's revision.compounding block.
+    # Same shape as `checkpoints` (the headline precision trajectory):
+    # list[(exposure, score)].
+    stats["compounding_checkpoints"] = list(zip(
+        compounding_curve.exposures,
+        [round(s, 4) for s in compounding_curve.scores],
+    ))
     stats["compounding_fresh_raw"] = result.get("compounding_fresh_raw", [])
     stats["session_results"] = result["session_results"]
-
-    # Propagate attribution-schema provenance (v2_clean on all new runs via the
-    # refactored S2 runner). Pre-2026-04-20 runs are flagged v1_conflated
-    # retroactively by experiments/scripts/flag_attribution_schema_v1.py.
-    if "attribution_schema" in result:
-        stats["attribution_schema"] = result["attribution_schema"]
-    if "attribution_mode" in result:
-        stats["attribution_mode"] = result["attribution_mode"]
-    if result.get("ceiling_max_tokens") is not None:
-        stats["ceiling_max_tokens"] = result["ceiling_max_tokens"]
-
-    if oracle_mode:
-        stats["oracle_mode"] = True
 
     if generated_data and "dependency_graph" in generated_data:
         from agingbench.metrics.dependency_scorer import score_dependency_chain
@@ -486,8 +386,6 @@ def _run_s2(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
         json.dump(stats, f, indent=2)
 
     title = f"S2 Aging — {sut_cfg['sut_id']}"
-    if oracle_mode:
-        title += " (oracle)"
 
     # Label the [0,1] curves so axis auto-picks a sensible ylabel.
     for c, name in (
@@ -535,76 +433,26 @@ def _run_s2(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
                 secondary_ylabel="Accumulator error (|agent − gold|)",
             )
 
-    # Mechanism-coverage overlay (compression headline + revision + interference
-    # trajectories from the DAG scorer). interference_resistance_per_session is
-    # typically empty for S2 (no interference pairs) and is silently skipped.
-    _emit_mechanism_aging_plot(
-        primary_curve=precision_curve,
-        dep_metrics=dep_metrics,
-        output_dir=output_dir,
-        sut_id=sut_cfg["sut_id"],
-        scenario="s2_lifestyle_assistant",
-        title=f"{title} — mechanism trajectories",
-    )
+    # NOTE: per-mechanism trajectories are not plotted; they live as data in
+    # aging_card.json's mechanism_metrics (and dependency_metrics.json).
 
     return stats
 
 
 # ------------------------------------------------------------------ S3 runner
 
-def _build_tier2_adapter(adapter_cfg: dict, workspace_dir):
-    """Build a Tier-2 AgentAdapter from a SUT ``adapter:`` block.
-
-    Shared by scenario CLI runners that support black-box agents. Threads the
-    Level-A condenser knobs (condenser / condenser_max_size / condenser_keep_first)
-    through to OpenHands so in-context memory compression is a controlled factor.
-    """
-    atype = adapter_cfg.get("type", "openhands")
-    if atype == "openhands":
-        from agingbench.core.adapters.openhands_adapter import OpenHandsAdapter
-        return OpenHandsAdapter(
-            model=adapter_cfg.get("model", "gpt-4o-mini"),
-            cwd=str(workspace_dir),
-            max_turns=adapter_cfg.get("max_turns", 30),
-            bridge_python=adapter_cfg.get("bridge_python"),
-            system_prompt=adapter_cfg.get("system_prompt"),
-            api_key_env=adapter_cfg.get("api_key_env", "OPENAI_API_KEY"),
-            reasoning_effort=adapter_cfg.get("reasoning_effort"),
-            preset=adapter_cfg.get("preset"),
-            subprocess_timeout=adapter_cfg.get("subprocess_timeout", 1800),
-            condenser=adapter_cfg.get("condenser"),
-            condenser_max_size=adapter_cfg.get("condenser_max_size"),
-            condenser_keep_first=adapter_cfg.get("condenser_keep_first"),
-        )
-    if atype == "react":
-        from agingbench.core.adapters.react_file_adapter import ReactFileAdapter
-        from agingbench.core.llm import load_llm
-        llm = load_llm(adapter_cfg.get("model_cfg")
-                       or {"provider": "litellm", "model": adapter_cfg.get("model", "gpt-4o-mini")})
-        return ReactFileAdapter(llm=llm, workspace_dir=str(workspace_dir),
-                                max_turns=adapter_cfg.get("max_turns", 15))
-    if atype == "custom":
-        from agingbench.core.agent_adapter import build_custom_adapter
-        return build_custom_adapter(adapter_cfg, workspace_dir)
-    raise ValueError(f"Tier-2 adapter dispatch: unknown adapter type '{atype}'")
-
-
 def _run_s3(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
-            n_cycles: int, oracle_mode: bool = False, oracle_retrieval: bool = False,
-            oracle_store: bool = False, incontext_ceiling: bool = False,
-            ceiling_max_tokens: int = 100_000,
+            n_cycles: int,
             agent_class=None,
             generated: bool = False, gen_sessions: int = 0) -> dict:
     """Execute S3 scenario (Project Knowledge Base Agent) and return metrics dict.
 
-    Two execution modes, selected by the SUT config:
-      * Tier-1 (default): ReferenceAgent + a controlled MemoryPolicy.
-      * Tier-2: a black-box AgentAdapter (e.g. OpenHands) when the SUT carries an
-        ``adapter:`` block — memory is owned by the agent; use the ``condenser:``
-        knobs to control its in-context compression (Level A).
+    S3 is Tier-1 only: a ReferenceAgent over a controlled MemoryPolicy. S3's
+    headline (summarization fidelity) is scored on the benchmark-owned memory
+    store, so a black-box agent that owns its own memory cannot be measured the
+    same way — the Tier-2 adapter path was removed. Run black-box agents under a
+    Tier-2 scenario (e.g. S5/S7) instead.
     """
-    oracle_mode = oracle_mode or sut_cfg.get("oracle_mode", False)
-    oracle_retrieval = oracle_retrieval or sut_cfg.get("oracle_retrieval", False)
     from agingbench.core.llm import load_llm
     from agingbench.core.memory.base import build_memory_policy
     from agingbench.runner.s3_runner import S3Runner
@@ -626,45 +474,30 @@ def _run_s3(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
                                      pressure=_resolve_pressure(sut_cfg, scenario_cfg)).generate(gen_n)
         n_sessions = gen_n
 
-    adapter_cfg = sut_cfg.get("adapter")
+    # S3 is Tier-1 only. Fail loudly on a stale SUT that still carries a Tier-2
+    # `adapter:` block rather than silently running something different.
+    if sut_cfg.get("adapter"):
+        raise ValueError(
+            f"S3 no longer supports Tier-2 adapters; SUT '{sut_cfg.get('sut_id')}' "
+            "has an `adapter:` block. Configure a `memory_policy:` (Tier-1), or run "
+            "the black-box agent under a Tier-2 scenario (e.g. S5/S7)."
+        )
     with TraceLogger(str(trace_path)) as tracer:
-        if adapter_cfg:
-            # Tier-2: black-box agent owns its memory; Level-A condenser control.
-            from agingbench.core.memory.no_memory import NoMemoryPolicy
-            workspace_dir = output_dir / "workspace"
-            workspace_dir.mkdir(parents=True, exist_ok=True)
-            adapter = _build_tier2_adapter(adapter_cfg, workspace_dir)
-            runner = S3Runner(
-                memory_policy=NoMemoryPolicy(),
-                llm=None,
-                tracer=tracer,
-                sut_id=sut_cfg["sut_id"],
-                generated_data=generated_data,
-            )
-            result = runner.run_adapter(
-                adapter,
-                n_sessions=n_sessions,
-                seed=sut_cfg.get("seed", 42),
-                reset_every=int(adapter_cfg.get("reset_every", 0) or 0),
-            )
-        else:
-            llm = load_llm(sut_cfg["model"])
-            memory_policy = build_memory_policy(sut_cfg["memory_policy"], PROJECT_ROOT)
-            agent_cls_kwarg = {"agent_class": agent_class} if agent_class else {}
-            runner = S3Runner(
-                memory_policy=memory_policy,
-                llm=llm,
-                tracer=tracer,
-                sut_id=sut_cfg["sut_id"],
-                oracle_mode=oracle_mode,
-                oracle_retrieval=oracle_retrieval,
-                generated_data=generated_data,
-                **agent_cls_kwarg,
-            )
-            result = runner.run(
-                n_sessions=n_sessions,
-                seed=sut_cfg.get("seed", 42),
-            )
+        llm = load_llm(sut_cfg["model"])
+        memory_policy = build_memory_policy(sut_cfg["memory_policy"], PROJECT_ROOT)
+        agent_cls_kwarg = {"agent_class": agent_class} if agent_class else {}
+        runner = S3Runner(
+            memory_policy=memory_policy,
+            llm=llm,
+            tracer=tracer,
+            sut_id=sut_cfg["sut_id"],
+            generated_data=generated_data,
+            **agent_cls_kwarg,
+        )
+        result = runner.run(
+            n_sessions=n_sessions,
+            seed=sut_cfg.get("seed", 42),
+        )
 
     fidelity_curve = result["fidelity_curve"]
 
@@ -687,9 +520,6 @@ def _run_s3(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
         with open(output_dir / "dependency_metrics.json", "w") as f:
             json.dump(dep_metrics, f, indent=2)
 
-    if oracle_mode:
-        stats["oracle_mode"] = True
-
     # Response-token cap-confound diagnostics (if runner populated the fields)
     _tok_diag = _collect_response_token_diagnostics(
         stats.get("session_results", []), _infer_max_tokens(sut_cfg)
@@ -701,8 +531,6 @@ def _run_s3(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
         json.dump(stats, f, indent=2)
 
     title = f"S3 Aging — {sut_cfg['sut_id']}"
-    if oracle_mode:
-        title += " (oracle)"
 
     fidelity_curve.metric_name = "summarization_fidelity"
     result["contradiction_curve"].metric_name = "consistency"
@@ -715,15 +543,8 @@ def _run_s3(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
         labels=["summarization_fidelity (headline)", "consistency (1-contradiction)", "query_accuracy"],
     )
 
-    # Mechanism-coverage plot (Table 2 claims: compression + interference + revision)
-    _emit_mechanism_aging_plot(
-        primary_curve=fidelity_curve,
-        dep_metrics=stats.get("dependency_metrics") or {},
-        output_dir=output_dir,
-        sut_id=sut_cfg["sut_id"],
-        scenario="s3_knowledge_base",
-        title=f"{title} — mechanism trajectories",
-    )
+    # NOTE: per-mechanism trajectories are not plotted; they live as data in
+    # aging_card.json's mechanism_metrics (and dependency_metrics.json).
 
     return stats
 
@@ -731,16 +552,10 @@ def _run_s3(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
 # ------------------------------------------------------------------ S4 runner
 
 def _run_s4(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
-            n_cycles: int, oracle_mode: bool = False, oracle_retrieval: bool = False,
-            oracle_store: bool = False, incontext_ceiling: bool = False,
-            ceiling_max_tokens: int = 100_000,
+            n_cycles: int,
             agent_class=None,
             generated: bool = False, gen_sessions: int = 0) -> dict:
     """Execute S4 scenario (Software Engineering Agent) and return metrics dict."""
-    oracle_mode = oracle_mode or sut_cfg.get("oracle_mode", False)
-    oracle_retrieval = oracle_retrieval or sut_cfg.get("oracle_retrieval", False)
-    oracle_store = oracle_store or sut_cfg.get("oracle_store", False)
-    incontext_ceiling = incontext_ceiling or sut_cfg.get("incontext_ceiling", False)
     from agingbench.core.llm import load_llm
     from agingbench.core.memory.base import build_memory_policy
     from agingbench.runner.s4_runner import S4Runner
@@ -772,11 +587,6 @@ def _run_s4(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
             llm=llm,
             tracer=tracer,
             sut_id=sut_cfg["sut_id"],
-            oracle_mode=oracle_mode,
-            oracle_retrieval=oracle_retrieval,
-            oracle_store=oracle_store,
-            incontext_ceiling=incontext_ceiling,
-            ceiling_max_tokens=ceiling_max_tokens,
             generated_data=generated_data,
             **agent_cls_kwarg,
         )
@@ -848,17 +658,6 @@ def _run_s4(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
     if result.get("life_event"):
         stats["life_event"] = result["life_event"]
 
-    # Attribution provenance (see s4_runner.run return dict).
-    if "attribution_schema" in result:
-        stats["attribution_schema"] = result["attribution_schema"]
-    if "attribution_mode" in result:
-        stats["attribution_mode"] = result["attribution_mode"]
-    if result.get("ceiling_max_tokens") is not None:
-        stats["ceiling_max_tokens"] = result["ceiling_max_tokens"]
-
-    if oracle_mode:
-        stats["oracle_mode"] = True
-
     # Response-token cap-confound diagnostics (if runner populated the fields)
     _tok_diag = _collect_response_token_diagnostics(
         stats.get("session_results", []), _infer_max_tokens(sut_cfg)
@@ -870,8 +669,6 @@ def _run_s4(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
         json.dump(stats, f, indent=2)
 
     title = f"S4 Aging — {sut_cfg['sut_id']}"
-    if oracle_mode:
-        title += " (oracle)"
 
     dep_recall_curve.metric_name = "dep_recall"
     la_curve.metric_name = "lookahead_accuracy"
@@ -899,15 +696,8 @@ def _run_s4(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
     compare_curves(_curves, str(output_dir / "aging_curve.png"),
                    title=title, labels=_labels)
 
-    # Mechanism-coverage plot (Table 2 claims: compression + interference)
-    _emit_mechanism_aging_plot(
-        primary_curve=primary_s4_curve,
-        dep_metrics=stats.get("dependency_metrics") or {},
-        output_dir=output_dir,
-        sut_id=sut_cfg["sut_id"],
-        scenario="s4_software_engineering",
-        title=f"{title} — mechanism trajectories",
-    )
+    # NOTE: per-mechanism trajectories are not plotted; they live as data in
+    # aging_card.json's mechanism_metrics (and dependency_metrics.json).
 
     return stats
 
@@ -918,8 +708,7 @@ def _run_s6(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
             n_cycles: int,
             diagnose: bool = False,
             agent_class=None,
-            generated: bool = False, gen_sessions: int = 0,
-            **_legacy_kwargs) -> dict:
+            generated: bool = False, gen_sessions: int = 0) -> dict:
     """Execute S6 scenario (Naturalistic Aging — WebArena-derived) and return metrics dict."""
     from agingbench.core.llm import load_llm
     from agingbench.core.memory.base import build_memory_policy
@@ -972,7 +761,14 @@ def _run_s6(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
     stats = summarize(recall_curve)
     stats["scenario"] = "s6_naturalistic"
     stats["metric_group"] = "G1"
-    stats["headline_metric"] = "recall_rate"
+    # Headline is now de-blended: stable-fact recall (compression), with the
+    # binding/confusable pairs (interference) and revised facts (revision)
+    # split out into their own metrics so the four mechanisms stay separable.
+    stats["headline_metric"] = "recall_compression"
+    # True session count = the dense task curve (one point per session). The
+    # recall (compression) curve is sparse (skips empty stable-fact pools), so
+    # n_checkpoints alone would undercount sessions on the AgingCard.
+    stats["n_sessions"] = len(result["task_raw"])
     stats["task_raw"] = result["task_raw"]
     stats["recall_raw"] = result["recall_raw"]
     stats["recall_matrix"] = {
@@ -1012,7 +808,7 @@ def _run_s6(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
     if diagnose:
         title += " (P1/P2/P3 diagnostics)"
 
-    recall_curve.metric_name = "recall_rate"
+    recall_curve.metric_name = "recall_compression"
     task_curve.metric_name = "task_accuracy"
 
     shock_sessions = []
@@ -1026,19 +822,15 @@ def _run_s6(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
         [recall_curve, task_curve],
         str(output_dir / "aging_curve.png"),
         title=title,
-        labels=["recall_rate (headline)", "task_accuracy (compensated)"],
+        labels=["recall_compression (headline)", "task_accuracy (compensated)"],
         shock_sessions=shock_sessions or None,
     )
 
-    _emit_mechanism_aging_plot(
-        primary_curve=recall_curve,
-        dep_metrics=stats.get("dependency_metrics") or {},
-        output_dir=output_dir,
-        sut_id=sut_cfg["sut_id"],
-        scenario="s6_naturalistic",
-        title=f"{title} — mechanism trajectories",
-        shock_sessions=shock_sessions or None,
-    )
+    # NOTE: S6 deliberately does NOT emit aging_curve_mechanisms.png. The
+    # per-mechanism trajectories (compression / interference / revision /
+    # maintenance) are already carried as data in aging_card.json's
+    # `mechanism_metrics` block, so the extra PNG is redundant. The headline
+    # aging_curve.png (recall_compression + task_accuracy) is the only plot.
 
     return stats
 
@@ -1048,7 +840,7 @@ def _run_s6(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
 # ------------------------------------------------------------------ Self-planning runner
 
 def _run_self_planning(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
-                       n_cycles: int, oracle_mode: bool = False, oracle_retrieval: bool = False,
+                       n_cycles: int,
                        agent_class=None,
                        generated: bool = False, gen_sessions: int = 0) -> dict:
     """Execute a self-planning scenario variant."""
@@ -1094,7 +886,6 @@ def _run_self_planning(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
             llm=llm,
             tracer=tracer,
             sut_id=sut_cfg["sut_id"],
-            oracle_mode=oracle_mode,
             agent_class=agent_class or __import__("agingbench.core.agent", fromlist=["ReferenceAgent"]).ReferenceAgent,
             generated_data=generated_data,
         )
@@ -1146,7 +937,7 @@ def _run_self_planning(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
 
 # ------------------------------------------------------------------ Dynamic runner
 
-def _run_dynamic(runner_cls, sut_cfg, scenario_cfg, output_dir, n_sessions, oracle=False, **kwargs):
+def _run_dynamic(runner_cls, sut_cfg, scenario_cfg, output_dir, n_sessions, **kwargs):
     """Generic runner dispatch for manifest-declared runner classes."""
     from agingbench.core.llm import load_llm
     from agingbench.core.memory.base import build_memory_policy
@@ -1165,7 +956,6 @@ def _run_dynamic(runner_cls, sut_cfg, scenario_cfg, output_dir, n_sessions, orac
         memory_policy=memory,
         tracer=tracer,
         sut_id=sut_cfg.get("sut_id", "unknown"),
-        oracle_mode=oracle,
     )
     result = runner.run(n_sessions=n_sessions, seed=sut_cfg.get("seed", 42))
     tracer.close()
@@ -1185,9 +975,7 @@ def _run_dynamic(runner_cls, sut_cfg, scenario_cfg, output_dir, n_sessions, orac
 # ------------------------------------------------------------------ S5 runner
 
 def _run_s5(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
-            n_cycles: int, oracle_mode: bool = False, oracle_retrieval: bool = False,
-            oracle_store: bool = False, incontext_ceiling: bool = False,
-            ceiling_max_tokens: int = 100_000,
+            n_cycles: int,
             agent_class=None,
             generated: bool = False, gen_sessions: int = 0) -> dict:
     """Execute S5 Self-Planning Notebook and return metrics dict.
@@ -1209,7 +997,7 @@ def _run_s5(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
     gen_n = gen_sessions if gen_sessions > 0 else n_sessions
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    workspace_dir = str(output_dir / "workspace")
+    workspace_dir = scenario_cfg.get("workspace_dir") or str(output_dir / "workspace")
 
     adapter_cfg = sut_cfg.get("adapter", {})
     adapter_type = adapter_cfg.get("type", "react")
@@ -1272,7 +1060,7 @@ def _run_s5(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
             sut_id=sut_cfg["sut_id"],
             session_length=scenario_cfg.get("session_length", 10),
             generated_data=generated_data,
-            reset_history=True,
+            reset_history=scenario_cfg.get("reset_history", True),
             maintenance_events=maintenance_events,
         )
         result = runner.run(n_sessions=n_sessions, seed=sut_cfg.get("seed", 42))
@@ -1338,25 +1126,14 @@ def _run_s5(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
         shock_sessions=shock_sessions or None,
     )
 
-    # Mechanism-coverage plot (Table 2: compression + interference + revision,
-    # plus maintenance via shock_sessions markers when maintenance_events active)
-    _emit_mechanism_aging_plot(
-        primary_curve=result.primary_curve,
-        dep_metrics=stats.get("dependency_metrics") or {},
-        output_dir=output_dir,
-        sut_id=sut_cfg["sut_id"],
-        scenario="s5_self_planning",
-        title=f"{title_s7} — mechanism trajectories",
-        shock_sessions=shock_sessions or None,
-    )
+    # NOTE: per-mechanism trajectories are not plotted; they live as data in
+    # aging_card.json's mechanism_metrics (and dependency_metrics.json).
 
     return stats
 
 
 def _run_s7(sut_cfg, scenario_cfg, output_dir, n_cycles, *,
-                oracle_mode=False, oracle_retrieval=False, self_plan=False,
-                oracle_store=False, incontext_ceiling=False,
-                ceiling_max_tokens=100_000,
+                self_plan=False,
                 agent_class=None, generated=False, gen_sessions=0, **kwargs):
     """S7+ dispatch: Tier-2 adapter on the scripted research-notes coding task."""
     import json as _json
@@ -1487,7 +1264,7 @@ def _run_s7(sut_cfg, scenario_cfg, output_dir, n_cycles, *,
 
 
 def _run_s8(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
-            n_cycles: int, *, oracle_mode: bool = False,
+            n_cycles: int, *,
             agent_class=None, generated: bool = False, gen_sessions: int = 0) -> dict:
     """S8 SWE-bench-Aging dispatcher.
 

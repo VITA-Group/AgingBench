@@ -2,16 +2,18 @@
 agingbench/runner/s2_runner.py — S2 ScenarioRunner.
 
 Implements the S2 session state machine for the Personal Finance & Lifestyle
-Assistant scenario.  Measures G2 metrics: CVR(t) and tool_usage_shift(t).
+Assistant scenario. Mechanisms covered: Compression + Revision (see the
+scenario README for the full metric stack). Headline aging signal:
+constraint_precision(t).
 
 Session loop
 ------------
 For each session 0..9:
-  1. Read M_t (or profile_text if session 0 / no_memory / oracle)
+  1. Read M_t (or profile_text if session 0 / no_memory)
   2. Apply any constraint updates scheduled for this session
   3. Run 5 lifestyle tasks via ReferenceAgent (ReAct with check_constraints tool)
   4. Run 10 held-out eval probes against agent (read-only, does NOT modify M_t)
-  5. Score CVR(t) and tool_usage_shift(t)
+  5. Score CVR(t) and constraint_precision(t); plus lag_recall and compounding
   6. Build session interaction history and write to memory: M_{t+1} = U(M_t, H_t)
 """
 
@@ -27,7 +29,6 @@ from .base import BaseRunner, RunResult
 from .trace import TraceLogger
 from ..metrics.aging import AgingCurve, compute_half_life, compute_decay_slope
 from ..core.memory.base import MemoryPolicy
-from ..core.memory.eval_proxy import EvalTextMemoryProxy
 from ..core.memory.append_only import AppendOnlyPolicy
 from ..core.agent import AgentInterface, ReferenceAgent
 from ..core.tools import ToolSpec, ToolRegistry
@@ -45,7 +46,6 @@ from ..scenarios.s2_lifestyle_assistant.validator import (
     compute_lag_recall,
     compute_compounding_score,
     compute_compounding_fresh_score,
-    extract_tool_counts,
 )
 
 
@@ -99,7 +99,7 @@ class S2Runner(BaseRunner):
     Session 0:
       memory = profile_text (initial user profile)
       run tasks via agent → interaction history
-      run eval probes → CVR(0), tool_usage_shift(0)
+      run eval probes → CVR(0), constraint_precision(0)
       memory_policy.write(profile_text + interaction history)
 
     Sessions 1..9:
@@ -107,7 +107,7 @@ class S2Runner(BaseRunner):
       [summarize/append]  : memory = memory_policy.read()
       if session has constraint update: inject update into task flow
       run tasks via agent → interaction history
-      run eval probes → CVR(t), tool_usage_shift(t)
+      run eval probes → CVR(t), constraint_precision(t)
       memory_policy.write(memory + interaction history)
     """
 
@@ -119,36 +119,18 @@ class S2Runner(BaseRunner):
         llm,
         tracer: TraceLogger,
         sut_id: str = "unknown",
-        oracle_mode: bool = False,
         self_plan: bool = False,
         agent_class: type[AgentInterface] = ReferenceAgent,
         generated_data: dict | None = None,
-        oracle_retrieval: bool = False,
-        oracle_store: bool = False,
-        incontext_ceiling: bool = False,
-        ceiling_max_tokens: int = 100_000,
         tool_kind: str = "read",
         interaction_format: str = "with_tool_findings",
     ):
-        # --- Attribution mode handling (C1 / C2 / C3 / C4) --------------
-        # Back-compat: legacy `oracle_mode=True` is aliased to oracle_store.
-        # See §5.2 Table 1 in the paper for the formal definitions.
-        if oracle_mode and not oracle_store:
-            # Deprecation: oracle_mode was historically implemented as a gold-
-            # text injection equivalent to oracle_retrieval. It is now aliased
-            # to oracle_store (proper C3: AppendOnly over raw session outputs).
-            oracle_store = True
         self.memory_policy = memory_policy
         self.llm = llm
         self.tracer = tracer
         if self.llm is not None:
             self.llm.tracer = self.tracer
         self.sut_id = sut_id
-        self.oracle_mode = oracle_mode  # retained for trace logs / backward compat
-        self.oracle_retrieval = oracle_retrieval   # C2
-        self.oracle_store = oracle_store           # C3
-        self.incontext_ceiling = incontext_ceiling # C4
-        self.ceiling_max_tokens = ceiling_max_tokens
         self.agent_class = agent_class
         self.self_plan = self_plan
         self.tool_kind = tool_kind
@@ -157,13 +139,6 @@ class S2Runner(BaseRunner):
                 f"interaction_format must be 'thin' or 'with_tool_findings', got {interaction_format!r}"
             )
         self.interaction_format = interaction_format
-
-        # C3 state: runner-owned AppendOnly store for the oracle_store path.
-        # Instantiated lazily on first use so we don't spin up embeddings
-        # under C1/C2/C4.
-        self._c3_store: Optional[Any] = None
-        # C4 state: raw session outputs accumulated in memory (no policy).
-        self._c4_raw_sessions: list[str] = []
 
         # Load scenario data (from generator or curated files)
         if generated_data:
@@ -214,113 +189,15 @@ class S2Runner(BaseRunner):
         # don't read it, so prior results reproduce bit-identically.
         self._raw_session_histories: list[str] = []
 
-    def _build_gold_text(self, up_to_session: int) -> str:
-        """Build gold reference text for oracle_retrieval mode.
-
-        The agent wrote memory normally (lossy/compressed), but at read time
-        we inject gold facts instead. This isolates retrieval failures from
-        write failures: if the agent still fails with perfect retrieval, the
-        bottleneck is utilization; if it recovers, the bottleneck was write-
-        time compression.
-
-        Gold text for S2 contains: current profile (with all applied updates),
-        every session fact introduced in sessions 0..up_to_session-1, and
-        every constraint update up to this session.
-        """
-        lines = ["=== GOLD REFERENCE (oracle retrieval) ==="]
-        # Current effective profile (with constraint updates applied)
-        lines.append(self._current_profile_text)
-        lines.append("")
-        # Session facts from prior sessions (the canonical values)
-        lines.append("--- Session facts ---")
-        for fact in self.session_facts:
-            if fact.get("session", 999) < up_to_session:
-                text = fact.get("content") or fact.get("fact") or fact.get("text", "")
-                if text:
-                    lines.append(f"Session {fact['session']}: {text}")
-        # Constraint update history
-        lines.append("")
-        lines.append("--- Constraint update history ---")
-        for u in self.constraint_updates:
-            if u.get("session", 999) < up_to_session:
-                lines.append(
-                    f"Session {u['session']}: constraint {u['constraint_id']} "
-                    f"{u.get('type','updated')} → {u.get('new_rule','')}"
-                )
-        return "\n".join(lines)
-
-    # ---------- C3: oracle store (raw-stored, top-k retrieved) ----------
-    def _get_c3_store(self) -> AppendOnlyPolicy:
-        """Lazy-instantiated runner-owned AppendOnly for oracle_store (C3).
-
-        Per §5.2: C3 isolates write-time loss by replacing the SUT's compaction
-        with a lossless verbatim store. Retrieval is standardized to top-5
-        cosine similarity (AppendOnlyPolicy default) so C3 results are
-        comparable across SUTs with different configured memory policies.
-        """
-        if self._c3_store is None:
-            self._c3_store = AppendOnlyPolicy(
-                db_path=":memory:",
-                embedding_model="all-MiniLM-L6-v2",
-                top_k=5,
-                max_input_tokens=200_000,
-            )
-            # Seed with the profile text so the agent has its baseline profile
-            # even under the raw-store condition (parallels C1 where profile
-            # is written into the memory_policy at session 0).
-            self._c3_store.write(self._current_profile_text)
-        return self._c3_store
-
-    def _read_c3(self, query: Optional[str] = None) -> str:
-        """Read from the runner-owned C3 AppendOnly store with a clear marker."""
-        raw = self._get_c3_store().read(query=query)
-        return f"=== ORACLE STORE (C3, raw-stored + top-k cosine) ===\n{raw}"
-
-    def _write_c3(self, raw_session_output: str) -> None:
-        """Write the raw (uncompressed) session output into the C3 store."""
-        self._get_c3_store().write(raw_session_output)
-
-    # ---------- C4: in-context ceiling (no harness) ----------
-    def _append_c4(self, raw_session_output: str) -> None:
-        """Accumulate the raw session output for the in-context ceiling path."""
-        self._c4_raw_sessions.append(raw_session_output)
-
-    def _read_c4(self) -> str:
-        """Concatenate all accumulated sessions, truncate head to fit ceiling.
-
-        Per §5.2: C4 bypasses the memory harness entirely. Truncation drops the
-        oldest sessions first and prefixes a marker; the truncation event is
-        logged to the trace (caller responsibility) so long-horizon runs are
-        visibly affected by the ceiling budget.
-        """
-        if not self._c4_raw_sessions:
-            return f"=== IN-CONTEXT CEILING (C4) ===\n{self._current_profile_text}"
-        joined_sessions = [
-            f"### Session {i} ###\n{text}"
-            for i, text in enumerate(self._c4_raw_sessions)
-        ]
-        body = self._current_profile_text + "\n\n" + "\n\n".join(joined_sessions)
-        # Approx 1 token ≈ 4 chars.
-        max_chars = self.ceiling_max_tokens * 4
-        if len(body) <= max_chars:
-            return f"=== IN-CONTEXT CEILING (C4) ===\n{body}"
-        # Truncate head (oldest sessions first), keep profile + most recent tail.
-        tail = body[-max_chars:]
-        n_dropped = len(self._c4_raw_sessions)
-        # Estimate how many sessions survived by rough proportion.
-        return (
-            f"=== IN-CONTEXT CEILING (C4, head-truncated to "
-            f"{self.ceiling_max_tokens} tokens from {n_dropped} sessions) ===\n"
-            f"[... older sessions truncated to fit ceiling budget ...]\n{tail}"
-        )
-
     def run(self, n_sessions: int = 10, seed: int = 42) -> dict:
         """
         Run the S2 loop for n_sessions.
 
         Returns dict with:
-          - cvr_curve: AgingCurve for CVR(t)
-          - tus_curve: AgingCurve for tool_usage_shift(t)
+          - precision_curve: AgingCurve for constraint_precision(t) (headline)
+          - cvr_curve: AgingCurve for constraint_adherence(t) = 1 - CVR(t)
+          - lag_recall_curve: AgingCurve for lag_recall(t)
+          - compounding_curve: AgingCurve for compounding_accuracy(t)
           - session_results: per-session scoring details
         """
         import random as _random
@@ -367,19 +244,11 @@ class S2Runner(BaseRunner):
             )
 
         # Initialize memory with the user profile.
-        # Skip the SUT's memory_policy write under C3 (oracle_store) and C4
-        # (incontext_ceiling): both paths use runner-owned state instead.
-        _uses_sut_policy = (
-            not is_no_memory
-            and not self.oracle_store
-            and not self.incontext_ceiling
-        )
-        if _uses_sut_policy:
+        if not is_no_memory:
             self.memory_policy.write(self.profile_text, llm=self.llm)
 
         exposures: list[int] = []
         cvr_scores: list[float] = []
-        tus_scores: list[float] = []
         precision_scores: list[float] = []
         lag_recall_scores: list[float] = []
         compounding_scores: list[float] = []
@@ -390,15 +259,6 @@ class S2Runner(BaseRunner):
         # probe every session and blow up wall time O(n^2).
         compounding_outputs_persist: dict[str, str] = {}
         session_results: list[dict] = []
-        baseline_tool_counts: Optional[dict[str, int]] = None
-
-        # ---- Full trajectory log (content-level, separate from trace) ----
-        trajectory_path = self.tracer.path.parent / "trajectory.jsonl"
-        traj_f = open(trajectory_path, "w", buffering=1)
-        def _log_traj(event_type: str, **fields):
-            import json as _json
-            record = {"event": event_type, "timestamp": time.time(), **fields}
-            traj_f.write(_json.dumps(record, ensure_ascii=False) + "\n")
 
         run_span = self.tracer.log(
             "run_start",
@@ -408,7 +268,6 @@ class S2Runner(BaseRunner):
             seed=seed,
             n_sessions=n_sessions,
             policy=type(self.memory_policy).__name__,
-            oracle_mode=self.oracle_mode,
             self_plan=self.self_plan,
             **{"gen_ai.request.model": self._model_id},
         )
@@ -416,7 +275,7 @@ class S2Runner(BaseRunner):
         actual_sessions = min(n_sessions, len(self.sessions))
         _progress(
             f"starting run: sessions={actual_sessions}, policy={type(self.memory_policy).__name__}, "
-            f"oracle={self.oracle_mode}, self_plan={self.self_plan}"
+            f"self_plan={self.self_plan}"
         )
 
         for session_idx in range(actual_sessions):
@@ -441,20 +300,11 @@ class S2Runner(BaseRunner):
                 session_t0,
             )
 
-            # ---- Determine current memory text (one branch per C_i) ----
-            # C4 (incontext_ceiling): bypass harness entirely; full history.
-            # C3 (oracle_store):      raw-stored + top-k cosine retrieval.
-            # C2 (oracle_retrieval):  compacted W, gold facts injected at R.
-            # C1 (baseline):          SUT memory_policy as configured.
-            # no_memory:              profile-only, no cross-session carry-over.
+            # ---- Determine current memory text ----
+            # no_memory: profile-only, no cross-session carry-over.
+            # baseline:  SUT memory_policy as configured.
             if is_no_memory:
                 memory_text = self._current_profile_text
-            elif self.incontext_ceiling:
-                memory_text = self._read_c4()
-            elif self.oracle_store:
-                memory_text = self._read_c3(query=self._current_profile_text)
-            elif self.oracle_retrieval:
-                memory_text = self._build_gold_text(session_idx)
             else:
                 memory_text = self.memory_policy.read() or self._current_profile_text
 
@@ -479,30 +329,15 @@ class S2Runner(BaseRunner):
             def _memory_reader():
                 if is_no_memory:
                     return self._current_profile_text
-                if self.incontext_ceiling:
-                    return self._read_c4()
-                if self.oracle_store:
-                    return self._read_c3(query=self._current_profile_text)
-                if self.oracle_retrieval:
-                    return self._build_gold_text(session_idx)
                 return self.memory_policy.read() or self._current_profile_text
 
             tool_registry = _build_tool_registry(_memory_reader, tool_kind=self.tool_kind)
-            # C1-C4 control: the agent's system prompt must show the SAME
-            # mode-dependent memory the tool/runner uses (memory_text), not the
-            # raw SUT policy — otherwise oracle conditions leak the compacted
-            # store into the system prompt. In C1 memory_text == policy.read(),
-            # so this is a no-op for the baseline; only C2/C3/C4 are corrected.
             agent = self.agent_class(
                 llm=self.llm,
-                memory_policy=EvalTextMemoryProxy(self.memory_policy, memory_text),
+                memory_policy=self.memory_policy,
                 tools=tool_registry,
                 max_turns=8,
             )
-
-            # ---- Log memory state before tasks ----
-            _log_traj("memory_snapshot", session=session_idx, phase="before_task",
-                      memory_text=memory_text, memory_tokens=len(memory_text.split()))
 
             # ---- Run session tasks ----
             tasks = session_data["tasks"]
@@ -562,11 +397,6 @@ class S2Runner(BaseRunner):
                             "eval_keywords": task.get("eval_keywords", []),
                         })
 
-                    _log_traj("agent_output", session=session_idx, phase="task",
-                              task_id=task["id"],
-                              prompt=task_text[:500], output=result["output"],
-                              turns=result.get("turns", 0),
-                              tool_calls=result.get("tool_calls", []))
                     # Collect trace events for tool usage tracking
                     for tc in result.get("tool_calls", []):
                         all_trace_events.append({
@@ -601,11 +431,6 @@ class S2Runner(BaseRunner):
             for probe_i, probe in enumerate(self.eval_probes, start=1):
                 probe_result = agent.run_session(probe["text"], session_id=session_idx)
                 probe_outputs.append(probe_result["output"])
-                _log_traj("eval_probe", session=session_idx,
-                          probe_id=probe.get("id", ""),
-                          question=probe["text"][:300],
-                          agent_answer=probe_result["output"][:300],
-                          turns=probe_result.get("turns", 0))
                 # Track tool calls from eval probes too
                 for tc in probe_result.get("tool_calls", []):
                     all_trace_events.append({
@@ -703,27 +528,18 @@ class S2Runner(BaseRunner):
                 compounding_fresh_result["compounding_fresh_accuracy"]
             )
 
-            # ---- Score session (original CVR + TUS) ----
-            session_tool_counts = extract_tool_counts(all_trace_events)
-            if session_idx == 0:
-                baseline_tool_counts = session_tool_counts
-
+            # ---- Score session (CVR + precision) ----
             session_score = score_session(
                 agent_outputs=probe_outputs,
                 probes=self.eval_probes,
-                trace_events=all_trace_events,
-                baseline_tool_counts=baseline_tool_counts,
                 session_idx=session_idx,
             )
 
             cvr = session_score["cvr"]
-            tus = session_score["tool_usage_shift"]
             cp = session_score.get("constraint_precision", 1.0)
-            cp_avg = session_score.get("precision_score_avg", 1.0)
 
             exposures.append(session_idx)
             cvr_scores.append(cvr)
-            tus_scores.append(tus)
             precision_scores.append(cp)
 
             # Concatenate all task outputs (truncated) so dependency_scorer's
@@ -746,20 +562,13 @@ class S2Runner(BaseRunner):
                 "session": session_idx,
                 "cvr": cvr,
                 "constraint_precision": cp,
-                "precision_score_avg": cp_avg,
-                "tool_usage_shift": tus,
                 "n_violations": session_score["n_violations"],
                 "violated_constraints": session_score["violated_constraints"],
                 "precision_per_probe": session_score.get("precision_per_probe", []),
-                "tool_counts": session_tool_counts,
                 "lag_recall": lag_result["overall_recall"],
                 "lag_by_distance": lag_result["recall_by_lag"],
                 "compounding_accuracy": compounding_result["compounding_accuracy"],
-                "compounding_n_passed": compounding_result["n_passed"],
-                "compounding_n_available": compounding_result["n_available"],
                 "compounding_fresh_accuracy": compounding_fresh_result["compounding_fresh_accuracy"],
-                "compounding_fresh_n": compounding_fresh_result["n_fresh"],
-                "compounding_fresh_n_passed": compounding_fresh_result["n_fresh_passed"],
                 # Revision-aging scoring inputs (consumed by dependency_scorer)
                 "accumulator_probes": accumulator_probe_results,
                 "task_outputs_text": task_outputs_text,
@@ -775,23 +584,13 @@ class S2Runner(BaseRunner):
                 parent_span_id=session_span,
                 session=session_idx,
                 cvr=cvr,
-                tool_usage_shift=tus,
                 lag_recall=lag_result["overall_recall"],
                 lag_by_distance=lag_result["recall_by_lag"],
                 compounding_accuracy=compounding_result["compounding_accuracy"],
                 n_violations=session_score["n_violations"],
                 violated_constraints=session_score["violated_constraints"],
-                tool_counts=session_tool_counts,
                 t_writes=getattr(self.memory_policy, "n_writes", 0),
             )
-
-            _log_traj("constraint_survival", session=session_idx,
-                      cvr=cvr, constraint_precision=cp,
-                      n_violations=session_score["n_violations"],
-                      violated_constraints=session_score["violated_constraints"],
-                      tool_counts=session_tool_counts,
-                      lag_recall=lag_result["overall_recall"],
-                      compounding_accuracy=compounding_result["compounding_accuracy"])
 
             violated_str = (
                 f"  violated={session_score['violated_constraints']}"
@@ -807,7 +606,6 @@ class S2Runner(BaseRunner):
             print(
                 f"  [S2] Session {session_idx:2d}  CVR={cvr:.3f}  "
                 f"precision={cp:.3f}  "
-                f"TUS={tus:.4f}  "
                 f"({session_score['n_violations']}/{session_score['n_probes']} probes)"
                 f"{violated_str}{lag_str}{comp_str}"
             )
@@ -818,14 +616,6 @@ class S2Runner(BaseRunner):
             )
 
             # ---- Write interaction history to memory ----
-            # Routing across attribution modes:
-            #   C1 baseline & C2 oracle_retrieval: SUT's memory_policy gets
-            #     the compacted interaction history (C2 still writes because
-            #     the test is: "did the write stage matter if read is oracle?").
-            #   C3 oracle_store: runner-owned AppendOnly gets the raw verbatim
-            #     interaction history. SUT's memory_policy is not consulted.
-            #   C4 incontext_ceiling: accumulate raw interaction history into
-            #     the runner's session list; no memory_policy involvement.
             if not is_no_memory:
                 interaction_history = self._build_interaction_history(
                     session_idx, tasks, task_outputs, update,
@@ -834,11 +624,7 @@ class S2Runner(BaseRunner):
                 # Preserve raw history for retroactive-recompact hooks (E2 A4c).
                 # No-op for any run that doesn't register that hook.
                 self._raw_session_histories.append(interaction_history)
-            if self.incontext_ceiling:
-                self._append_c4(interaction_history)
-            elif self.oracle_store:
-                self._write_c3(interaction_history)
-            elif _uses_sut_policy:
+
                 # Policy-aware write. AppendOnly is episodic — one session =
                 # one entry — so we pass just the new interaction_history.
                 # Summarize-style policies (and anything else) get "current
@@ -865,14 +651,6 @@ class S2Runner(BaseRunner):
                 out_tok = getattr(self.memory_policy, "last_output_tokens", 0)
                 if session_results:
                     session_results[-1]["memory_write_tokens"] = out_tok
-
-                _log_traj("compression", session=session_idx,
-                          input_text=interaction_history,
-                          output_text=compressed or "",
-                          input_tokens=in_tok, output_tokens=out_tok,
-                          compression_ratio=round(
-                              len(interaction_history.split()) / max(len((compressed or "").split()), 1), 2
-                          ))
 
                 self.tracer.log_llm_call(
                     parent_span_id=session_span,
@@ -904,7 +682,6 @@ class S2Runner(BaseRunner):
                 parent_span_id=session_span,
                 session=session_idx,
                 cvr=cvr,
-                tool_usage_shift=tus,
             )
             _progress(f"session {session_idx + 1}/{actual_sessions} end", session_t0)
 
@@ -916,17 +693,6 @@ class S2Runner(BaseRunner):
         cvr_curve = AgingCurve(
             exposures=exposures,
             scores=adherence_scores,
-            scenario=self.SCENARIO_ID,
-            sut_id=self.sut_id,
-        )
-
-        # tool_usage_shift is already a divergence (0 = good), invert for curve
-        # Normalize TUS to [0,1] range: use exp(-tus) as the "stability" score
-        import math
-        tus_stability = [math.exp(-t) for t in tus_scores]
-        tus_curve = AgingCurve(
-            exposures=exposures,
-            scores=tus_stability,
             scenario=self.SCENARIO_ID,
             sut_id=self.sut_id,
         )
@@ -961,7 +727,6 @@ class S2Runner(BaseRunner):
             cvr_curve=list(zip(exposures, cvr_scores)),
             adherence_curve=list(zip(exposures, adherence_scores)),
             precision_curve=list(zip(exposures, precision_scores)),
-            tus_curve=list(zip(exposures, tus_scores)),
             lag_recall_curve=list(zip(exposures, lag_recall_scores)),
             compounding_curve=list(zip(exposures, compounding_scores)),
             half_life=compute_half_life(precision_curve),
@@ -970,48 +735,18 @@ class S2Runner(BaseRunner):
             m_final=precision_scores[-1] if precision_scores else None,
         )
 
-        # Close trajectory log
-        _log_traj("run_end", n_sessions=actual_sessions,
-                  m_final=precision_scores[-1] if precision_scores else 0)
-        traj_f.close()
         _progress(
             f"run complete: sessions={actual_sessions}, "
             f"m_final={precision_scores[-1] if precision_scores else 0:.3f}"
         )
 
-        # --- attribution provenance stamp (see flag_attribution_schema_v1.py) ---
-        if self.incontext_ceiling:
-            _attr_mode = "c4_incontext_ceiling"
-        elif self.oracle_store:
-            _attr_mode = "c3_oracle_store"
-        elif self.oracle_retrieval:
-            _attr_mode = "c2_oracle_retrieval"
-        else:
-            _attr_mode = "c1_baseline"
-
         return {
             "cvr_curve": cvr_curve,
             "precision_curve": precision_curve,
-            "tus_curve": tus_curve,
             "lag_recall_curve": lag_recall_curve,
             "compounding_curve": compounding_curve,
-            "cvr_raw": list(zip(exposures, cvr_scores)),
-            "adherence_raw": list(zip(exposures, adherence_scores)),
-            "precision_raw": list(zip(exposures, precision_scores)),
-            "tus_raw": list(zip(exposures, tus_scores)),
-            "lag_recall_raw": list(zip(exposures, lag_recall_scores)),
-            "compounding_raw": list(zip(exposures, compounding_scores)),
             "compounding_fresh_raw": list(zip(exposures, compounding_fresh_scores)),
             "session_results": session_results,
-            # Attribution-schema metadata propagated into metrics.json by the
-            # CLI runner. v2_clean marks runs produced by the refactored
-            # C1/C2/C3/C4 code path (2026-04-20 onward); v1_conflated runs
-            # are flagged separately by flag_attribution_schema_v1.py.
-            "attribution_schema": "v2_clean",
-            "attribution_mode": _attr_mode,
-            "ceiling_max_tokens": (
-                self.ceiling_max_tokens if self.incontext_ceiling else None
-            ),
         }
 
     def _apply_constraint_update(self, update: dict) -> None:

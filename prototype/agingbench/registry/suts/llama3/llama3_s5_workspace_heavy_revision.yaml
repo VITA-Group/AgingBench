@@ -1,0 +1,26 @@
+sut_id: llama3_s5_workspace_heavy_revision
+description: >
+  S5 isolation arm — ReactFileAdapter (workspace files persist across
+  sessions, i.e. append-only by design) + heavy revision pressure.
+  Tests revision aging on a Tier-2 self-planning scenario where the
+  agent manages its own workspace files. With workspace preserved and
+  update_rate=1.0, version_aware_ufr should isolate revision-discrimination
+  failures from compression (since no compression happens).
+
+model:
+  provider: local_hf
+  model_id: NousResearch/Meta-Llama-3.1-8B-Instruct
+  max_new_tokens: 700
+
+adapter:
+  type: react
+  max_turns: 8
+
+pressure:
+  preset: heavy
+  update_rate: 1.0
+  warmup_sessions: 0
+  dependency_density: 0.3
+  n_confusable_pairs: 2
+
+seed: 42

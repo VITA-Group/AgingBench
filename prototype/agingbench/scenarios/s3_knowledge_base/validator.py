@@ -191,7 +191,7 @@ def compute_fidelity_detailed(
     at_session: Optional[int] = None,
 ) -> dict:
     """
-    Detailed fidelity: per-decision survival and by category.
+    Detailed fidelity: per-decision survival score.
     Uses hybrid keyword + semantic scoring for partial credit.
 
     When ``at_session`` is provided, decisions with a ``keywords_history`` use
@@ -206,7 +206,6 @@ def compute_fidelity_detailed(
 
     text = memory_text.lower()
     per_decision = {}
-    by_category = {}
 
     for d in gold_decisions:
         active = _active_keywords(d, at_session)
@@ -214,22 +213,12 @@ def compute_fidelity_detailed(
             score = score_fact_survival(memory_text, d["fact"], active)
         else:
             score = 1.0 if any(_present(kw, text) for kw in active) else 0.0
-
         per_decision[d["id"]] = score
-        cat = d.get("category", "other")
-        if cat not in by_category:
-            by_category[cat] = {"score_sum": 0.0, "total": 0}
-        by_category[cat]["total"] += 1
-        by_category[cat]["score_sum"] += score
 
     fidelity = sum(per_decision.values()) / len(per_decision) if per_decision else 1.0
-    category_fidelity = {
-        cat: v["score_sum"] / v["total"] for cat, v in by_category.items()
-    }
     return {
         "fidelity": fidelity,
         "per_decision": per_decision,
-        "category_fidelity": category_fidelity,
     }
 
 
@@ -587,56 +576,3 @@ def score_revision_aging(
     }
 
 
-def score_session(
-    memory_text: str,
-    query_responses: list[str],
-    queries: list[dict],
-    gold_decisions_so_far: list[dict],
-    at_session: Optional[int] = None,
-) -> dict:
-    """
-    Score one session: query accuracy + fidelity + bloat + contradiction +
-    revision-aging trident.
-
-    ``at_session`` is required for the time-versioned signals (fidelity's
-    ``_active_keywords`` selector and the revision-aging trident's
-    partition). Pass the integer session index. For back-compat with
-    callers that don't yet pass it, the time-versioned signals fall back
-    to original-keyword scoring and the revision_aging block reports
-    ``coverage_verdict="no_revisions"``.
-    """
-    query_scores, query_acc = score_queries(query_responses, queries)
-    fidelity_detail = compute_fidelity_detailed(
-        memory_text, gold_decisions_so_far, at_session=at_session
-    )
-    contradiction_rate = compute_contradiction_rate(memory_text, gold_decisions_so_far)
-    contradiction_count = compute_contradiction_count(memory_text, gold_decisions_so_far)
-    # Revision-aging trident — None coverage when no at_session passed.
-    if at_session is not None:
-        revision_aging = score_revision_aging(
-            memory_text, gold_decisions_so_far, at_session=at_session
-        )
-    else:
-        revision_aging = {
-            "revision_fidelity_excess": None,
-            "revision_fidelity_excess_count": None,
-            "stale_residue_rate": None,
-            "stale_residue_count": 0,
-            "n_revised": 0,
-            "n_unrevised": len(gold_decisions_so_far),
-            "coverage_verdict": "no_revisions",
-        }
-
-    # Memory bloat: simple character count (token count deferred to runner)
-    bloat = len(memory_text)
-
-    return {
-        "query_accuracy": query_acc,
-        "query_scores": query_scores,
-        "fidelity": fidelity_detail["fidelity"],
-        "category_fidelity": fidelity_detail["category_fidelity"],
-        "contradiction_rate": contradiction_rate,
-        "contradiction_count": contradiction_count,
-        "revision_aging": revision_aging,
-        "memory_bloat_chars": bloat,
-    }

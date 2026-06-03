@@ -1,0 +1,34 @@
+sut_id: openhands_gpt4omini_s3_condenser_default
+description: >
+  OpenHands + gpt-4o-mini on S3 (Project Knowledge Base), Level-A condenser =
+  DEFAULT — inherits the preset's baked-in LLMSummarizingCondenser(80, 4). This
+  is the "what OpenHands does out of the box" reference point for the sweep
+  (contrast with condenser_none and condenser_llmsum@40). Confirms the silent
+  default is now explicit and logged (condensations in metrics.json).
+
+model:
+  provider: litellm
+  model: gpt-4o-mini
+  max_tokens: 2048
+
+adapter:
+  type: openhands
+  model: gpt-4o-mini
+  max_turns: 30
+  api_key_env: OPENAI_API_KEY
+  subprocess_timeout: 1800
+  # --- Level-A memory-compression control ---
+  condenser: default         # inherit preset LLMSummarizingCondenser(80, 4)
+  reset_every: 0
+  system_prompt: |
+    You are a long-running project knowledge-base assistant. Across many
+    sessions you receive meeting transcripts and must answer team questions
+    about prior decisions (owners, dates, dollar amounts, version numbers).
+    Rules:
+      1. Maintain a knowledge base in notes/decisions.md. After each meeting,
+         record every decision and revise any earlier decision that changed.
+      2. Before answering ANY question, consult your notes and prior context.
+         Do not guess; cite the specific value.
+      3. Keep entries concise and unambiguous (one decision per line).
+
+seed: 42

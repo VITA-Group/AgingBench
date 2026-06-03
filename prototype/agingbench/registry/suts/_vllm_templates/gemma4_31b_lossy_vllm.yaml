@@ -1,0 +1,20 @@
+sut_id: gemma4_31b_lossy_vllm
+description: "Gemma-4-31B-IT, lossy summarize_store — served by vLLM. NO vLLM reasoning parser for its <|channel> format; adapter falls back to model_config channel-strip. RISKIEST — confirm the server starts first."
+model:
+  provider: vllm
+  model: google/gemma-4-31b-it
+  api_base: http://localhost:8000/v1
+  max_tokens: 3000
+  temperature: 1.0          # Gemma-4 vendor-recommended sampling
+  top_p: 0.95
+  top_k: 64
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+  word_budget: 300
+seed: 42
+# Launch (NO --reasoning-parser; verify your vLLM build supports `gemma4`):
+#   vllm serve google/gemma-4-31b-it --port 8000 \
+#     --served-model-name google/gemma-4-31b-it --dtype bfloat16
+# If thinking leaks into content, VLLMAdapter strips it via model_config GEMMA4
+# output_strip_patterns and captures it as thought (client-side).

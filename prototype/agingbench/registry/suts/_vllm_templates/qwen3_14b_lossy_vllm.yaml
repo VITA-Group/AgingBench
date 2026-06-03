@@ -1,0 +1,16 @@
+sut_id: qwen3_14b_lossy_vllm
+description: "Qwen3-14B, lossy summarize_store — served by vLLM. Thinking OFF by default."
+model:
+  provider: vllm
+  model: Qwen/Qwen3-14B
+  api_base: http://localhost:8000/v1
+  max_tokens: 5000
+  temperature: 0.0
+  enable_thinking: false
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+  word_budget: 300
+seed: 42
+# Launch:  vllm serve Qwen/Qwen3-14B --port 8000 --served-model-name Qwen/Qwen3-14B \
+#            --enable-reasoning --reasoning-parser qwen3

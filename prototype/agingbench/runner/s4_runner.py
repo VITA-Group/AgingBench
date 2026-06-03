@@ -67,8 +67,6 @@ from .trace import TraceLogger
 from ..metrics.aging import AgingCurve
 from ..metrics.g4_metrics import compute_shock, compute_recovery
 from ..core.memory.base import MemoryPolicy
-from ..core.memory.eval_proxy import EvalTextMemoryProxy
-from ..core.memory.append_only import AppendOnlyPolicy
 from ..core.agent import AgentInterface, ReferenceAgent
 from ..core.tools import ToolRegistry, ToolSpec
 
@@ -82,35 +80,18 @@ class S4Runner(BaseRunner):
         llm,
         tracer: TraceLogger,
         sut_id: str = "unknown",
-        oracle_mode: bool = False,
         life_event_session: Optional[int] = None,
         agent_class: type[AgentInterface] = ReferenceAgent,
         generated_data: dict | None = None,
-        oracle_retrieval: bool = False,
-        oracle_store: bool = False,
-        incontext_ceiling: bool = False,
-        ceiling_max_tokens: int = 100_000,
     ):
-        # Back-compat: legacy oracle_mode aliased to oracle_store (see §5.2).
-        if oracle_mode and not oracle_store:
-            oracle_store = True
         self.memory_policy = memory_policy
         self.llm = llm
         self.tracer = tracer
         if self.llm is not None:
             self.llm.tracer = self.tracer
         self.sut_id = sut_id
-        self.oracle_mode = oracle_mode
-        self.oracle_retrieval = oracle_retrieval   # C2
-        self.oracle_store = oracle_store           # C3
-        self.incontext_ceiling = incontext_ceiling # C4
-        self.ceiling_max_tokens = ceiling_max_tokens
         self.agent_class = agent_class
         self.life_event_session = life_event_session
-
-        # C3/C4 state (see s2_runner for the semantic).
-        self._c3_store = None
-        self._c4_raw_sessions: list[str] = []
 
         self._model_id = getattr(llm, "model_id", None) or getattr(llm, "model", "unknown")
         self._provider = "local_hf" if hasattr(llm, "tok") else "litellm"
@@ -158,44 +139,6 @@ class S4Runner(BaseRunner):
             else:
                 resolved[sid] = snap
         return resolved
-
-    # ---------- C3: oracle store (raw-stored, top-k retrieved) ----------
-    def _get_c3_store(self) -> AppendOnlyPolicy:
-        """Runner-owned AppendOnly for C3 in S4; see S2Runner._get_c3_store."""
-        if self._c3_store is None:
-            self._c3_store = AppendOnlyPolicy(
-                db_path=":memory:",
-                embedding_model="all-MiniLM-L6-v2",
-                top_k=5,
-                max_input_tokens=200_000,
-            )
-        return self._c3_store
-
-    def _read_c3(self, query: Optional[str] = None) -> str:
-        raw = self._get_c3_store().read(query=query)
-        return f"=== ORACLE STORE (C3, raw-stored + top-k cosine) ===\n{raw}"
-
-    def _write_c3(self, raw_session_output: str) -> None:
-        self._get_c3_store().write(raw_session_output)
-
-    # ---------- C4: in-context ceiling (no harness) ----------
-    def _append_c4(self, raw_session_output: str) -> None:
-        self._c4_raw_sessions.append(raw_session_output)
-
-    def _read_c4(self) -> str:
-        if not self._c4_raw_sessions:
-            return "=== IN-CONTEXT CEILING (C4) ===\n(no prior sessions)"
-        joined = [f"### Sprint {i} ###\n{t}" for i, t in enumerate(self._c4_raw_sessions)]
-        body = "\n\n".join(joined)
-        max_chars = self.ceiling_max_tokens * 4
-        if len(body) <= max_chars:
-            return f"=== IN-CONTEXT CEILING (C4) ===\n{body}"
-        tail = body[-max_chars:]
-        return (
-            f"=== IN-CONTEXT CEILING (C4, head-truncated to "
-            f"{self.ceiling_max_tokens} tokens from {len(self._c4_raw_sessions)} sprints) ===\n"
-            f"[... older sprints truncated to fit ceiling budget ...]\n{tail}"
-        )
 
     def _write_snapshot_to_dir(self, snapshot_files: dict, target_dir: Path) -> None:
         """Write snapshot files to a temporary directory for test execution."""
@@ -386,27 +329,17 @@ class S4Runner(BaseRunner):
         binding_probe_asked: set[str] = set()
         binding_probe_all: list[dict] = []
 
-        # ---- Full trajectory log (content-level, separate from trace) ----
-        trajectory_path = self.tracer.path.parent / "trajectory.jsonl"
-        traj_f = open(trajectory_path, "w", buffering=1)
-        def _log_traj(event_type: str, **fields):
-            import json as _json
-            record = {"event": event_type, "timestamp": time.time(), **fields}
-            traj_f.write(_json.dumps(record, ensure_ascii=False) + "\n")
-
         run_span = self.tracer.log(
             "run_start", parent_span_id=None,
             sut_id=self.sut_id, scenario=self.SCENARIO_ID,
             seed=seed, n_sessions=n_sessions,
             policy=type(self.memory_policy).__name__,
-            oracle_mode=self.oracle_mode,
             life_event_session=self.life_event_session,
         )
 
         actual_sessions = min(n_sessions, len(self.tasks))
         _progress(
-            f"starting run: sessions={actual_sessions}, policy={type(self.memory_policy).__name__}, "
-            f"oracle={self.oracle_mode}"
+            f"starting run: sessions={actual_sessions}, policy={type(self.memory_policy).__name__}"
         )
 
         for t in range(actual_sessions):
@@ -446,12 +379,9 @@ class S4Runner(BaseRunner):
                 for d in due:
                     pending_binding_probes.setdefault(d, []).append(bp)
 
-            # Life event: force memory compaction (only applies to the SUT's
-            # memory_policy under C1; C3/C4 use runner-owned state that isn't
-            # subject to the configured compaction event).
+            # Life event: force memory compaction (applies under the SUT's memory_policy).
             if self.life_event_session is not None and t == self.life_event_session:
-                if (not is_no_memory and not self.oracle_store
-                        and not self.incontext_ceiling and not self.oracle_mode):
+                if not is_no_memory:
                     current = self.memory_policy.read()
                     if len(current) > 500:
                         self.memory_policy.write(
@@ -465,33 +395,9 @@ class S4Runner(BaseRunner):
                     )
                     print(f"  [S4] === LIFE EVENT: memory compaction at session {t} ===")
 
-            # Read memory (one branch per C_i; see §5.2 Table 1).
+            # Read memory: empty under NoMemoryPolicy, compressed via memory_policy otherwise.
             if is_no_memory:
                 memory_text = ""
-            elif self.incontext_ceiling:
-                # C4: full concatenated sprint history, head-truncated.
-                memory_text = self._read_c4()
-            elif self.oracle_store:
-                # C3 oracle-store: runner-owned AppendOnly with raw sprint
-                # outputs; top-k cosine retrieval narrows what the agent sees.
-                memory_text = self._read_c3(query=task.get("task", ""))
-            elif self.oracle_retrieval:
-                # C2 oracle-retrieval: gold design context for THIS sprint
-                # (dependency_context encodes upstream decisions this sprint
-                # depends on — perfect retrieval).
-                dep_ctx = self.tasks[t].get("dependency_context", "")
-                prior_lines = []
-                for prev_t in range(t):
-                    prev = self.tasks[prev_t]
-                    prior_lines.append(
-                        f"Sprint {prev_t}: {prev.get('task','')[:120]}  "
-                        f"[files: {', '.join(prev.get('files_to_modify', []))}]"
-                    )
-                memory_text = (
-                    "=== GOLD DESIGN CONTEXT (oracle retrieval) ===\n"
-                    + "\n".join(prior_lines)
-                    + ("\n\n" + dep_ctx if dep_ctx else "")
-                )
             else:
                 memory_text = self.memory_policy.read()
 
@@ -502,9 +408,6 @@ class S4Runner(BaseRunner):
             )
 
             # Log memory state before sprint
-            _log_traj("memory_snapshot", session=t, phase="before_sprint",
-                      memory_text=memory_text, memory_tokens=len(memory_text.split()) if memory_text else 0)
-
             # Get snapshot (fall back to latest available)
             avail = [s for s in self.snapshots if s <= t]
             snap_key = max(avail) if avail else max(self.snapshots.keys())
@@ -528,18 +431,9 @@ class S4Runner(BaseRunner):
 
             # Build agent with read_file + list_files tools
             tools = self._build_tools(snapshot_files)
-            # C1-C4 control: system-prompt memory must match the mode-dependent
-            # memory_text (also injected into the user context below), not the
-            # raw SUT policy. In C1 memory_text == policy.read() → no-op for the
-            # baseline; C2/C3/C4 are corrected.
-            # NOTE (separate, unfixed confound): the `dep_recall` headline is fed
-            # `dep_context` identically in EVERY condition (see context build
-            # below), so it is largely blind to the MemoryPolicy IV. The clean
-            # signal is `dependency_probe`. This proxy does NOT fix that — it
-            # only closes the dual-memory-channel leak.
             agent = self.agent_class(
                 llm=self.llm,
-                memory_policy=EvalTextMemoryProxy(self.memory_policy, memory_text),
+                memory_policy=self.memory_policy,
                 tools=tools,
                 max_turns=6,
             )
@@ -573,10 +467,6 @@ class S4Runner(BaseRunner):
                 session_t0,
             )
 
-            _log_traj("agent_output", session=t, phase="code_task",
-                      prompt=context[:500], output=agent_output[:1000],
-                      turns=result.get("turns", 0),
-                      tool_calls=result.get("tool_calls", []))
 
             # Score LA strictly from the agent's prediction. We previously
             # union-ed task["files_to_modify"] into the predicted set as a
@@ -606,10 +496,6 @@ class S4Runner(BaseRunner):
                 session_t0,
             )
 
-            _log_traj("test_results", session=t,
-                      tests_before={k: v for k, v in tests_before.items()},
-                      tests_after={k: v for k, v in tests_after.items()},
-                      files_written=sorted(written.keys()) if written else [])
 
             # ----- Stability indicators (NOT aging metrics) -----
             # CFR / FASR / RR are reported as confirmation that the agent's
@@ -657,28 +543,13 @@ class S4Runner(BaseRunner):
                 f"Sprint {t}: {task_text}\n"
                 f"Files modified: {', '.join(sorted(predicted_impact))}\n"
                 f"Tests: {sum(1 for v in tests_after.values() if v == 'pass')}/{len(tests_after)} passing\n"
-                f"Key decisions: {agent_output[:300]}\n"
+                f"Key decisions: {agent_output}\n"
             )
             all_design_notes += design_notes + "\n"
 
-            _log_traj("sprint_scores", session=t,
-                      fasr=fasr, rr=rr, cfr=round(cfr, 4), la=round(la, 4),
-                      task_success=task_success, dep_recall=dep_recall,
-                      predicted_impact=sorted(predicted_impact),
-                      ground_truth_impact=sorted(ground_truth_impact))
 
             out_tok = -1
-            # Write routing across attribution modes (mirrors S2Runner).
-            _uses_sut_policy = (
-                not is_no_memory
-                and not self.oracle_store
-                and not self.incontext_ceiling
-            )
-            if self.incontext_ceiling:
-                self._append_c4(design_notes)
-            elif self.oracle_store:
-                self._write_c3(design_notes)
-            elif _uses_sut_policy:
+            if not is_no_memory:
                 _progress(f"session {t + 1}: memory write start", session_t0)
                 self.memory_policy.write(design_notes, llm=self.llm)
 
@@ -686,13 +557,6 @@ class S4Runner(BaseRunner):
                 in_tok = getattr(self.memory_policy, "last_input_tokens", 0)
                 out_tok = getattr(self.memory_policy, "last_output_tokens", 0)
 
-                _log_traj("compression", session=t,
-                          input_text=design_notes,
-                          output_text=compressed or "",
-                          input_tokens=in_tok, output_tokens=out_tok,
-                          compression_ratio=round(
-                              len(design_notes.split()) / max(len((compressed or "").split()), 1), 2
-                          ))
                 self.tracer.log_llm_call(
                     parent_span_id=sess_span,
                     model=self._model_id, provider=self._provider,
@@ -708,13 +572,9 @@ class S4Runner(BaseRunner):
                 )
 
             # Execute dependency probe if present in generated data.
-            # Skipped for C3/C4 paths that replace memory_policy entirely; the
-            # dep_probe assumes agent-managed memory and doesn't compose with
-            # the oracle conditions in a way the current scorer handles.
             dep_probe_result = None
             dep_probe = task.get("dependency_probe")
-            if (dep_probe and not self.oracle_mode and not self.oracle_store
-                    and not self.incontext_ceiling):
+            if dep_probe:
                 probe_user_msg = (
                     f"Based on your knowledge of all prior sprints, answer this question.\n\n"
                     f"Question: {dep_probe['question']}\n\n"
@@ -739,23 +599,13 @@ class S4Runner(BaseRunner):
                     "keywords_found": probe_kw_found,
                     "score": probe_score,
                 }
-                _log_traj("dependency_probe", session=t,
-                          question=dep_probe["question"][:200],
-                          output=probe_output[:300],
-                          score=probe_score,
-                          keywords_found=probe_kw_found)
 
             # ---- Forced-choice interference binding probes due this session ----
             # Ask each scheduled binding probe through the same self.llm.chat
-            # recall path as the dependency probe. Store raw answers under
-            # session_result["interference_probes"] in the scorer's contract
-            # schema so score_interference_binding can classify correct/
-            # confused/both/miss. Skipped under the oracle/ceiling paths that
-            # replace memory_policy entirely (mirrors the dependency probe).
+            # recall path as the dependency probe.
             interference_probes: list[dict] = []
             due_binding = pending_binding_probes.pop(t, [])
-            if (due_binding and not self.oracle_mode and not self.oracle_store
-                    and not self.incontext_ceiling):
+            if due_binding:
                 for bp in due_binding:
                     probe_q = bp["question"]
                     probe_user_msg = (
@@ -784,12 +634,6 @@ class S4Runner(BaseRunner):
                     interference_probes.append(probe_rec)
                     binding_probe_all.append(probe_rec)
                     binding_probe_asked.add(bp.get("probe_id"))
-                    _log_traj("interference_binding_probe", session=t,
-                              probe_id=bp.get("probe_id"),
-                              question=probe_q[:200],
-                              response=bp_output[:300],
-                              gold_value=bp.get("gold_value"),
-                              distractor_value=bp.get("distractor_value"))
 
             sr = {
                 "session": t,
@@ -908,20 +752,7 @@ class S4Runner(BaseRunner):
         )
 
         # Close trajectory log
-        _log_traj("run_end", n_sessions=actual_sessions,
-                  m_final=la_raw[-1][1] if la_raw else 0)
-        traj_f.close()
         _progress(f"run complete: m_final={la_raw[-1][1] if la_raw else 0:.3f}")
-
-        # Attribution provenance stamp (see s2_runner for semantics).
-        if self.incontext_ceiling:
-            _attr_mode = "c4_incontext_ceiling"
-        elif self.oracle_store:
-            _attr_mode = "c3_oracle_store"
-        elif self.oracle_retrieval:
-            _attr_mode = "c2_oracle_retrieval"
-        else:
-            _attr_mode = "c1_baseline"
 
         return {
             "la_curve": la_curve,
@@ -937,9 +768,4 @@ class S4Runner(BaseRunner):
             "dep_recall_faithful_raw": dep_recall_faithful_raw,
             "session_results": session_results,
             "life_event": life_event_result,
-            "attribution_schema": "v2_clean",
-            "attribution_mode": _attr_mode,
-            "ceiling_max_tokens": (
-                self.ceiling_max_tokens if self.incontext_ceiling else None
-            ),
         }

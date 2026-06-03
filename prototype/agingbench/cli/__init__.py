@@ -12,9 +12,6 @@ Usage
   # Run single scenario directly
   agingbench run --scenario s1_research_literature --sut <path>
 
-  # Run with oracle-memory ablation (S6)
-  agingbench run --scenario s1_research_literature --sut <path> --oracle memory
-
   # Run with multiple seeds for confidence intervals
   agingbench run --suite core --seeds 3
 
@@ -67,16 +64,16 @@ def cmd_run(suite_id: Optional[str], scenario_id: Optional[str],
             adapter_spec: Optional[str] = None,
             memory_policy_spec: Optional[str] = None,
             generated: bool = False, gen_sessions: int = 0,
-            emit_card: bool = False) -> None:
+            emit_card: bool = True) -> None:
     """Run one or more scenarios from a suite against one or more SUTs.
 
     Parameters
     ----------
     emit_card : bool
-        When True, emit a consolidated aging_card.json alongside the
-        existing metrics.json after each run completes. Default False
-        so existing CI scripts that don't pass `--card` produce
-        unchanged output.
+        When True (the default), emit a consolidated aging_card.json
+        alongside the existing metrics.json after each run completes.
+        The card is the canonical four-mechanism view. Pass --no-card
+        (emit_card=False) to skip it, e.g. CI that only reads metrics.json.
     """
 
     # --sessions / --cycles only have meaning with the programmatic generator.
@@ -158,8 +155,8 @@ def cmd_run(suite_id: Optional[str], scenario_id: Optional[str],
                         runner_cls = getattr(mod, runner_cfg["class"])
                         print(f"[info] Loaded runner {runner_cfg['class']} from manifest")
                         # Wrap in a function matching _run_sX signature
-                        def _dynamic_runner(sut, scen_cfg, out, n, oracle=False, **kw):
-                            return _run_dynamic(runner_cls, sut, scen_cfg, out, n, oracle, **kw)
+                        def _dynamic_runner(sut, scen_cfg, out, n, **kw):
+                            return _run_dynamic(runner_cls, sut, scen_cfg, out, n, **kw)
                         runner_fn = _dynamic_runner
                     except Exception as e:
                         print(f"[warn] Failed to load runner from manifest: {e}")
@@ -210,8 +207,8 @@ def cmd_run(suite_id: Optional[str], scenario_id: Optional[str],
                     stats["seed"] = seed_val
                 all_results.append(stats)
 
-                # Emit AgingCard JSON when opted in via --card. Pure
-                # post-processor: never modifies metrics.json or
+                # Emit AgingCard JSON by default (disable with --no-card).
+                # Pure post-processor: never modifies metrics.json or
                 # dependency_metrics.json.
                 if emit_card:
                     try:
@@ -428,11 +425,13 @@ def _build_parser():
                             "N as 'N sessions' (exclusive); S7+ treats N as 'N agent blocks'. "
                             "Suite-driven runs (`--suite lite/full/core/...`) use n_cycles "
                             "from the suite YAML.")
-    # AgingCard emission. Default OFF so existing CI scripts that don't
-    # pass --card produce unchanged output.
-    run_p.add_argument("--card", action="store_true", default=False,
-                       help="Emit a consolidated aging_card.json alongside metrics.json. "
-                            "Schema validated against agingbench/metrics/aging_card_schema.json.")
+    # AgingCard emission. Default ON — the consolidated aging_card.json is the
+    # canonical four-mechanism view; emit it for every run. Opt out with
+    # --no-card (e.g. CI that only consumes metrics.json).
+    run_p.add_argument("--card", action=argparse.BooleanOptionalAction, default=True,
+                       help="Emit a consolidated aging_card.json alongside metrics.json "
+                            "(default: on; use --no-card to disable). Schema validated "
+                            "against agingbench/metrics/aging_card_schema.json.")
 
     # ---- compare ----
     cmp_p = sub.add_parser("compare", help="Compare results from multiple result directories")

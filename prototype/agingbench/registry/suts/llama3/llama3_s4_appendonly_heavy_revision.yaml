@@ -1,0 +1,27 @@
+sut_id: llama3_s4_appendonly_heavy_revision
+description: >
+  S4 isolation arm — append_only memory (top_k=10000) + heavy revision +
+  confusable_topic_matched=true to activate Family B mechanism-isolated
+  binding probes. Mirrors the S3 U-aging isolation pattern so we can
+  measure: (a) interference confusion_rate per session when memory keeps
+  every entry, and (b) revision tracking under preserved memory.
+
+model:
+  provider: local_hf
+  model_id: NousResearch/Meta-Llama-3.1-8B-Instruct
+  max_new_tokens: 1024
+  temperature: 0.0
+
+memory_policy:
+  type: append_only
+  top_k: 10000
+
+pressure:
+  preset: heavy
+  update_rate: 1.0
+  warmup_sessions: 0
+  dependency_density: 0.3
+  n_confusable_pairs: 2
+  confusable_topic_matched: true
+
+seed: 42

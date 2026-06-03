@@ -42,13 +42,26 @@ def _kw_present(keyword: str, lower_text: str) -> bool:
     kw = (keyword or "").lower().strip()
     if not kw:
         return False
-    return re.search(
-        r"(?<![A-Za-z0-9])"
-        + re.escape(kw)
-        + r"(?:es|s)?"
-        + r"(?![A-Za-z0-9])",
-        lower_text,
-    ) is not None
+
+    def _match(k: str, t: str) -> bool:
+        # Exact word-bounded match (no optional plural). The previous
+        # `(?:es|s)?` suffix over-matched: keyword "john" hit "johns"
+        # ("Johns Hopkins"), crediting recall for the wrong token (a
+        # false-positive that hides aging). Exact match is the safe direction.
+        return re.search(
+            r"(?<![A-Za-z0-9])" + re.escape(k) + r"(?![A-Za-z0-9])",
+            t,
+        ) is not None
+
+    if _match(kw, lower_text):
+        return True
+    # Comma-normalized numeric retry: '23,800' matches '23800' (and vice-versa).
+    # Strip commas only BETWEEN digits so the word-boundary guard is preserved.
+    kw_n = re.sub(r"(?<=\d),(?=\d)", "", kw)
+    text_n = re.sub(r"(?<=\d),(?=\d)", "", lower_text)
+    if kw_n == kw and text_n == lower_text:
+        return False
+    return _match(kw_n, text_n)
 
 
 def score_keywords(text: str, keywords: list[str]) -> int:
@@ -160,6 +173,49 @@ def score_recall_batch(
         "per_probe": per_probe,
         "n_recalled": n_recalled,
         "n_total": len(probes),
+    }
+
+
+def partition_recall(probe_results: list[dict]) -> dict:
+    """De-blend a session's per-probe recall into the four-mechanism axes.
+
+    The S6 headline used to be the recall rate over ALL probes, which silently
+    folded three distinct mechanisms into one number:
+      - interference (confusable-name binding probes),
+      - revision (probes whose fact was re-versioned, carrying keywords_history),
+      - compression (plain stable facts).
+    It also (a) scored an empty probe pool as perfect recall (1.0) and
+    (b) counted agent crash / turn-exhaustion (``mechanics_failure``) as a
+    recall miss — an availability failure, not a memory outcome.
+
+    This returns the cleanly separated rates (each ``None`` when its pool is
+    empty, so the caller can SKIP rather than fabricate a score):
+
+      - recall_all          : every live probe (back-compat blended view)
+      - recall_excl_binding  : live, non-binding probes
+      - recall_compression   : live, non-binding, non-revised (HEADLINE) — the
+                               isolated compression signal
+      - n_total / n_live / n_mechanics_failures : pool bookkeeping
+
+    A probe is "live" when ``mechanics_failure`` is falsy. Binding probes carry
+    ``probe_type == "interference_binding"``; revised probes carry a truthy
+    ``is_revised`` flag (set by the runner from ``keywords_history``).
+    """
+    def _rate(ps):
+        return (round(sum(p["recalled"] for p in ps) / len(ps), 4)
+                if ps else None)
+
+    live = [p for p in probe_results if not p.get("mechanics_failure")]
+    non_binding = [p for p in live
+                   if p.get("probe_type") != "interference_binding"]
+    stable = [p for p in non_binding if not p.get("is_revised")]
+    return {
+        "recall_all": _rate(live),
+        "recall_excl_binding": _rate(non_binding),
+        "recall_compression": _rate(stable),
+        "n_total": len(probe_results),
+        "n_live": len(live),
+        "n_mechanics_failures": len(probe_results) - len(live),
     }
 
 

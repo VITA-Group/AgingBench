@@ -22,7 +22,6 @@ from .trace import TraceLogger
 from ..metrics.aging import AgingCurve
 from ..metrics.g3_metrics import compute_memory_bloat
 from ..core.memory.base import MemoryPolicy
-from ..core.memory.eval_proxy import EvalTextMemoryProxy
 from ..core.agent import AgentInterface, ReferenceAgent
 from ..core.tools import ToolRegistry, ToolSpec
 
@@ -36,8 +35,6 @@ class S3Runner(BaseRunner):
         llm,
         tracer: TraceLogger,
         sut_id: str = "unknown",
-        oracle_mode: bool = False,
-        oracle_retrieval: bool = False,
         agent_class: type[AgentInterface] = ReferenceAgent,
         generated_data: dict | None = None,
     ):
@@ -47,8 +44,6 @@ class S3Runner(BaseRunner):
         if self.llm is not None:
             self.llm.tracer = self.tracer
         self.sut_id = sut_id
-        self.oracle_mode = oracle_mode
-        self.oracle_retrieval = oracle_retrieval
         self.agent_class = agent_class
 
         self._model_id = getattr(llm, "model_id", None) or getattr(llm, "model", "unknown")
@@ -166,7 +161,7 @@ class S3Runner(BaseRunner):
                 flush=True,
             )
 
-        # Accumulate all transcripts so far for oracle mode
+        # Accumulate all transcripts so far (used as scoring reference under NoMemoryPolicy)
         all_transcripts_text = ""
 
         is_append_only = type(self.memory_policy).__name__ == "AppendOnlyPolicy"
@@ -183,26 +178,16 @@ class S3Runner(BaseRunner):
         stale_residue_count_raw = []
         session_results = []
 
-        # ---- Full trajectory log (content-level, separate from trace) ----
-        trajectory_path = self.tracer.path.parent / "trajectory.jsonl"
-        traj_f = open(trajectory_path, "w", buffering=1)
-        def _log_traj(event_type: str, **fields):
-            import json as _json
-            record = {"event": event_type, "timestamp": time.time(), **fields}
-            traj_f.write(_json.dumps(record, ensure_ascii=False) + "\n")
-
         run_span = self.tracer.log(
             "run_start", parent_span_id=None,
             sut_id=self.sut_id, scenario=self.SCENARIO_ID,
             seed=seed, n_sessions=n_sessions,
             policy=type(self.memory_policy).__name__,
-            oracle_mode=self.oracle_mode,
         )
 
         actual_sessions = min(n_sessions, len(self.transcripts))
         _progress(
-            f"starting run: sessions={actual_sessions}, policy={type(self.memory_policy).__name__}, "
-            f"oracle={self.oracle_mode}"
+            f"starting run: sessions={actual_sessions}, policy={type(self.memory_policy).__name__}"
         )
 
         for t in range(actual_sessions):
@@ -215,30 +200,17 @@ class S3Runner(BaseRunner):
             transcript_text = transcript["transcript"]
             all_transcripts_text += f"\n\n--- Session {t}: {transcript['title']} ---\n{transcript_text}"
 
-            # Read memory.
-            # C0 (no_memory)        : empty
-            # C3 (oracle_mode)      : full concatenated transcripts (agent skips writes below)
-            # C2 (oracle_retrieval) : agent writes compressed memory below, but
-            #                         READS full transcripts — isolates retrieval.
-            # C1 (baseline)         : compressed memory via memory_policy
+            # Read memory: empty under NoMemoryPolicy, compressed via memory_policy otherwise.
             if t == 0 or is_no_memory:
                 memory_text = ""
-            elif self.oracle_mode:
-                memory_text = all_transcripts_text
-            elif self.oracle_retrieval:
-                memory_text = all_transcripts_text
             else:
                 memory_text = self.memory_policy.read()
 
             # Build agent with search_memory tool
             tools = self._build_tools(memory_text)
-            # C1-C4 control: system-prompt memory must match the mode-dependent
-            # memory_text (also injected into the user context below), not the
-            # raw SUT policy. In C1 memory_text == policy.read() → no-op for the
-            # baseline; C2 (oracle_retrieval) / C3 (oracle_mode) are corrected.
             agent = self.agent_class(
                 llm=self.llm,
-                memory_policy=EvalTextMemoryProxy(self.memory_policy, memory_text),
+                memory_policy=self.memory_policy,
                 tools=tools,
                 max_turns=4,
             )
@@ -250,9 +222,6 @@ class S3Runner(BaseRunner):
             context += f"New Meeting Transcript — {transcript['title']}:\n{transcript_text}\n\n"
 
             # Log memory state before queries
-            _log_traj("memory_snapshot", session=t, phase="before_task",
-                      memory_text=memory_text, memory_tokens=len(memory_text.split()) if memory_text else 0)
-
             # Answer queries
             queries = self.queries_by_session[t]["queries"] if t < len(self.queries_by_session) else []
             _progress(
@@ -280,11 +249,6 @@ class S3Runner(BaseRunner):
 
                 sc = score_query(response, q)
                 query_scores.append(sc)
-
-                _log_traj("agent_output", session=t, phase="query",
-                          query_id=q["query_id"],
-                          prompt=prompt[:500], output=response[:500],
-                          score=sc, turns=result.get("turns", 0))
 
                 self.tracer.log(
                     "query_answered", parent_span_id=sess_span,
@@ -333,20 +297,13 @@ class S3Runner(BaseRunner):
                     "gold_value": bp.get("gold_value"),
                     "distractor_value": bp.get("distractor_value"),
                 })
-                _log_traj("interference_probe", session=t,
-                          probe_id=bp.get("probe_id", ""),
-                          question=bp["question"],
-                          agent_answer=bp_response[:300],
-                          gold_value=bp.get("gold_value"),
-                          distractor_value=bp.get("distractor_value"))
-
             # Write interaction history to memory
             interaction = f"Session {t}: {transcript['title']}\n{transcript_text}\n"
             for q, r in zip(queries, query_responses):
                 interaction += f"Q: {q['question']}\nA: {r}\n"
 
             out_tok = -1
-            if not is_no_memory and not self.oracle_mode:
+            if not is_no_memory:
                 _progress(f"session {t + 1}: memory write start", session_t0)
                 self.memory_policy.write(interaction, llm=self.llm)
 
@@ -354,13 +311,6 @@ class S3Runner(BaseRunner):
                 in_tok = getattr(self.memory_policy, "last_input_tokens", 0)
                 out_tok = getattr(self.memory_policy, "last_output_tokens", 0)
 
-                _log_traj("compression", session=t,
-                          input_text=interaction,
-                          output_text=compressed or "",
-                          input_tokens=in_tok, output_tokens=out_tok,
-                          compression_ratio=round(
-                              len(interaction.split()) / max(len((compressed or "").split()), 1), 2
-                          ))
 
                 self.tracer.log_llm_call(
                     parent_span_id=sess_span,
@@ -481,16 +431,11 @@ class S3Runner(BaseRunner):
 
             sr = {
                 "session": t,
-                "title": transcript["title"],
                 "query_accuracy": query_acc,
-                "query_scores": query_scores,
                 "fidelity": fidelity,
-                "category_fidelity": fidelity_detail["category_fidelity"],
                 "contradiction_rate": contradiction,
-                "contradiction_count": contradiction_count,
                 "revision_aging": rev_aging,
                 "memory_bloat": bloat,
-                "n_decisions_so_far": len(decisions_so_far),
                 "retrieval_precision": ret_precision,
                 "retrieval_recall": ret_recall,
                 "task_outputs_text": task_outputs_text,
@@ -501,13 +446,6 @@ class S3Runner(BaseRunner):
             }
             session_results.append(sr)
 
-            _log_traj("fidelity_contradiction", session=t,
-                      query_accuracy=round(query_acc, 4),
-                      fidelity=round(fidelity, 4),
-                      contradiction_rate=round(contradiction, 4),
-                      contradiction_count=contradiction_count,
-                      memory_bloat=bloat,
-                      n_decisions_so_far=len(decisions_so_far))
 
             _rev_excess_rate_logged = (
                 round(rev_aging["revision_fidelity_excess"], 4)
@@ -517,14 +455,6 @@ class S3Runner(BaseRunner):
                 round(rev_aging["stale_residue_rate"], 4)
                 if rev_aging["stale_residue_rate"] is not None else None
             )
-            _log_traj("revision_aging", session=t,
-                      revision_fidelity_excess=_rev_excess_rate_logged,
-                      revision_fidelity_excess_count=rev_aging["revision_fidelity_excess_count"],
-                      stale_residue_rate=_stale_rate_logged,
-                      stale_residue_count=rev_aging["stale_residue_count"],
-                      n_revised=rev_aging["n_revised"],
-                      n_unrevised=rev_aging["n_unrevised"],
-                      coverage_verdict=rev_aging["coverage_verdict"])
 
             self.tracer.log(
                 "session_scored", parent_span_id=sess_span, session=t,
@@ -609,9 +539,6 @@ class S3Runner(BaseRunner):
         )
 
         # Close trajectory log
-        _log_traj("run_end", n_sessions=actual_sessions,
-                  m_final=fidelity_raw[-1][1] if fidelity_raw else 0)
-        traj_f.close()
         _progress(f"run complete: m_final={fidelity_raw[-1][1] if fidelity_raw else 0:.3f}")
 
         return {
@@ -629,280 +556,6 @@ class S3Runner(BaseRunner):
             "query_acc_raw": query_acc_raw,
             "retrieval_precision_raw": retrieval_precision_raw,
             "retrieval_recall_raw": retrieval_recall_raw,
-            "rev_excess_count_raw": rev_excess_count_raw,
-            "stale_residue_count_raw": stale_residue_count_raw,
-            "session_results": session_results,
-        }
-
-    # ------------------------------------------------------------------
-    # Tier-2 adapter path (black-box agents, e.g. OpenHands with a
-    # controlled condenser). Additive: the Tier-1 run() above is untouched.
-    # ------------------------------------------------------------------
-
-    def _adapter_memory_text(self, adapter) -> str:
-        """Read the agent's persisted memory for fidelity scoring.
-
-        Prefer the adapter's declared memory text (notes/, .openhands_memory/).
-        Fall back to scanning the workspace root for doc files, because a
-        black-box agent often persists its knowledge base under a sensible name
-        of its own choosing (e.g. ``knowledge_base.md`` at the root) rather than
-        the exact ``notes/`` path the prompt suggested. Without this fallback the
-        fidelity/contradiction metrics are blind to a memory the agent did keep —
-        a faithfulness artifact, not a real aging signal.
-        """
-        try:
-            mt = adapter.get_memory_text() or ""
-        except Exception:
-            mt = ""
-        if mt.strip():
-            return mt
-        root = (getattr(adapter, "_cwd", None) or getattr(adapter, "_workspace_dir", None)
-                or getattr(adapter, "workspace_dir", None))
-        if not root:
-            return mt
-        from pathlib import Path
-        parts, total = [], 0
-        for f in sorted(Path(str(root)).rglob("*")):
-            if not f.is_file() or f.suffix not in (".md", ".txt"):
-                continue
-            if ".openhands_persist" in str(f):  # conversation state, not memory
-                continue
-            try:
-                txt = f.read_text(errors="replace")
-            except Exception:
-                continue
-            parts.append(f"=== {f.name} ===\n{txt}")
-            total += len(txt)
-            if total > 50_000:
-                break
-        return "\n\n".join(parts)
-
-    def _score_memory_metrics(self, current_memory: str, decisions_so_far: list, t: int) -> dict:
-        """Score S3's memory-store metrics on ``current_memory``.
-
-        Shared by the Tier-2 path. Calls the exact same validator functions the
-        Tier-1 run() uses inline, so fidelity/contradiction/revision/bloat keep
-        identical semantics — the only difference is the memory *source*
-        (a black-box agent's notes vs. a controlled memory policy's store).
-        """
-        from ..scenarios.s3_knowledge_base.validator import (
-            compute_fidelity_detailed, compute_contradiction_rate,
-            compute_contradiction_count, score_revision_aging,
-        )
-        fidelity_detail = compute_fidelity_detailed(current_memory, decisions_so_far, at_session=t)
-        rev_aging = score_revision_aging(current_memory, decisions_so_far, at_session=t)
-        return {
-            "fidelity_detail": fidelity_detail,
-            "fidelity": fidelity_detail["fidelity"],
-            "contradiction": compute_contradiction_rate(current_memory, decisions_so_far),
-            "contradiction_count": compute_contradiction_count(current_memory, decisions_so_far),
-            "rev_aging": rev_aging,
-            "bloat": compute_memory_bloat(current_memory),
-        }
-
-    def run_adapter(self, adapter, n_sessions: int = 12, seed: int = 42,
-                    reset_every: int = 0) -> dict:
-        """Run S3 against a black-box AgentAdapter (Tier-2).
-
-        Memory is owned by the agent (e.g. OpenHands' notes/ workspace +
-        condenser), NOT by a MemoryPolicy. Each session delivers the new meeting
-        transcript as an ingest turn, then asks the team queries; the agent's
-        own context/condenser carry knowledge across sessions.
-
-        Args:
-            adapter: an AgentAdapter (send_message / reset_session / get_memory_text).
-            n_sessions, seed: as in run().
-            reset_every: clear the agent's conversation every N sessions
-                (0 = never, so the condenser governs long-horizon memory — the
-                meaningful regime for Level-A condenser comparisons). With a
-                NoOp condenser and reset_every=0 a long run can overflow the
-                model context; raise N or use a summarizing condenser then.
-
-        Returns the SAME dict shape as run() so the CLI/report path is unchanged.
-        Retrieval curves are empty (no ranked retriever in a black-box agent).
-        """
-        from ..scenarios.s3_knowledge_base.validator import score_query
-
-        import random as _random
-        _random.seed(seed)
-
-        is_no_memory = False
-        model_id = getattr(adapter, "_model", None) or self._model_id
-
-        fidelity_raw, bloat_raw, contradiction_raw, query_acc_raw = [], [], [], []
-        rev_excess_count_raw, stale_residue_count_raw = [], []
-        session_results = []
-
-        trajectory_path = self.tracer.path.parent / "trajectory.jsonl"
-        traj_f = open(trajectory_path, "w", buffering=1)
-        def _log_traj(event_type: str, **fields):
-            import json as _json
-            traj_f.write(_json.dumps(
-                {"event": event_type, "timestamp": time.time(), **fields},
-                ensure_ascii=False) + "\n")
-
-        run_span = self.tracer.log(
-            "run_start", parent_span_id=None, sut_id=self.sut_id,
-            scenario=self.SCENARIO_ID, seed=seed, n_sessions=n_sessions,
-            policy="adapter:" + type(adapter).__name__, oracle_mode=False,
-        )
-
-        actual_sessions = min(n_sessions, len(self.transcripts))
-        print(f"  [S3][adapter] starting: sessions={actual_sessions}, "
-              f"adapter={type(adapter).__name__}, model={model_id}, reset_every={reset_every}")
-
-        from ..core.agent_adapter import AgentResponse as _AR
-        def _safe_send(msg: str):
-            """send_message that survives black-box failures (e.g. a context-
-            window overflow when condenser=none accumulates past the model
-            limit). Records the error and returns an empty response so the aging
-            curve completes instead of aborting the whole run mid-stream."""
-            try:
-                return adapter.send_message(msg)
-            except Exception as e:
-                print(f"  [S3][adapter][warn] send failed: {type(e).__name__}: {str(e)[:140]}")
-                return _AR(text="", metadata={"error": f"{type(e).__name__}: {e}",
-                                              "condensations": 0, "cost_usd": 0.0})
-
-        for t in range(actual_sessions):
-            sess_span = self.tracer.log("session_start", parent_span_id=run_span, session=t)
-            transcript = self.transcripts[t]
-            transcript_text = transcript["transcript"]
-
-            session_condensations = 0
-            session_cost = 0.0
-            session_errors = 0
-
-            # ---- Ingest turn: deliver the new transcript; agent updates notes ----
-            ingest_prompt = (
-                f"New meeting transcript — {transcript['title']}:\n{transcript_text}\n\n"
-                f"Update your project knowledge base with the key decisions, owners, "
-                f"dates, dollar amounts, and version numbers from this meeting. "
-                f"Revise any earlier decision that changed."
-            )
-            ingest = _safe_send(ingest_prompt)
-            session_condensations += int(ingest.metadata.get("condensations", 0) or 0)
-            session_cost += float(ingest.metadata.get("cost_usd", 0.0) or 0.0)
-            session_errors += 1 if ingest.metadata.get("error") else 0
-
-            # ---- Team queries (scored on the agent's answers) ----
-            queries = self.queries_by_session[t]["queries"] if t < len(self.queries_by_session) else []
-            query_responses, query_scores = [], []
-            for q in queries:
-                prompt = (
-                    f"A team member asks: {q['question']}\n\n"
-                    f"Consult your project knowledge base and answer with specific "
-                    f"details (names, dates, dollar amounts, version numbers)."
-                )
-                resp = _safe_send(prompt)
-                response = resp.text
-                query_responses.append(response)
-                sc = score_query(response, q)
-                query_scores.append(sc)
-                session_condensations += int(resp.metadata.get("condensations", 0) or 0)
-                session_cost += float(resp.metadata.get("cost_usd", 0.0) or 0.0)
-                session_errors += 1 if resp.metadata.get("error") else 0
-                _log_traj("agent_output", session=t, phase="query",
-                          query_id=q["query_id"], output=response[:500], score=sc)
-                self.tracer.log("query_answered", parent_span_id=sess_span,
-                                session=t, query_id=q["query_id"], score=sc)
-            query_acc = sum(query_scores) / len(query_scores) if query_scores else 0.0
-
-            # ---- Interference binding probes (forced-choice) ----
-            interference_probe_results = []
-            for bp in self._binding_probes_due_at(t, actual_sessions):
-                bp_resp = _safe_send(
-                    f"A team member asks: {bp['question']}\n\n"
-                    f"Consult your project knowledge base and answer with the exact value only."
-                )
-                interference_probe_results.append({
-                    "session": t, "task_id": bp.get("probe_id"),
-                    "question": bp["question"], "response_text": bp_resp.text,
-                    "gold_value": bp.get("gold_value"),
-                    "distractor_value": bp.get("distractor_value"),
-                })
-                session_condensations += int(bp_resp.metadata.get("condensations", 0) or 0)
-                session_cost += float(bp_resp.metadata.get("cost_usd", 0.0) or 0.0)
-
-            # ---- Score memory-store metrics on the agent's own memory text ----
-            current_memory = self._adapter_memory_text(adapter)
-            decisions_so_far = self._get_decisions_up_to(t)
-            m = self._score_memory_metrics(current_memory, decisions_so_far, t)
-            fidelity = m["fidelity"]; contradiction = m["contradiction"]; rev_aging = m["rev_aging"]
-            bloat = m["bloat"]
-
-            fidelity_raw.append((t, fidelity))
-            bloat_raw.append((t, bloat))
-            contradiction_raw.append((t, contradiction))
-            query_acc_raw.append((t, query_acc))
-            if rev_aging["revision_fidelity_excess_count"] is not None:
-                rev_excess_count_raw.append((t, rev_aging["revision_fidelity_excess_count"]))
-            if rev_aging["coverage_verdict"] != "no_revisions":
-                stale_residue_count_raw.append((t, rev_aging["stale_residue_count"]))
-
-            task_outputs_text = " ".join(str(r)[:500] for r in query_responses if r)
-            sr = {
-                "session": t, "title": transcript["title"],
-                "query_accuracy": query_acc, "query_scores": query_scores,
-                "fidelity": fidelity, "category_fidelity": m["fidelity_detail"]["category_fidelity"],
-                "contradiction_rate": contradiction, "contradiction_count": m["contradiction_count"],
-                "revision_aging": rev_aging, "memory_bloat": bloat,
-                "n_decisions_so_far": len(decisions_so_far),
-                "retrieval_precision": None, "retrieval_recall": None,
-                "task_outputs_text": task_outputs_text,
-                "interference_probes": interference_probe_results,
-                # Level-A observability: condenser activity + cost this session.
-                "condensations": session_condensations,
-                "condenser": ingest.metadata.get("condenser", {}),
-                "session_cost_usd": round(session_cost, 6),
-                "memory_chars": len(current_memory),
-                "adapter_errors": session_errors,
-            }
-            session_results.append(sr)
-
-            self.tracer.log("session_scored", parent_span_id=sess_span, session=t,
-                            query_accuracy=round(query_acc, 4), fidelity=round(fidelity, 4),
-                            contradiction_rate=round(contradiction, 4), memory_bloat=bloat,
-                            condensations=session_condensations)
-            self.tracer.log("session_end", parent_span_id=sess_span, session=t)
-            print(f"  [S3][adapter] Session {t:2d}  fidelity={fidelity:.3f}  "
-                  f"query_acc={query_acc:.3f}  contradict={contradiction:.3f}  "
-                  f"condensed={session_condensations}  mem_chars={len(current_memory)}  "
-                  f"errors={session_errors}  decisions={len(decisions_so_far)}")
-
-            if reset_every and (t + 1) % reset_every == 0:
-                adapter.reset_session()
-
-        def _curve(raw):
-            return AgingCurve(exposures=[r[0] for r in raw], scores=[r[1] for r in raw],
-                              scenario=self.SCENARIO_ID, sut_id=self.sut_id)
-        empty = _curve([])
-
-        self.tracer.log("run_end", parent_span_id=run_span,
-                        fidelity_curve=fidelity_raw, contradiction_curve=contradiction_raw,
-                        bloat_curve=bloat_raw, query_curve=query_acc_raw)
-        _log_traj("run_end", n_sessions=actual_sessions,
-                  m_final=fidelity_raw[-1][1] if fidelity_raw else 0)
-        traj_f.close()
-
-        return {
-            "fidelity_curve": _curve(fidelity_raw),
-            "bloat_curve": _curve(bloat_raw),
-            "contradiction_curve": AgingCurve(
-                exposures=[r[0] for r in contradiction_raw],
-                scores=[1.0 - r[1] for r in contradiction_raw],
-                scenario=self.SCENARIO_ID, sut_id=self.sut_id),
-            "query_curve": _curve(query_acc_raw),
-            "retrieval_precision_curve": empty,
-            "retrieval_recall_curve": empty,
-            "rev_excess_count_curve": _curve(rev_excess_count_raw),
-            "stale_residue_count_curve": _curve(stale_residue_count_raw),
-            "fidelity_raw": fidelity_raw,
-            "bloat_raw": bloat_raw,
-            "contradiction_raw": contradiction_raw,
-            "query_acc_raw": query_acc_raw,
-            "retrieval_precision_raw": [],
-            "retrieval_recall_raw": [],
             "rev_excess_count_raw": rev_excess_count_raw,
             "stale_residue_count_raw": stale_residue_count_raw,
             "session_results": session_results,

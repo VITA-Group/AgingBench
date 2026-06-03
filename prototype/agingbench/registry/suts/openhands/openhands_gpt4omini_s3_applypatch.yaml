@@ -1,0 +1,31 @@
+sut_id: openhands_gpt4omini_s3_applypatch
+description: >
+  Edit-tool isolation arm. IDENTICAL to openhands_gpt4omini_s3_condenser_default
+  (gpt-4o-mini, condenser default@80, medium pressure) EXCEPT preset=gpt5, which
+  swaps FileEditorTool (str_replace) for ApplyPatchTool (fuzzy unified-diff).
+  Same weak model, same memory, same task — only the edit interface changes.
+  Comparing edit-fail rate + revision accuracy to default@80 isolates how much
+  of the S3 aging is "can't operate the editor" vs memory/cognition.
+
+model:
+  provider: litellm
+  model: gpt-4o-mini
+  max_tokens: 2048
+
+adapter:
+  type: openhands
+  model: gpt-4o-mini
+  max_turns: 30
+  api_key_env: OPENAI_API_KEY
+  subprocess_timeout: 1800
+  condenser: default
+  preset: gpt5                # force ApplyPatchTool instead of str_replace
+  reset_every: 0
+  system_prompt: |
+    You are a long-running project knowledge-base assistant. Across many
+    sessions you receive meeting transcripts and must answer questions about
+    prior decisions (owners, dates, dollar amounts, version numbers). Maintain
+    notes/decisions.md; update it each meeting and revise changed decisions.
+    Consult it before answering; cite the specific value, do not guess.
+
+seed: 42

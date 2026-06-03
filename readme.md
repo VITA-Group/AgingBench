@@ -146,6 +146,27 @@ Each run writes to `prototype/experiments/results/<scenario>/<sut_id>/`:
 
 ---
 
+## Serving with vLLM
+
+Set `model.provider: vllm` in the SUT YAML to drive any scenario through a local **vLLM server** (fast batched serving; with `--reasoning-parser`, reasoning models return their chain-of-thought separately from the answer):
+
+```yaml
+model: { provider: vllm, model: Qwen/Qwen3-8B, api_base: http://localhost:8000/v1,
+         max_tokens: 5000, enable_thinking: false }
+```
+
+```bash
+# 1. serve the model once (its own env, so vLLM's torch pin stays out of the benchmark env)
+vllm serve Qwen/Qwen3-8B --port 8000 --reasoning-parser qwen3
+# 2. run any scenario against it
+agingbench run --scenario s2_lifestyle_assistant \
+  --sut agingbench/registry/suts/_vllm_templates/qwen3_8b_lossy_vllm.yaml --generated --sessions 10
+```
+
+One server absorbs many concurrent runs (multiple SUTs/seeds) — vLLM batches them, so a fan-out finishes in roughly the time of one run. Per-model launch commands + compatibility matrix: [`_vllm_templates/README.md`](prototype/agingbench/registry/suts/_vllm_templates/README.md).
+
+---
+
 ## Running experiments
 
 ```bash

@@ -242,19 +242,31 @@ class S5Runner(BaseRunner):
                     shock_type = event.event_type
                     ws_dir = self._find_workspace()
                     if ws_dir and shock_type == "workspace_flush":
-                        notes = ws_dir / "notes"
-                        if notes.exists():
-                            import shutil
-                            n_deleted = sum(1 for _ in notes.iterdir())
-                            shutil.rmtree(notes)
-                            notes.mkdir()
-                            self.tracer.log(
-                                "life_event", session=block,
-                                event_type="workspace_flush",
-                                files_deleted=n_deleted,
-                                params=event.params,
-                            )
-                            print(f"  [S7] === MAINTENANCE: workspace_flush at block {block} ({n_deleted} files deleted) ===")
+                        # Storage-loss shock: wipe the agent's notes but keep the
+                        # seeded instruction file. The agent writes to the
+                        # workspace ROOT (e.g. notes.txt) as well as notes/, so
+                        # deleting only notes/ was a silent no-op (0 files) — flush
+                        # every agent-written file, preserving CLAUDE.md.
+                        import shutil
+                        preserve = {"CLAUDE.md"}
+                        n_deleted = 0
+                        for p in sorted(ws_dir.iterdir()):
+                            if p.name in preserve:
+                                continue
+                            if p.is_file():
+                                p.unlink()
+                                n_deleted += 1
+                            elif p.is_dir():
+                                n_deleted += sum(1 for f in p.rglob("*") if f.is_file())
+                                shutil.rmtree(p)
+                        (ws_dir / "notes").mkdir(exist_ok=True)
+                        self.tracer.log(
+                            "life_event", session=block,
+                            event_type="workspace_flush",
+                            files_deleted=n_deleted,
+                            params=event.params,
+                        )
+                        print(f"  [S7] === MAINTENANCE: workspace_flush at block {block} ({n_deleted} files deleted) ===")
                     elif ws_dir and shock_type == "workspace_recompact":
                         notes = ws_dir / "notes"
                         if notes.exists():

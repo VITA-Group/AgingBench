@@ -5,8 +5,7 @@ check_constraints tool for S2 — Personal Finance and Lifestyle Assistant.
 
 The tool retrieves constraint rules from M_t for a given category.
 In the real agent loop, the agent is expected to call this tool before
-making recommendations. G2-M2 (tool_usage_shift) tracks whether this
-call pattern persists across sessions.
+making recommendations.
 """
 
 from __future__ import annotations

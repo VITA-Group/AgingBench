@@ -29,8 +29,16 @@ def _kw_in_text(kw: str, text: str) -> bool:
     keyword '43' must NOT match inside the current value '143,751'. Numeric
     keywords match only with non-digit flanks; for word keywords the guards are
     harmless. Fixes forget_accuracy substring-collision false positives that
-    capped a clean agent below 1.0."""
-    return _re.search(r"(?<!\d)" + _re.escape(kw) + r"(?!\d)", text) is not None
+    capped a clean agent below 1.0. Also tries a comma-normalized form so a
+    value stored as '23,800' is detected in agent text '23800' (and vice-versa);
+    commas are stripped only BETWEEN digits, preserving the digit-flank guard."""
+    if _re.search(r"(?<!\d)" + _re.escape(kw) + r"(?!\d)", text) is not None:
+        return True
+    kw_n = _re.sub(r"(?<=\d),(?=\d)", "", kw)
+    text_n = _re.sub(r"(?<=\d),(?=\d)", "", text)
+    if kw_n == kw and text_n == text:
+        return False
+    return _re.search(r"(?<!\d)" + _re.escape(kw_n) + r"(?!\d)", text_n) is not None
 
 
 def _session_haystack(result: dict):
@@ -388,8 +396,22 @@ def version_accuracy_per_session(
                     by_session_cor[session] = by_session_cor.get(session, 0) + 1
             continue
 
+        # Faithful gold-scan tier — MUST mirror the version_accuracy aggregate
+        # (cited the CURRENT version, not the stale one). Previously this
+        # per-session path skipped straight to the _extract_score headline
+        # proxy, so the per-session revision trajectory (Table 2 plots) was
+        # the UNFAITHFUL proxy while the scalar was faithful — they could
+        # diverge silently. Only fall back to the proxy when no gold or no
+        # output text exists.
+        gold_kws, stale_kws = _trend_gold_and_stale(task, facts)
+        hay = _session_haystack(result)
         by_session_tot[session] = by_session_tot.get(session, 0) + 1
-        if _extract_score(result) > 0.5:
+        if gold_kws and hay is not None:
+            cited_current = any(_kw_in_text(k.lower(), hay) for k in gold_kws if k)
+            cited_stale = any(_kw_in_text(k.lower(), hay) for k in stale_kws if k)
+            if cited_current and not cited_stale:
+                by_session_cor[session] = by_session_cor.get(session, 0) + 1
+        elif _extract_score(result) > 0.5:
             by_session_cor[session] = by_session_cor.get(session, 0) + 1
 
     return {
@@ -504,16 +526,17 @@ def per_hop_failure_analysis(
         if result is None:
             continue
 
-        # Check which dependency keywords appear in the output
-        found_keywords = set()
-        for kw_field in ["task_keywords_found", "keywords_found"]:
-            if kw_field in result:
-                found_keywords.update(
-                    kw.lower() for kw in result[kw_field]
-                )
-
-        if not found_keywords:
-            # Can't do per-hop analysis without keyword-level detail
+        # Scan the agent's actual session output (same faithful haystack +
+        # word-bounded matcher as _dep_gold_recall), NOT the primary task's
+        # pre-matched eval-keyword list. The old path read task_keywords_found
+        # with exact set membership: a hop fact whose keyword was not among the
+        # task's eval_keywords could never register as recalled even when the
+        # agent cited it verbatim (a category mismatch between fact-keywords and
+        # task-eval-keywords), and short numeric keywords needed an exact
+        # whole-token match rather than digit-flank-safe substring matching.
+        hay = _session_haystack(result)
+        if hay is None:
+            # No output text discoverable → can't judge this task's hops.
             continue
 
         for hop_idx, fact_id in enumerate(deps):
@@ -522,8 +545,8 @@ def per_hop_failure_analysis(
             if not fact_kws:
                 continue
 
-            # Check if any of this fact's keywords were found
-            hop_hit = any(kw.lower() in found_keywords for kw in fact_kws)
+            # Check if any of this fact's keywords appear in the agent output.
+            hop_hit = any(_kw_in_text(kw.lower(), hay) for kw in fact_kws if kw)
             hop_scores.setdefault(hop_idx, []).append(1.0 if hop_hit else 0.0)
 
     hop_recall = {
@@ -642,7 +665,11 @@ _RETRACTION_MARKERS = (
     "revised", "revised to", "updated to", "changed to",
     "changed from", "was set to", "originally",
     "deprecated", "before the update", "superseded",
-    "was ", "now ",  # e.g. "the figure WAS $23,800" / "is NOW $26,100"
+    # NOTE: bare "was "/"now " were REMOVED — too broad. A 60-char window around
+    # a stale value almost always contains an unrelated "was"/"now", which
+    # wrongly excused plain stale citations and INFLATED forget_accuracy
+    # (false negatives on real forget failures). Keep only markers that
+    # unambiguously frame a value as no-longer-current.
 )
 
 
@@ -687,7 +714,10 @@ def forget_accuracy(
     session.  If the invalidated keywords appear in the agent's output, that is
     a failure (the agent cited retracted information).
 
-    Returns 1.0 if no invalidated facts exist (vacuous truth).
+    Returns None if no invalidated facts exist (NO COVERAGE). The previous
+    behavior returned 1.0 (vacuous truth) which falsely reads as "perfect
+    forgetting" in tables/plots when the metric simply didn't fire — same
+    semantics as version_accuracy's None return when no trend probes exist.
     """
     facts = dependency_graph.get("facts", {})
 
@@ -702,7 +732,7 @@ def forget_accuracy(
                     invalidated[version["fact_id"]] = (inv_at, kws)
 
     if not invalidated:
-        return 1.0
+        return None
 
     # Build session → result lookup
     session_lookup = {}
@@ -857,6 +887,19 @@ def forget_accuracy_per_session(
             v = result.get(key)
             if isinstance(v, list):
                 parts.extend(str(x) for x in v)
+        # probe_details / precision_per_probe carry per-probe answer text — must
+        # match the aggregate _gather_session_text so per-session == aggregate
+        # (for S6 the probe answers live here).
+        for probe_field in ("probe_details", "precision_per_probe", "compounding_per_probe"):
+            v = result.get(probe_field)
+            if isinstance(v, list):
+                for item in v:
+                    if isinstance(item, dict):
+                        for vv in item.values():
+                            if isinstance(vv, str):
+                                parts.append(vv)
+                            elif isinstance(vv, list):
+                                parts.extend(str(x) for x in vv if isinstance(x, (str, int, float)))
         return " ".join(parts).lower()
 
     trajectory: dict[int, float] = {}
@@ -917,7 +960,11 @@ def score_accumulator(
         accumulator_errors: {session: absolute_error}
         error_source_sessions: [session indices where missed deltas were detected]
         compounding_detected: bool (True if error grows monotonically)
-        mean_error: float
+        compounding_slope: float (least-squares slope of error vs session index;
+            positive ⇒ error trending up, complements the strict-monotonic flag)
+        mean_error: float (raw units, e.g. dollars — not cross-SUT comparable)
+        mean_relative_error: float (mean of per-probe |err|/max(|gold|, 1) —
+            cross-SUT comparable)
     """
     accumulators = dependency_graph.get("accumulators", {})
     if not accumulators:
@@ -925,12 +972,15 @@ def score_accumulator(
             "accumulator_errors": {},
             "error_source_sessions": [],
             "compounding_detected": False,
+            "compounding_slope": 0.0,
             "mean_error": 0.0,
+            "mean_relative_error": 0.0,
         }
 
     import re
 
     errors: dict[int, float] = {}
+    rel_errors: list[float] = []
     for sr in session_results:
         probes = sr.get("accumulator_probes", [])
         for probe in probes:
@@ -952,16 +1002,31 @@ def score_accumulator(
                 nums = re.findall(r"-?\d[\d,]*\.?\d*", response.replace(",", ""))
                 agent_value = float(nums[-1]) if nums else None
             if agent_value is not None:
-                errors[session] = abs(agent_value - gold)
+                abs_err = abs(agent_value - gold)
             else:
-                errors[session] = abs(gold)  # total miss
+                abs_err = abs(gold)  # total miss
+            errors[session] = abs_err
+            rel_errors.append(abs_err / max(abs(gold), 1.0))
 
-    # Detect compounding: error grows across sessions
+    # Detect compounding: strict-monotonic error growth across sessions.
+    # Keep the binary flag (catches the "frozen-at-initial-value" pathology)
+    # but also publish a continuous slope so a noisy upward trend still
+    # registers even when one mid-sequence value dips.
     sorted_errors = sorted(errors.items())
     compounding = False
+    slope = 0.0
     if len(sorted_errors) >= 3:
         vals = [e for _, e in sorted_errors]
         compounding = all(vals[i] <= vals[i + 1] for i in range(len(vals) - 1))
+        xs = [float(s) for s, _ in sorted_errors]
+        n = len(xs)
+        mean_x = sum(xs) / n
+        mean_y = sum(vals) / n
+        denom = sum((x - mean_x) ** 2 for x in xs)
+        if denom > 0:
+            slope = sum(
+                (xs[i] - mean_x) * (vals[i] - mean_y) for i in range(n)
+            ) / denom
 
     # Identify error source sessions: where error first becomes non-zero
     error_sources = []
@@ -970,12 +1035,15 @@ def score_accumulator(
             error_sources.append(s)
 
     mean_err = sum(errors.values()) / len(errors) if errors else 0.0
+    mean_rel = sum(rel_errors) / len(rel_errors) if rel_errors else 0.0
 
     return {
         "accumulator_errors": {str(s): round(e, 2) for s, e in sorted(errors.items())},
         "error_source_sessions": error_sources[:5],
         "compounding_detected": compounding,
+        "compounding_slope": round(slope, 4),
         "mean_error": round(mean_err, 2),
+        "mean_relative_error": round(mean_rel, 4),
     }
 
 def _binding_classify(gold, distractor, response_text: str) -> str:
@@ -1079,6 +1147,8 @@ def score_interference_binding(session_results: list[dict]) -> dict:
     detail: list[dict] = []
     for sr in session_results:
         for p in sr.get("interference_probes", []) or []:
+            if p.get("mechanics_failure"):
+                continue  # agent crash/exhaustion is not a binding outcome
             sess = p.get("session", sr.get("session", -1))
             cls = _binding_classify(
                 p.get("gold_value"),
@@ -1098,6 +1168,13 @@ def score_interference_binding(session_results: list[dict]) -> dict:
                            "gold": p.get("gold_value"),
                            "distractor": p.get("distractor_value"), "class": cls})
     total = correct + confused + both + miss
+    # Per-session binding accuracy (correct / scored), so this true interference
+    # signal can drive the mechanism plot / AgingCard in place of the legacy
+    # interference_resistance proxy.
+    ba_per_session = {
+        s: (round(sum(1 for c in cs if c == "correct") / len(cs), 4) if cs else None)
+        for s, cs in sorted(per_session.items())
+    }
     return {
         "binding_accuracy": round(correct / total, 4) if total else None,
         "confusion_rate": round(confused / total, 4) if total else None,
@@ -1105,6 +1182,7 @@ def score_interference_binding(session_results: list[dict]) -> dict:
         "both_rate": round(both / total, 4) if total else None,
         "n_probes": total,
         "per_session": {s: cs for s, cs in sorted(per_session.items())},
+        "binding_accuracy_per_session": ba_per_session,
         "detail": detail,
     }
 

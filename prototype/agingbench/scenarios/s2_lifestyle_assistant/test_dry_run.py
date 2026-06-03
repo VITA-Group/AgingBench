@@ -22,7 +22,6 @@ from agingbench.scenarios.s2_lifestyle_assistant.validator import (
     load_eval_probes,
     score_probe,
     compute_cvr,
-    compute_tool_usage_shift,
     score_session,
 )
 
@@ -168,24 +167,6 @@ for label, outputs in [
     if result["violated_constraints"]:
         print(f"    Violated: {result['violated_constraints']}")
 
-# -- 5. Test tool_usage_shift --
-print(f"\n{'=' * 60}")
-print("TOOL USAGE SHIFT: KL divergence test")
-print("=" * 60)
-
-baseline = {"check_constraints": 5, "search_memory": 3, "recommend": 2}
-session_same = {"check_constraints": 5, "search_memory": 3, "recommend": 2}
-session_drift = {"check_constraints": 1, "search_memory": 3, "recommend": 6}
-session_no_check = {"search_memory": 4, "recommend": 6}
-
-for label, counts in [
-    ("Same as baseline", session_same),
-    ("Drifted (fewer checks)", session_drift),
-    ("No check_constraints", session_no_check),
-]:
-    kl = compute_tool_usage_shift(counts, baseline)
-    print(f"  {label:>30}: KL = {kl:.4f}")
-
 # -- Summary --
 print(f"\n{'=' * 60}")
 print("DRY-RUN COMPLETE — all components verified")
@@ -197,7 +178,7 @@ Files created:
   eval_probes.json        — 10 held-out probes (1 per constraint)
   constraint_updates.json — 2 mid-lifetime updates (session 3, 6)
   tools.py                — check_constraints tool + TOOL_SPEC
-  validator.py            — CVR scorer + tool_usage_shift
+  validator.py            — CVR + constraint_precision + lag_recall + compounding scorers
 
 Expected CVR curve (lossy_compress SUT):
   Session:  0    1    2    3    4    5    6    7    8    9

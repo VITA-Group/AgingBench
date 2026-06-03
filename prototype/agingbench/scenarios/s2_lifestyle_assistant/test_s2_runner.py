@@ -105,13 +105,11 @@ def test_s2_runner_no_memory():
                 llm=MockLLM(),
                 tracer=tracer,
                 sut_id="mock_no_memory",
-                oracle_mode=False,
             )
             result = runner.run(n_sessions=2, seed=42)
 
         cvr_curve = result["cvr_curve"]
         print(f"\n  CVR curve (adherence): {list(zip(cvr_curve.exposures, cvr_curve.scores))}")
-        print(f"  CVR raw: {result['cvr_raw']}")
         print(f"  Session results: {len(result['session_results'])} sessions")
 
         # With no memory + mock LLM giving perfect answers, CVR should be 0
@@ -139,52 +137,23 @@ def test_s2_runner_summarize_store():
                 llm=MockLLM(),
                 tracer=tracer,
                 sut_id="mock_summarize_store",
-                oracle_mode=False,
             )
             result = runner.run(n_sessions=3, seed=42)
 
         cvr_curve = result["cvr_curve"]
         print(f"\n  Adherence curve: {list(zip(cvr_curve.exposures, cvr_curve.scores))}")
-        print(f"  CVR raw: {result['cvr_raw']}")
-        print(f"  TUS raw: {result['tus_raw']}")
 
         for sr in result["session_results"]:
             print(f"    Session {sr['session']}: CVR={sr['cvr']:.2f} "
-                  f"TUS={sr['tool_usage_shift']:.4f} "
+                  f"precision={sr['constraint_precision']:.3f} "
                   f"violated={sr['violated_constraints']}")
 
         print("\n  PASS: SummarizeStorePolicy test completed")
 
 
-def test_s2_runner_oracle():
-    """Test S2Runner in oracle mode (memory always fresh)."""
-    print("\n" + "=" * 60)
-    print("TEST: S2Runner with oracle mode (2 sessions)")
-    print("=" * 60)
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        trace_path = Path(tmpdir) / "trace.jsonl"
-        with TraceLogger(str(trace_path)) as tracer:
-            runner = S2Runner(
-                memory_policy=SummarizeStorePolicy(),
-                llm=MockLLM(),
-                tracer=tracer,
-                sut_id="mock_oracle",
-                oracle_mode=True,
-            )
-            result = runner.run(n_sessions=2, seed=42)
-
-        for sr in result["session_results"]:
-            print(f"    Session {sr['session']}: CVR={sr['cvr']:.2f} "
-                  f"violated={sr['violated_constraints']}")
-
-        print("\n  PASS: Oracle mode test completed")
-
-
 if __name__ == "__main__":
     test_s2_runner_no_memory()
     test_s2_runner_summarize_store()
-    test_s2_runner_oracle()
 
     print("\n" + "=" * 60)
     print("ALL S2 RUNNER TESTS PASSED")

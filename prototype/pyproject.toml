@@ -22,6 +22,12 @@ dependencies = [
 
 [project.optional-dependencies]
 api = ["litellm"]
+# vLLM client side ONLY: the benchmark talks to a vLLM server over its
+# OpenAI-compatible HTTP API (agingbench.core.llm.VLLMAdapter), so it needs
+# just the `openai` client — NOT the `vllm` package. Install vLLM-the-server
+# in its OWN env/container (its torch pin conflicts with this package's
+# torch<2.11). See agingbench/registry/suts/_vllm_templates/README.md.
+vllm-client = ["openai>=1.0"]
 dev = ["pytest", "pytest-cov"]
 
 [project.scripts]

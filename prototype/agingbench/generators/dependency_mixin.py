@@ -380,7 +380,16 @@ class DependencyMixin:
         if not updatable:
             return []
 
-        n_to_update = max(1, int(len(updatable) * pressure.update_rate))
+        # Honor the stochastic draw: a max(1, ...) floor was forcing >=1
+        # revision every cycle, which pushed the revision rate to ~100% and
+        # left ~1 unrevised fact across the whole run. The trident's
+        # revision_fidelity_excess needs a healthy unrevised cohort as
+        # baseline to subtract; without it the metric is None and the aging
+        # card reports coverage_verdict="underpowered". Removing the floor
+        # lets update_rate actually control the revised/unrevised split.
+        n_to_update = int(round(len(updatable) * pressure.update_rate))
+        if n_to_update == 0:
+            return []
         to_update = rng.sample(updatable, min(n_to_update, len(updatable)))
 
         updates = []
@@ -418,6 +427,20 @@ class DependencyMixin:
 
             if new_keywords == old_fact.keywords:
                 continue  # no change
+
+            # Reject revisions whose mutated value lands in the unscorable
+            # short-numeric region. The scoring layer uses a digit-flank
+            # guard ('2' must NOT match inside '20'), so a mutation
+            # 122 → 99 (delta -23 on val=122 is in-range) produces probes
+            # whose gold can never survive at scoring time. Mirrors the
+            # _emittable filter in s1_generator._extract_unique_keywords;
+            # without this, _attach_forbidden_keywords_retroactively would
+            # also propagate the short numeric back to earlier basic probes.
+            def _short_num(v: str) -> bool:
+                s = v.replace(",", "")
+                return s.isdigit() and len(s) < 3
+            if any(_short_num(k) for k in new_keywords):
+                continue
 
             new_content = old_fact.content
             for old_kw, new_kw in zip(old_fact.keywords, new_keywords):
@@ -795,7 +818,14 @@ class DependencyMixin:
         if not invalidatable:
             return []
 
-        n_to_invalidate = max(1, int(len(invalidatable) * pressure.forget_rate))
+        # Honor the stochastic draw (see invalidate_random_facts' sibling in
+        # version_random_facts above): the max(1, ...) floor previously
+        # guaranteed an invalidation every cycle even when the rate said
+        # zero, distorting the revised/unrevised ratio used by trident
+        # baselines.
+        n_to_invalidate = int(round(len(invalidatable) * pressure.forget_rate))
+        if n_to_invalidate == 0:
+            return []
         to_invalidate = rng.sample(invalidatable, min(n_to_invalidate, len(invalidatable)))
 
         results = []

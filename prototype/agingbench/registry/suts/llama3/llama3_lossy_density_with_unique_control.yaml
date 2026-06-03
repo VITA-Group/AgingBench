@@ -1,0 +1,40 @@
+sut_id: llama3_lossy_density_with_unique_control
+description: >
+  Lossy-compression arm of the crowding-out paired-control test.
+  Llama-3.1-8B + summarize_store (word_budget=300) lossy memory + 8 confusable
+  similar-name pairs + 8 unique-singleton controls, injected at the same session
+  (s1) and probed at the same lags [2,4,6,8].
+
+  Tests whether confusable pairs are PREFERENTIALLY compressed compared to
+  same-shape singletons. If lossy compression specifically targets near-
+  duplicate entries (the original +48pp finding), the binding arm should
+  collapse FASTER than the unique-control arm.
+
+  Contrasts with the append_only paired-control run (DeepSeek-14B): if confusable
+  preferential compression is real, binding < uctrl gap should be large here
+  but ~0 under append_only.
+
+model:
+  provider: local_hf
+  model_id: NousResearch/Meta-Llama-3.1-8B-Instruct
+  max_new_tokens: 700
+  temperature: 0.0
+
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+  word_budget: 300
+
+pressure:
+  preset: medium
+  tokens_per_session: 2000
+  dependency_density: 0.5
+  confusable_start_session: 1
+  n_confusable_pairs: 8
+  n_unique_controls: 8
+  update_rate: 0.0
+  forget_rate: 0.0
+  confusable_similar_names: true
+  confusable_probe_lags: [2, 4, 6, 8]
+
+seed: 42

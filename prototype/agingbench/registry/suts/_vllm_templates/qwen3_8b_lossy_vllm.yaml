@@ -1,0 +1,16 @@
+sut_id: qwen3_8b_lossy_vllm
+description: "Qwen3-8B, lossy summarize_store — served by vLLM. Thinking OFF (matches local_hf registry default); set enable_thinking: true to turn it on."
+model:
+  provider: vllm
+  model: Qwen/Qwen3-8B
+  api_base: http://localhost:8000/v1
+  max_tokens: 5000          # generous: thinking + answer share this budget
+  temperature: 0.0
+  enable_thinking: false     # -> chat_template_kwargs.enable_thinking on the server
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+  word_budget: 300
+seed: 42
+# Launch:  vllm serve Qwen/Qwen3-8B --port 8000 --served-model-name Qwen/Qwen3-8B \
+#            --enable-reasoning --reasoning-parser qwen3

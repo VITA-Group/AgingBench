@@ -1,0 +1,41 @@
+sut_id: deepseek_r1_appendonly_density_with_unique_control
+description: >
+  Crowding-out test with paired within-session controls. DeepSeek-R1-Distill-
+  Qwen-14B (reasoning model, 128K ctx) + append-only memory + 8 confusable
+  similar-name pairs + 8 unique-singleton controls (lonely people, no near-
+  duplicate in memory) injected at the same session and probed at the same
+  lags [2,4,6,8]. The contrast — confusable-pair binding accuracy vs
+  unique-control accuracy at matched bloat — isolates confusable-specific
+  retrieval crowding from generic bloat-driven recall failure.
+
+  Predicted: if interference is real, binding accuracy collapses faster than
+  control accuracy as bloat grows; if bloat is the only driver, both collapse
+  together.
+
+  Pairs the Llama-3.1-8B baseline (llama3_appendonly_density) for a model-size
+  ablation: does a larger reasoning model resist confusable crowding at the
+  same bloat level?
+
+model:
+  provider: local_hf
+  model_id: deepseek-ai/DeepSeek-R1-Distill-Qwen-14B
+  max_new_tokens: 4000
+  temperature: 0.0
+
+memory_policy:
+  type: append_only
+  retriever: {top_k: 5}
+
+pressure:
+  preset: medium
+  tokens_per_session: 2000
+  dependency_density: 0.5
+  confusable_start_session: 1
+  n_confusable_pairs: 8
+  n_unique_controls: 8
+  update_rate: 0.0
+  forget_rate: 0.0
+  confusable_similar_names: true
+  confusable_probe_lags: [2, 4, 6, 8]
+
+seed: 42

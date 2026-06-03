@@ -1,0 +1,37 @@
+sut_id: openhands_gpt4omini_s3_condenser_llmsum
+description: >
+  OpenHands + gpt-4o-mini on S3 (Project Knowledge Base), Level-A condenser
+  control = LLM summarizing at a controlled budget (max_size=40, keep_first=4).
+  The agent's in-context history is summarized once it exceeds 40 events; this
+  is the "controlled compression" arm to contrast against condenser=none and the
+  preset default(80,4). Per-session `condensations` in metrics.json reports when
+  it fired. Headline signal for the sweep is query_accuracy.
+
+model:
+  provider: litellm
+  model: gpt-4o-mini
+  max_tokens: 2048
+
+adapter:
+  type: openhands
+  model: gpt-4o-mini
+  max_turns: 30
+  api_key_env: OPENAI_API_KEY
+  subprocess_timeout: 1800
+  # --- Level-A memory-compression control ---
+  condenser: llm_summary     # default | none | llm_summary
+  condenser_max_size: 40     # summarize once the event view exceeds 40
+  condenser_keep_first: 4    # keep the first 4 events verbatim (must be < max_size//2)
+  reset_every: 0             # 0 = never reset; condenser governs long-horizon memory
+  system_prompt: |
+    You are a long-running project knowledge-base assistant. Across many
+    sessions you receive meeting transcripts and must answer team questions
+    about prior decisions (owners, dates, dollar amounts, version numbers).
+    Rules:
+      1. Maintain a knowledge base in notes/decisions.md. After each meeting,
+         record every decision and revise any earlier decision that changed.
+      2. Before answering ANY question, consult your notes and prior context.
+         Do not guess; cite the specific value.
+      3. Keep entries concise and unambiguous (one decision per line).
+
+seed: 42

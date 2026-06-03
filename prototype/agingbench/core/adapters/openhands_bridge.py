@@ -15,6 +15,9 @@ Protocol (one-shot per invocation):
     "conversation_id": str|null,   # resume existing conversation if set
     "system_prompt": str|null,     # optional system prompt prefix
     "max_iterations": int,         # upper bound on agent turns per run
+    "condenser": str|null,         # "default" (preset) | "none" | "llm_summary"
+    "condenser_max_size": int|null,   # llm_summary trigger size (events); default 80
+    "condenser_keep_first": int|null, # llm_summary head events kept verbatim; default 4
   }
   stdout: {
     "text": str,                   # final assistant text
@@ -24,8 +27,17 @@ Protocol (one-shot per invocation):
     "conversation_id": str,        # UUID; caller stores for resumption
     "files_changed": [str],        # paths modified in workspace_dir (relative)
     "iterations": int,             # agent turns consumed
+    "condenser": {...},            # active condenser: kind/class/max_size/keep_first
+    "condensations": int,          # how many times the condenser fired this run
     "error": str|null,
   }
+
+Memory-compression control (Level A): the OpenHands agent presets bake in an
+LLMSummarizingCondenser(max_size=80, keep_first=4). The `condenser` request
+fields let the benchmark control that in-context compaction as a designed
+factor (off / summarize-at-budget) instead of inheriting it silently, and the
+`condensations` count reports whether it actually fired so an inert run is not
+mistaken for a controlled one.
 
 This bridge intentionally does one turn per process. Resumption is via
 `persistence_dir` + `conversation_id` (OpenHands' built-in state persistence).
@@ -86,6 +98,10 @@ def _run(req: dict) -> dict:
     max_iterations = int(req.get("max_iterations", 30))
     reasoning_effort = req.get("reasoning_effort")  # "low" | "medium" | "high" | None
     preset_override = req.get("preset")  # "default" | "gpt5" | None (auto)
+    # Level-A memory-compression control. "default" keeps the preset's baked-in
+    # LLMSummarizingCondenser(80, 4); "none" disables compaction; "llm_summary"
+    # uses a controlled budget. None/missing == "default" (preserves prior runs).
+    condenser_kind = (req.get("condenser") or "default").lower()
 
     workspace_dir.mkdir(parents=True, exist_ok=True)
     persistence_dir.mkdir(parents=True, exist_ok=True)
@@ -108,9 +124,12 @@ def _run(req: dict) -> dict:
         api_key=api_key,
         max_output_tokens=1024,
     )
-    # Reasoning-model-specific fields. Reasoning models typically ignore
-    # `temperature`, so only set it on non-reasoning models.
-    if use_gpt5_preset:
+    # Reasoning-model-specific fields. `reasoning_effort` is tied to the actual
+    # MODEL (not the tool preset) — forcing `preset: gpt5` on a non-reasoning
+    # model (e.g. gpt-4o-mini) to get ApplyPatchTool must NOT send
+    # `reasoning_effort`, which those models reject. Reasoning models also
+    # ignore `temperature`, so only set it on non-reasoning models.
+    if _is_reasoning_model(model):
         llm_kwargs["reasoning_effort"] = reasoning_effort or "low"
     else:
         llm_kwargs["temperature"] = 0.0
@@ -129,6 +148,44 @@ def _run(req: dict) -> dict:
         existing = dict(agent.system_prompt_kwargs or {})
         existing["extra_system_message"] = system_prompt
         agent = agent.model_copy(update={"system_prompt_kwargs": existing})
+
+    # ---- Level-A: control the in-context condenser (memory compression) ----
+    # The Agent.condenser field is swappable; override the preset's baked-in
+    # LLMSummarizingCondenser when the benchmark asks for a specific regime.
+    condenser_info: dict = {"kind": condenser_kind}
+    if condenser_kind == "none":
+        from openhands.sdk.context.condenser import NoOpCondenser
+        agent = agent.model_copy(update={"condenser": NoOpCondenser()})
+    elif condenser_kind == "llm_summary":
+        from openhands.sdk.context.condenser import LLMSummarizingCondenser
+        c_max = int(req.get("condenser_max_size") or 80)
+        c_keep = int(req.get("condenser_keep_first") or 4)
+        # Constraint (SDK validator): condensation needs at least one event in
+        # the tail half, i.e. max_size//2 - keep_first - 1 >= 1, so
+        # keep_first <= max_size//2 - 2. Clamp instead of crashing on a
+        # too-aggressive YAML, and record that we did. (max_size < 6 cannot
+        # satisfy this for any keep_first; the SDK then raises a clear error.)
+        c_keep_max = max(0, c_max // 2 - 2)
+        if c_keep > c_keep_max:
+            condenser_info["keep_first_clamped_from"] = c_keep
+            c_keep = c_keep_max
+        cond_llm = llm.model_copy(update={"usage_id": "condenser"})
+        agent = agent.model_copy(update={"condenser": LLMSummarizingCondenser(
+            llm=cond_llm, max_size=c_max, keep_first=c_keep,
+        )})
+        condenser_info["requested_max_size"] = c_max
+        condenser_info["requested_keep_first"] = c_keep
+    elif condenser_kind in ("default", "preset", ""):
+        pass  # keep the preset's baked-in condenser unchanged
+    else:
+        condenser_info["warning"] = (
+            f"unknown condenser '{condenser_kind}'; kept preset default"
+        )
+    # Record what is actually active so the caller can verify the regime.
+    _active = getattr(agent, "condenser", None)
+    condenser_info["active_class"] = type(_active).__name__ if _active else None
+    condenser_info["active_max_size"] = getattr(_active, "max_size", None)
+    condenser_info["active_keep_first"] = getattr(_active, "keep_first", None)
 
     conv_id: uuid.UUID | None = (
         uuid.UUID(conversation_id_str) if conversation_id_str else None
@@ -211,6 +268,15 @@ def _run(req: dict) -> dict:
     )
     iterations = n_actions + n_assistant_msgs
 
+    # How many times the condenser actually fired this run. Condensation emits a
+    # dedicated event; match by class name so this is robust across SDK layouts
+    # and reports 0 cleanly when compaction never triggered (e.g. NoOp, or the
+    # event view never exceeded max_size).
+    condensations = sum(
+        1 for e in events if "Condensation" in type(e).__name__
+    )
+    condenser_info["fired"] = condensations
+
     conv.close()
 
     return {
@@ -221,6 +287,8 @@ def _run(req: dict) -> dict:
         "conversation_id": conv_id_out,
         "files_changed": files_changed,
         "iterations": iterations,
+        "condenser": condenser_info,
+        "condensations": condensations,
         "error": None,
     }
 

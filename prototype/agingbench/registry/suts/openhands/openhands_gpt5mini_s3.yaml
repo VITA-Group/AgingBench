@@ -1,0 +1,30 @@
+sut_id: openhands_gpt5mini_s3
+description: >
+  Strong-model upper bound. OpenHands + gpt-5-mini (a reasoning model) on S3,
+  condenser default@80, medium pressure — same task/memory as the gpt-4o-mini
+  default@80 baseline. Reasoning model → auto gpt5 preset (ApplyPatchTool) +
+  reasoning_effort. Tests whether reasoning + a robust edit tool fixes the
+  revision aging (esp. the cognition/disambiguation floor seen at short lag).
+
+model:
+  provider: litellm
+  model: gpt-5-mini
+  max_tokens: 2048
+
+adapter:
+  type: openhands
+  model: gpt-5-mini
+  max_turns: 30
+  api_key_env: OPENAI_API_KEY
+  subprocess_timeout: 1800
+  condenser: default          # same condenser as the gpt-4o-mini baseline
+  reasoning_effort: low       # keep cost bounded
+  reset_every: 0
+  system_prompt: |
+    You are a long-running project knowledge-base assistant. Across many
+    sessions you receive meeting transcripts and must answer questions about
+    prior decisions (owners, dates, dollar amounts, version numbers). Maintain
+    notes/decisions.md; update it each meeting and revise changed decisions.
+    Consult it before answering; cite the specific value, do not guess.
+
+seed: 42

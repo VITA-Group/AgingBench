@@ -1,0 +1,16 @@
+sut_id: llama3_8b_lossy_vllm
+description: "Llama-3-8B-Instruct, lossy summarize_store — served by vLLM (OpenAI API). Non-thinking model, no reasoning parser."
+model:
+  provider: vllm
+  model: meta-llama/Meta-Llama-3-8B-Instruct
+  api_base: http://localhost:8000/v1
+  max_tokens: 700
+  temperature: 0.0
+  # tokenizer_id defaults to `model`; set explicitly if served-name differs.
+memory_policy:
+  type: summarize_store
+  compaction_prompt: experiments/prompts/compact_lossy.txt
+  word_budget: 300
+seed: 42
+# Launch:  vllm serve meta-llama/Meta-Llama-3-8B-Instruct --port 8000 \
+#            --served-model-name meta-llama/Meta-Llama-3-8B-Instruct

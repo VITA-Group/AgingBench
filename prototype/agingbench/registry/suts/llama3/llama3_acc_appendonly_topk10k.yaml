@@ -1,0 +1,18 @@
+sut_id: llama3_acc_appendonly_topk10k
+description: >
+  Accumulator isolation — COMPRESSION-OFF arm via append_only + top_k=10000:
+  keep every raw entry, retrieve all of it (nothing dropped at write or read).
+  If accumulator (derived-state) error PERSISTS here, the revision failure is
+  isolated from compression (representational, not capacity). Pressure matches
+  llama3_acc_oracle_store / _lossy for a clean arm comparison.
+model: {provider: local_hf, model_id: NousResearch/Meta-Llama-3.1-8B-Instruct, max_new_tokens: 700, temperature: 0.0}
+memory_policy: {type: append_only, top_k: 10000}
+pressure:
+  preset: medium
+  tokens_per_session: 2000
+  dependency_density: 0.5
+  confusable_start_session: 1
+  n_confusable_pairs: 3
+  update_rate: 0.0
+  forget_rate: 0.0
+seed: 42

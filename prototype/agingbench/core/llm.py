@@ -472,6 +472,165 @@ class LiteLLMAdapter(BaseLLM):
             return len(text) // 4  # rough fallback
 
 
+# ------------------------------------------------------------------ vLLM (OpenAI-compatible)
+
+class VLLMAdapter(BaseLLM):
+    """
+    Client for a locally-hosted vLLM server via its OpenAI-compatible API
+    (§6.2 provider gateway).
+
+    The vLLM server runs as a SEPARATE process (often in its own env, so the
+    heavy `vllm` dependency never enters the benchmark env). This adapter only
+    needs the `openai` client to talk to it:
+
+        provider: vllm
+        model: Qwen/Qwen3-8B          # the served-model-name on the server
+        api_base: http://localhost:8000/v1
+        enable_thinking: false        # Qwen3 chat-template toggle (optional)
+
+    Why vLLM over local_hf for thinking models: when the server is launched
+    with `--reasoning-parser <name>`, reasoning models return their
+    chain-of-thought in `message.reasoning_content`, SEPARATE from the
+    committed answer in `message.content`. So we score `content` (clean
+    answer) and stash `reasoning_content` as `thought` — no fragile,
+    per-model regex stripping. If the server was launched WITHOUT a reasoning
+    parser (so the thinking leaks into `content`), we fall back to the same
+    `model_config.output_strip_patterns` the local_hf path uses, so the
+    returned answer is clean either way.
+
+    See agingbench/core/vllm_launch.py for the per-model launch commands and a
+    compatibility check.
+    """
+
+    def __init__(
+        self,
+        model: str,
+        api_base: str = "http://localhost:8000/v1",
+        api_key: str = "EMPTY",
+        max_tokens: int = 700,
+        temperature: float = 0.0,
+        top_p: Optional[float] = None,
+        top_k: Optional[int] = None,
+        enable_thinking: Optional[bool] = None,
+        tokenizer_id: Optional[str] = None,
+        timeout: float = 600.0,
+    ):
+        try:
+            from openai import OpenAI
+        except ImportError as e:
+            raise ImportError(
+                "VLLMAdapter requires the openai client: pip install openai"
+            ) from e
+        self.model = model
+        self._model_id = model
+        self._provider = "vllm"
+        self.api_base = api_base
+        self.max_tokens = max_tokens
+        self.temperature = temperature
+        self.top_p = top_p
+        self.top_k = top_k
+        self.enable_thinking = enable_thinking
+        self.tokenizer_id = tokenizer_id or model
+        self._client = OpenAI(base_url=api_base, api_key=api_key, timeout=timeout)
+        self.last_thought = ""
+        self._tok = None  # lazily-loaded HF tokenizer for count_tokens
+
+    def chat_with_usage(self, messages: list[dict]) -> ChatResponse:
+        import time
+        from .model_config import get_model_config
+
+        kwargs: dict = dict(
+            model=self.model,
+            messages=messages,
+            max_tokens=self.max_tokens,
+            temperature=self.temperature,
+        )
+        if self.top_p is not None:
+            kwargs["top_p"] = self.top_p
+
+        # vLLM-specific knobs go through extra_body (the OpenAI schema rejects
+        # unknown top-level fields). `chat_template_kwargs.enable_thinking` is
+        # how Qwen3 (and similar) toggle their thinking channel server-side;
+        # `top_k` is a sampling param vLLM accepts but the OpenAI schema omits.
+        extra_body: dict = {}
+        if self.enable_thinking is not None:
+            extra_body["chat_template_kwargs"] = {"enable_thinking": bool(self.enable_thinking)}
+        if self.top_k is not None:
+            extra_body["top_k"] = self.top_k
+        if extra_body:
+            kwargs["extra_body"] = extra_body
+
+        last_err = None
+        for attempt in range(5):
+            try:
+                resp = self._client.chat.completions.create(**kwargs)
+                msg = resp.choices[0].message
+                content = (msg.content or "")
+                # vLLM reasoning-parser path: thinking arrives separately.
+                thought = (getattr(msg, "reasoning_content", None) or "")
+
+                if not thought and content:
+                    # Server launched without a reasoning parser → thinking (if
+                    # any) is inline in content. Strip it with the same patterns
+                    # the local_hf path uses, so the answer is clean regardless.
+                    cfg = get_model_config(self.model)
+                    if cfg.output_strip_patterns or cfg.thought_capture_pattern:
+                        import re as _re
+                        if cfg.thought_capture_pattern:
+                            caught = _re.findall(
+                                cfg.thought_capture_pattern, content, flags=_re.DOTALL
+                            )
+                            thought = "\n---\n".join(c.strip() for c in caught if c.strip())
+                        for pat in cfg.output_strip_patterns:
+                            content = _re.sub(pat, "", content, flags=_re.DOTALL)
+
+                usage = resp.usage
+                in_tok = getattr(usage, "prompt_tokens", 0) or 0
+                out_tok = getattr(usage, "completion_tokens", 0) or 0
+                self.last_thought = thought.strip()
+                self._log_llm_call(in_tok, out_tok)
+                return ChatResponse(
+                    text=content.strip(),
+                    input_tokens=in_tok,
+                    output_tokens=out_tok,
+                    thought=thought.strip(),
+                )
+            except Exception as e:  # noqa: BLE001
+                last_err = e
+                msg = str(e).lower()
+                retryable = any(s in msg for s in ("rate_limit", "rate limit", "timeout",
+                                                   "connection", "503", "502", "overloaded"))
+                if retryable and attempt < 4:
+                    wait = 2 ** attempt * 5  # 5, 10, 20, 40s
+                    print(f"[vllm retry] {e} — waiting {wait}s (attempt {attempt+1}/5)")
+                    time.sleep(wait)
+                else:
+                    raise
+        raise last_err  # pragma: no cover
+
+    def chat(self, messages: list[dict]) -> str:
+        return self.chat_with_usage(messages).text
+
+    def count_tokens(self, text: str) -> int:
+        # Use the model's real tokenizer for accurate context budgeting; this
+        # loads only the tokenizer (no weights), so it's cheap. Fall back to a
+        # rough estimate if the tokenizer can't be fetched.
+        if self._tok is None:
+            try:
+                from transformers import AutoTokenizer
+                self._tok = AutoTokenizer.from_pretrained(
+                    self.tokenizer_id, use_fast=True, trust_remote_code=True
+                )
+            except Exception:
+                self._tok = False  # sentinel: don't retry
+        if self._tok:
+            try:
+                return len(self._tok.encode(text))
+            except Exception:
+                pass
+        return len(text) // 4
+
+
 # ------------------------------------------------------------------ factory
 
 def load_llm(cfg: dict) -> BaseLLM:
@@ -485,6 +644,11 @@ def load_llm(cfg: dict) -> BaseLLM:
       provider: litellm
         model: gpt-4o
         temperature: 0.0
+
+      provider: vllm
+        model: Qwen/Qwen3-8B
+        api_base: http://localhost:8000/v1
+        enable_thinking: false
     """
     provider = cfg.get("provider", "local_hf")
     if provider == "local_hf":
@@ -506,6 +670,19 @@ def load_llm(cfg: dict) -> BaseLLM:
             api_key=cfg.get("api_key"),
             api_base=cfg.get("api_base"),
         )
+    if provider == "vllm":
+        return VLLMAdapter(
+            model=cfg["model"],
+            api_base=cfg.get("api_base", "http://localhost:8000/v1"),
+            api_key=cfg.get("api_key", "EMPTY"),
+            max_tokens=cfg.get("max_tokens", cfg.get("max_new_tokens", 700)),
+            temperature=cfg.get("temperature", 0.0),
+            top_p=cfg.get("top_p"),
+            top_k=cfg.get("top_k"),
+            enable_thinking=cfg.get("enable_thinking"),
+            tokenizer_id=cfg.get("tokenizer_id"),
+            timeout=cfg.get("timeout", 600.0),
+        )
     if provider == "custom":
         import importlib
         class_spec = cfg["class"]  # e.g. "my_module:MyLLM"
@@ -514,4 +691,4 @@ def load_llm(cfg: dict) -> BaseLLM:
         cls = getattr(mod, class_name)
         kwargs = {k: v for k, v in cfg.items() if k not in ("provider", "class")}
         return cls(**kwargs)
-    raise ValueError(f"Unknown LLM provider: {provider!r}. Use 'local_hf', 'litellm', or 'custom'.")
+    raise ValueError(f"Unknown LLM provider: {provider!r}. Use 'local_hf', 'litellm', 'vllm', or 'custom'.")

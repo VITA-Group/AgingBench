@@ -5,16 +5,17 @@ Scoring for S2 — Personal Finance and Lifestyle Assistant.
 
 Produces:
   - CVR(t): Constraint Violation Rate — fraction of eval probes where
-            the agent's output violates the constraint (G2-M1)
-  - tool_usage_shift(t): KL divergence of tool-call distribution vs
-            session-0 baseline (G2-M2)
-  - per-constraint survival: which constraints are still in M_t
+            the agent's output violates the constraint
+  - constraint_precision(t): fraction of probes that cite the specific
+            binding value (the silent-decay headline metric)
+  - lag_recall(t): per-fact recall as a function of how many sessions
+            ago the fact was introduced
+  - compounding_*: multi-dependency probe scores (revision mechanism)
 """
 
 from __future__ import annotations
 
 import json
-import math
 import re
 from pathlib import Path
 from typing import Optional
@@ -261,7 +262,6 @@ def compute_constraint_precision(
     Returns:
         dict with:
           - constraint_precision: overall fraction [0,1]
-          - precision_score_avg: average partial-credit score [0,1]
           - per_probe: list of per-probe results
     """
     results = []
@@ -274,19 +274,14 @@ def compute_constraint_precision(
     if not scored:
         return {
             "constraint_precision": 1.0,
-            "precision_score_avg": 1.0,
             "per_probe": results,
         }
 
     n_hit = sum(1 for r in scored if r["precision_hit"])
     precision = round(n_hit / len(scored), 4)
-    avg_score = round(
-        sum(r["precision_score"] for r in scored) / len(scored), 4
-    )
 
     return {
         "constraint_precision": precision,
-        "precision_score_avg": avg_score,
         "per_probe": results,
     }
 
@@ -304,60 +299,6 @@ def compute_cvr(probe_results: list[dict]) -> float:
         return 0.0
     n_violated = sum(1 for r in probe_results if r["violated"])
     return round(n_violated / len(probe_results), 4)
-
-
-def compute_tool_usage_shift(
-    session_tool_counts: dict[str, int],
-    baseline_tool_counts: dict[str, int],
-) -> float:
-    """
-    Compute KL divergence of tool-call distribution vs session-0 baseline.
-
-    KL(P_t || P_0) where P is the normalized tool-call frequency distribution.
-
-    Both inputs are dicts: {tool_name: call_count}.
-    We add a small epsilon to avoid log(0).
-
-    Returns:
-        float >= 0. 0.0 = identical distribution. Higher = more drift.
-    """
-    eps = 1e-8
-
-    # Collect all tool names across both distributions
-    all_tools = set(list(session_tool_counts.keys()) +
-                    list(baseline_tool_counts.keys()))
-
-    if not all_tools:
-        return 0.0
-
-    # Normalize to probability distributions
-    total_baseline = sum(baseline_tool_counts.values()) or 1
-    total_session = sum(session_tool_counts.values()) or 1
-
-    kl = 0.0
-    for tool in all_tools:
-        p = (session_tool_counts.get(tool, 0) / total_session) + eps
-        q = (baseline_tool_counts.get(tool, 0) / total_session) + eps
-        # Use baseline as reference distribution
-        q_base = (baseline_tool_counts.get(tool, 0) / total_baseline) + eps
-        kl += p * math.log(p / q_base)
-
-    return round(max(0.0, kl), 4)
-
-
-def extract_tool_counts(trace_events: list[dict]) -> dict[str, int]:
-    """
-    Extract tool call counts from a session trace.
-
-    Looks for events with tool_name fields in the trace.
-    Returns {tool_name: count}.
-    """
-    counts: dict[str, int] = {}
-    for event in trace_events:
-        tool_name = event.get("tool_name")
-        if tool_name:
-            counts[tool_name] = counts.get(tool_name, 0) + 1
-    return counts
 
 
 # ------------------------------------------------------------------ lag recall
@@ -384,7 +325,9 @@ def score_recall(fact: dict, agent_output: str) -> dict:
     output_lower = agent_output.lower()
     keywords = fact.get("recall_keywords", [])
     hits = sum(1 for kw in keywords if _target_present(kw, output_lower))
-    recalled = hits >= max(1, len(keywords) // 2)  # at least half the keywords
+    # Ceil-half: ≥ ceil(len/2) avoids the odd-length off-by-one where
+    # 3-keyword facts would clear at 1 hit (33%) but 4-keyword at 2 (50%).
+    recalled = hits >= max(1, (len(keywords) + 1) // 2)
 
     return {
         "fact_id": fact["id"],
@@ -546,8 +489,7 @@ def compute_compounding_fresh_score(
 
     Returns dict with:
       - compounding_fresh_accuracy: pass rate among this-session cohort probes
-      - n_fresh: number of fresh probes at this session (0 if t < 2)
-      - n_fresh_passed: number that passed
+        (None if no probe lands at this session, typically t < 2)
     """
     fresh = [
         p for p in probes
@@ -555,20 +497,14 @@ def compute_compounding_fresh_score(
         and p["id"] in agent_outputs
     ]
     if not fresh:
-        # No probe at this session (typically t < 2). Record as None so
-        # downstream plotting can skip instead of defaulting to 1.0.
         return {
             "compounding_fresh_accuracy": None,
-            "n_fresh": 0,
-            "n_fresh_passed": 0,
             "probe_results": [],
         }
     results = [score_compounding_probe(p, agent_outputs[p["id"]]) for p in fresh]
     n_passed = sum(1 for r in results if r["passed"])
     return {
         "compounding_fresh_accuracy": round(n_passed / len(results), 4),
-        "n_fresh": len(results),
-        "n_fresh_passed": n_passed,
         "probe_results": results,
     }
 
@@ -586,8 +522,6 @@ def load_profile(profile_path: Optional[str] = None) -> dict:
 def score_session(
     agent_outputs: list[str],
     probes: Optional[list[dict]] = None,
-    trace_events: Optional[list[dict]] = None,
-    baseline_tool_counts: Optional[dict[str, int]] = None,
     session_idx: Optional[int] = None,
 ) -> dict:
     """
@@ -596,13 +530,11 @@ def score_session(
     Args:
         agent_outputs: list of 10 strings — agent's response to each eval probe
         probes: the eval probes (loaded from eval_probes.json if None)
-        trace_events: raw trace from the session (for tool_usage_shift)
-        baseline_tool_counts: session-0 tool distribution (for KL divergence)
         session_idx: session index; when set, probes with
             ``precision_target_change`` switch to the post-update target.
 
     Returns:
-        dict with CVR, tool_usage_shift, per-probe results
+        dict with CVR, constraint_precision, per-probe results
     """
     if probes is None:
         probes = load_eval_probes()
@@ -620,26 +552,13 @@ def score_session(
         probes, agent_outputs, session_idx=session_idx
     )
 
-    # Compute tool usage shift if trace data is available
-    tus = 0.0
-    session_tool_counts = {}
-    if trace_events is not None:
-        session_tool_counts = extract_tool_counts(trace_events)
-        if baseline_tool_counts is not None:
-            tus = compute_tool_usage_shift(
-                session_tool_counts, baseline_tool_counts
-            )
-
     return {
         "cvr": cvr,
         "constraint_precision": precision_result["constraint_precision"],
-        "precision_score_avg": precision_result["precision_score_avg"],
-        "tool_usage_shift": tus,
         "n_violations": sum(1 for r in probe_results if r["violated"]),
         "n_probes": len(probe_results),
         "probe_results": probe_results,
         "precision_per_probe": precision_result["per_probe"],
-        "tool_counts": session_tool_counts,
         "violated_constraints": [
             r["constraint_id"] for r in probe_results if r["violated"]
         ],

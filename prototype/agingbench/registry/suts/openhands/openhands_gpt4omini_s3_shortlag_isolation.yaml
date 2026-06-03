@@ -1,0 +1,37 @@
+sut_id: openhands_gpt4omini_s3_shortlag_isolation
+description: >
+  Revision-isolation arm. Identical to openhands_gpt4omini_s3_condenser_default
+  (OpenHands gpt-4o-mini, condenser default@80) EXCEPT the probe timing: revisions
+  are probed at short lag (warmup_sessions=1, confusable_start_session=1,
+  confusable_probe_lags=[0,1]). Comparing this arm's revision accuracy to the
+  long-lag default@80 baseline isolates the COMPRESSION contribution to revision
+  aging: if short-lag revision >> long-lag, compression was the culprit; if it's
+  still low, the failure is edit-tool + cognition (separable by read-vs-file).
+
+model:
+  provider: litellm
+  model: gpt-4o-mini
+  max_tokens: 2048
+
+adapter:
+  type: openhands
+  model: gpt-4o-mini
+  max_turns: 30
+  api_key_env: OPENAI_API_KEY
+  subprocess_timeout: 1800
+  condenser: default          # same condenser as the default@80 baseline
+  reset_every: 0
+  system_prompt: |
+    You are a long-running project knowledge-base assistant. Across many
+    sessions you receive meeting transcripts and must answer questions about
+    prior decisions (owners, dates, dollar amounts, version numbers). Maintain
+    notes/decisions.md; update it each meeting and revise changed decisions.
+    Consult it before answering; cite the specific value, do not guess.
+
+pressure:
+  preset: medium              # same base pressure as the baseline (update_rate=0.2)
+  warmup_sessions: 1          # dependency/revision probes can start at session 1 (was 3)
+  confusable_start_session: 1 # interference pairs start early (was 5)
+  confusable_probe_lags: [0, 1]  # probe right after the change (was [1,3])
+
+seed: 42

@@ -162,7 +162,10 @@ class DependencyMixin:
             return self._build_compare(graph, session, available, rng)
         elif dep_type == "trend":
             if versioned:
-                return self._build_trend(graph, session, versioned, rng)
+                return self._build_trend(
+                    graph, session, versioned, rng,
+                    prefer_deep=getattr(pressure, "version_cohort_size", 0) > 0,
+                )
             return self._build_compare(graph, session, available, rng)
         elif dep_type == "synthesize":
             return self._build_synthesize(graph, session, available, rng, pressure)
@@ -229,9 +232,18 @@ class DependencyMixin:
         session: int,
         versioned: list[Fact],
         rng: random.Random,
+        prefer_deep: bool = False,
     ) -> dict:
         """Build a trend task for a versioned fact."""
-        old_fact = rng.choice(versioned)
+        if prefer_deep:
+            # Cohort mode: probe the chain whose current head is deepest, so the
+            # version test lands on the dense stack (most competing versions).
+            old_fact = max(
+                versioned,
+                key=lambda f: (graph.get_current_version(f.id).version, f.id),
+            )
+        else:
+            old_fact = rng.choice(versioned)
         current = graph.get_current_version(old_fact.id)
 
         # The stale value the agent must NOT cite is the keyword from the
@@ -376,7 +388,17 @@ class DependencyMixin:
         if pressure.update_rate <= 0:
             return []
 
-        updatable = graph.get_updatable_facts(before_session=session)
+        # Default path is unchanged (v1-only, depth-2 cap). When the SUT opts
+        # into deep_version_chains, re-version the latest head of each chain up
+        # to max_chain_depth so revision chains reach depth 3+.
+        if getattr(pressure, "deep_version_chains", False):
+            updatable = graph.get_updatable_facts(
+                before_session=session,
+                allow_deep=True,
+                max_version=pressure.max_chain_depth,
+            )
+        else:
+            updatable = graph.get_updatable_facts(before_session=session)
         if not updatable:
             return []
 
@@ -387,10 +409,20 @@ class DependencyMixin:
         # baseline to subtract; without it the metric is None and the aging
         # card reports coverage_verdict="underpowered". Removing the floor
         # lets update_rate actually control the revised/unrevised split.
-        n_to_update = int(round(len(updatable) * pressure.update_rate))
-        if n_to_update == 0:
-            return []
-        to_update = rng.sample(updatable, min(n_to_update, len(updatable)))
+        cohort_size = getattr(pressure, "version_cohort_size", 0)
+        if cohort_size > 0:
+            # Cohort mode: re-version the SAME deepest heads every session
+            # (deterministic: deepest version first, ties by id) so a few chains
+            # stack many versions — recreating the dense per-fact structure that
+            # produces the cite-latest cliff. update_rate is bypassed here.
+            to_update = sorted(updatable, key=lambda f: (-f.version, f.id))[
+                : min(cohort_size, len(updatable))
+            ]
+        else:
+            n_to_update = int(round(len(updatable) * pressure.update_rate))
+            if n_to_update == 0:
+                return []
+            to_update = rng.sample(updatable, min(n_to_update, len(updatable)))
 
         updates = []
         for old_fact in to_update:

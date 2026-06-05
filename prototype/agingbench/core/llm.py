@@ -1,13 +1,11 @@
 """
-agingbench/baselines/llm.py — LLM abstraction layer (PDF §6.1.1, §6.2).
+agingbench/core/llm.py — LLM abstraction layer.
 
-§6.1.1 Adapter layers: benchmark logic must not couple to a single provider.
-  → BaseLLM ABC defines the contract; LocalLLM and LiteLLMAdapter implement it.
-
-§6.2 Provider gateway: LiteLLM for unified model calling, retries, and provider
-abstraction. LiteLLMAdapter wraps litellm.completion() so any model in the
-LiteLLM registry (OpenAI, Anthropic, Google, Together, local) can be used by
-swapping one YAML field.
+Adapter layer: benchmark logic must not couple to a single provider. The
+``BaseLLM`` ABC defines the contract; ``LocalLLM``, ``LiteLLMAdapter`` and
+``VLLMAdapter`` implement it. ``LiteLLMAdapter`` wraps ``litellm.completion()``
+so any model in the LiteLLM registry (OpenAI, Anthropic, Google, Together,
+local) can be selected by swapping one YAML field.
 """
 
 import os
@@ -20,10 +18,8 @@ from typing import NamedTuple, Optional
 #   2. AGINGBENCH_HF_HOME env var (project-specific override)
 #   3. ~/.cache/huggingface (HuggingFace's documented default)
 #
-# Previously this module set HF_HOME to a hardcoded developer-machine path,
-# which broke fresh `pip install agingbench` users with an opaque OSError
-# whenever transformers tried to write to a non-existent directory. The new
-# default falls back to the platform-standard cache location.
+# Falls back to the platform-standard cache location so a fresh install works
+# without configuration.
 if not os.environ.get("HF_HOME"):
     _override = os.environ.get("AGINGBENCH_HF_HOME")
     if _override:
@@ -43,7 +39,7 @@ class ChatResponse(NamedTuple):
 
 class BaseLLM(ABC):
     """
-    Provider-agnostic LLM interface (§6.1.1 adapter layer).
+    Provider-agnostic LLM interface (adapter layer).
 
     All agent code and memory policies depend only on BaseLLM — never on a
     concrete implementation. Swapping providers requires only a YAML change.
@@ -111,7 +107,7 @@ class LocalLLM(BaseLLM):
     HuggingFace transformers backend (open-weight models, local inference).
     Applies the model's chat template for Instruct variants.
 
-    Defaults to greedy decoding (§6.1.4). Sampling params (temperature, top_p,
+    Defaults to greedy decoding. Sampling params (temperature, top_p,
     top_k) can be set explicitly here, or will be pulled from
     ``model_config.get_model_config(model_id)`` when a vendor publishes
     required generation settings (e.g. Gemma 4).
@@ -395,7 +391,7 @@ class LocalLLM(BaseLLM):
 
 class LiteLLMAdapter(BaseLLM):
     """
-    LiteLLM backend (§6.2 provider gateway).
+    LiteLLM backend (provider gateway).
 
     Supports any provider in the LiteLLM registry via a single model string:
       "gpt-4o", "claude-3-7-sonnet-20250219", "gemini/gemini-1.5-pro",
@@ -477,7 +473,7 @@ class LiteLLMAdapter(BaseLLM):
 class VLLMAdapter(BaseLLM):
     """
     Client for a locally-hosted vLLM server via its OpenAI-compatible API
-    (§6.2 provider gateway).
+    (provider gateway).
 
     The vLLM server runs as a SEPARATE process (often in its own env, so the
     heavy `vllm` dependency never enters the benchmark env). This adapter only
@@ -512,6 +508,7 @@ class VLLMAdapter(BaseLLM):
         top_p: Optional[float] = None,
         top_k: Optional[int] = None,
         enable_thinking: Optional[bool] = None,
+        reasoning_effort: Optional[str] = None,
         tokenizer_id: Optional[str] = None,
         timeout: float = 600.0,
     ):
@@ -530,6 +527,13 @@ class VLLMAdapter(BaseLLM):
         self.top_p = top_p
         self.top_k = top_k
         self.enable_thinking = enable_thinking
+        # gpt-oss reasoning effort: "low" / "medium" / "high" (default by
+        # model). Caps the reasoning-channel token budget; "low" forces a
+        # short reasoning pass and reliable assistantfinal emission. Without
+        # this, gpt-oss-120B occasionally runs the reasoning channel out to
+        # max_tokens, leaving content=None and the response unscored.
+        # Per-call override-able; falls back to server default if None.
+        self.reasoning_effort = reasoning_effort
         self.tokenizer_id = tokenizer_id or model
         self._client = OpenAI(base_url=api_base, api_key=api_key, timeout=timeout)
         self.last_thought = ""
@@ -547,6 +551,12 @@ class VLLMAdapter(BaseLLM):
         )
         if self.top_p is not None:
             kwargs["top_p"] = self.top_p
+        # reasoning_effort is a recognized top-level field (gpt-oss / o-series)
+        # — pass through directly; OpenAI clients accept it. Without this,
+        # gpt-oss can spend the whole token budget on the reasoning channel
+        # and emit no content.
+        if self.reasoning_effort is not None:
+            kwargs["reasoning_effort"] = self.reasoning_effort
 
         # vLLM-specific knobs go through extra_body (the OpenAI schema rejects
         # unknown top-level fields). `chat_template_kwargs.enable_thinking` is
@@ -610,6 +620,68 @@ class VLLMAdapter(BaseLLM):
 
     def chat(self, messages: list[dict]) -> str:
         return self.chat_with_usage(messages).text
+
+    def chat_with_tools(self, messages: list[dict], tools: list[dict]) -> dict:
+        """Native OpenAI tool-calling round. `tools` is a list of OpenAI tool
+        schemas. Returns a dict with the assistant content, parsed tool_calls
+        ([{id,name,arguments}]), reasoning (reasoning_content), and usage.
+
+        Used by FullReactAgent's native-tools path for models trained on
+        structured tool-calling (e.g. gpt-oss harmony), where text-ReAct parsing
+        fails because the model never emits Action:/Final Answer: in plain text.
+        """
+        import json as _json
+        kwargs: dict = dict(
+            model=self.model, messages=messages,
+            max_tokens=self.max_tokens, temperature=self.temperature,
+            tools=tools, tool_choice="auto",
+        )
+        if self.top_p is not None:
+            kwargs["top_p"] = self.top_p
+        extra_body: dict = {}
+        if self.enable_thinking is not None:
+            extra_body["chat_template_kwargs"] = {"enable_thinking": bool(self.enable_thinking)}
+        if self.top_k is not None:
+            extra_body["top_k"] = self.top_k
+        if extra_body:
+            kwargs["extra_body"] = extra_body
+
+        # Degenerate-generation retry: some reasoning models (gpt-oss MXFP4 on
+        # Ampere) are non-deterministic even at temperature=0 and occasionally
+        # spiral into non-terminating reasoning that fills max_tokens with no
+        # tool call and empty content. A fresh attempt usually terminates, so
+        # retry when we get the degenerate signature (capped + empty + no call).
+        in_tok = out_tok = 0
+        msg = None
+        for attempt in range(3):
+            resp = self._client.chat.completions.create(**kwargs)
+            msg = resp.choices[0].message
+            usage = resp.usage
+            in_tok = getattr(usage, "prompt_tokens", 0) or 0
+            out_tok = getattr(usage, "completion_tokens", 0) or 0
+            self._log_llm_call(in_tok, out_tok)
+            degenerate = (
+                out_tok >= self.max_tokens - 5
+                and not (msg.content or "")
+                and not (getattr(msg, "tool_calls", None) or [])
+            )
+            if not degenerate:
+                break
+
+        tool_calls = []
+        for tc in (getattr(msg, "tool_calls", None) or []):
+            try:
+                args = _json.loads(tc.function.arguments or "{}")
+            except Exception:
+                args = {"_raw": tc.function.arguments}
+            tool_calls.append({"id": tc.id, "name": tc.function.name, "arguments": args})
+        return {
+            "content": (msg.content or ""),
+            "tool_calls": tool_calls,
+            "reasoning": (getattr(msg, "reasoning_content", None) or ""),
+            "input_tokens": in_tok,
+            "output_tokens": out_tok,
+        }
 
     def count_tokens(self, text: str) -> int:
         # Use the model's real tokenizer for accurate context budgeting; this
@@ -680,6 +752,7 @@ def load_llm(cfg: dict) -> BaseLLM:
             top_p=cfg.get("top_p"),
             top_k=cfg.get("top_k"),
             enable_thinking=cfg.get("enable_thinking"),
+            reasoning_effort=cfg.get("reasoning_effort"),
             tokenizer_id=cfg.get("tokenizer_id"),
             timeout=cfg.get("timeout", 600.0),
         )

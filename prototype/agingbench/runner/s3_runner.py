@@ -6,7 +6,27 @@ Each session: agent reads transcript + M_{t-1}, answers 3 team queries,
 writes interaction history to memory.
 
 Produces G3 metrics: summarization_fidelity, memory_bloat, contradiction_rate.
-Also tracks query_accuracy as a G1-aligned task performance signal.
+
+Recall is measured on TWO channels by default:
+  * ``query_accuracy``           — IN-CHANNEL. Conversational queries the agent
+                                   answers as part of the workload; the Q/A pair
+                                   enters memory at end-of-session, providing
+                                   testing-effect rehearsal for future re-asks.
+                                   This is the deployed-conversation lifespan
+                                   number — what a user actually experiences.
+  * ``held_out_query_accuracy``  — HELD-OUT. Eval-only probes about facts from
+                                   strictly-earlier sessions, sampled disjoint
+                                   from in-channel queries. Asked and scored,
+                                   but NEVER written to memory. This is the
+                                   clean substrate-decay number, directly
+                                   comparable to S6 and open-loop memory
+                                   benchmarks. Default 2 probes/session.
+
+The delta ``query_accuracy − held_out_query_accuracy`` quantifies the
+testing-effect contribution (range +0.10 to +0.23 across compression
+budgets in Qwen3-14B-thinking + summarize_store, 3 seeds). Pass
+``--held-out-probes 0`` to disable for reproducing legacy single-channel
+results.
 """
 
 from __future__ import annotations
@@ -26,6 +46,18 @@ from ..core.agent import AgentInterface, ReferenceAgent
 from ..core.tools import ToolRegistry, ToolSpec
 
 
+def _snake_case_policy_name(memory_policy) -> str:
+    """Map memory policy class name to snake_case key used by awareness module.
+
+    E.g. ``SummarizeStorePolicy`` → ``summarize_store``,
+    ``AppendOnlyPolicy``     → ``append_only``.
+    """
+    import re
+    cls = type(memory_policy).__name__
+    cls = re.sub(r"Policy$", "", cls)
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", cls).lower()
+
+
 class S3Runner(BaseRunner):
     SCENARIO_ID = "s3_knowledge_base"
 
@@ -37,6 +69,9 @@ class S3Runner(BaseRunner):
         sut_id: str = "unknown",
         agent_class: type[AgentInterface] = ReferenceAgent,
         generated_data: dict | None = None,
+        scenario_prompt_mode: str = "legacy",
+        pressure=None,
+        held_out_probes_per_session: int = 2,
     ):
         self.memory_policy = memory_policy
         self.llm = llm
@@ -44,7 +79,32 @@ class S3Runner(BaseRunner):
         if self.llm is not None:
             self.llm.tracer = self.tracer
         self.sut_id = sut_id
+        # Held-out probe channel (default 2 probes/session, on by default since
+        # the 3-seed budget sweep showed testing-effect delta of +0.10 to +0.23
+        # across compression budgets — a non-trivial confound on in-channel
+        # recall numbers). Sampled from STRICTLY-EARLIER sessions (lag > 0),
+        # asked + scored, but Q/A is NEVER written to memory. Held-out
+        # recall is the clean substrate-decay measurement; in-channel
+        # recall is the deployed conversational lifespan number.
+        # Set to 0 to disable (e.g. reproducing legacy single-channel results).
+        self.held_out_probes_per_session = held_out_probes_per_session
         self.agent_class = agent_class
+        # Opt-in scenario-aware system prompt. ``legacy`` (default) keeps
+        # the existing REACT_SYSTEM template untouched. ``scenario_aware``
+        # builds a per-scenario template with PressureConfig-derived
+        # awareness and attaches it to the agent via system_template.
+        self.scenario_prompt_mode = scenario_prompt_mode
+        self.pressure = pressure
+        if scenario_prompt_mode in ("scenario_aware", "scenario_aware_lean"):
+            from ..prompts.scenario_aware import build_system_template
+            self._scenario_system_template = build_system_template(
+                scenario=self.SCENARIO_ID,
+                pressure=pressure,
+                memory_policy_type=_snake_case_policy_name(memory_policy),
+                variant="lean" if scenario_prompt_mode == "scenario_aware_lean" else "standard",
+            )
+        else:
+            self._scenario_system_template = None
 
         self._model_id = getattr(llm, "model_id", None) or getattr(llm, "model", "unknown")
         self._provider = "local_hf" if hasattr(llm, "tok") else "litellm"
@@ -108,6 +168,65 @@ class S3Runner(BaseRunner):
                     due.extend(probes)
         return due
 
+    @staticmethod
+    def _decision_to_probe_text(decision: dict, probe_idx: int, at_session: int) -> dict:
+        """Convert a decision into a held-out probe (mirrors S3Generator._decision_to_query).
+
+        Returns a probe dict with ``probe_id``, ``question``, ``gold_decision_ids``,
+        ``keywords``, ``origin_session``. Kept here as a static helper so the
+        runner does not need a reference to the generator instance.
+        """
+        cat = decision["category"]
+        fact = decision["fact"]
+        q_templates = {
+            "budget": f"What was the budget figure for: {fact.split()[0]} {fact.split()[1] if len(fact.split()) > 1 else ''}?",
+            "tech": f"What technology decision was made regarding {fact.split()[0]}?",
+            "vendor": f"Which vendor was selected for {fact.split()[-1] if len(fact.split()) > 2 else 'this service'}?",
+            "timeline": f"What is the timeline for {fact.split()[0]}?",
+            "security": f"What security measure was decided for {fact.split()[-1]}?",
+            "hiring": f"What hiring decision was made?",
+            "infra": f"What infrastructure setup was decided?",
+        }
+        return {
+            "probe_id": f"ho_s{at_session}_{probe_idx + 1}",
+            "question": q_templates.get(cat, f"What was decided about {cat}?"),
+            "gold_decision_ids": [decision["id"]],
+            "keywords": decision["keywords"][:3],
+            "origin_session": decision["session"],
+        }
+
+    def _build_held_out_probes(
+        self,
+        at_session: int,
+        excluded_decision_ids: set[str],
+        seed: int,
+    ) -> list[dict]:
+        """Sample ``held_out_probes_per_session`` probes from STRICTLY-EARLIER
+        sessions (origin < at_session). Excludes decisions whose ids appear in
+        ``excluded_decision_ids`` (so a held-out probe does not double-ask a
+        decision the in-channel queries already covered this session).
+
+        Deterministic: derives a per-session RNG from ``seed`` + ``at_session``
+        so runs with the same seed produce identical held-out probe streams.
+        """
+        n = self.held_out_probes_per_session
+        if n <= 0 or at_session == 0:
+            return []
+        import random as _random
+        rng = _random.Random(seed * 100003 + at_session)
+        pool = [
+            d for d in self.gold_decisions
+            if d["session"] < at_session and d["id"] not in excluded_decision_ids
+        ]
+        if not pool:
+            return []
+        k = min(n, len(pool))
+        picks = rng.sample(pool, k)
+        return [
+            self._decision_to_probe_text(d, i, at_session)
+            for i, d in enumerate(picks)
+        ]
+
     def _build_tools(self, memory_text: str) -> ToolRegistry:
         """Tool registry: shared ``read_memory`` only (no scenario-specific tools)."""
         from ..core.tool_helpers import build_default_tool_registry
@@ -170,6 +289,12 @@ class S3Runner(BaseRunner):
         bloat_raw = []
         contradiction_raw = []
         query_acc_raw = []
+        # Held-out probe accuracy curve — populated only when
+        # held_out_probes_per_session > 0. Computed exactly like query_acc_raw
+        # but on the held-out channel that is NEVER written to memory, so the
+        # delta query_acc_raw[t] - held_out_acc_raw[t] quantifies the
+        # testing-effect contribution to S3's recall at session t.
+        held_out_acc_raw = []
         retrieval_precision_raw = []
         retrieval_recall_raw = []
         # Revision-aging trident raw series (count form for aging curves;
@@ -214,6 +339,13 @@ class S3Runner(BaseRunner):
                 tools=tools,
                 max_turns=4,
             )
+            # Opt-in scenario-aware system prompt: attach the prebuilt template
+            # so the agent uses it instead of legacy REACT_SYSTEM. When mode is
+            # ``legacy`` (default) or the scenario has no registered template,
+            # ``_scenario_system_template`` is None and the agent's behavior is
+            # bit-for-bit identical to before.
+            if self._scenario_system_template is not None:
+                agent.system_template = self._scenario_system_template
 
             # Agent context: memory + new transcript
             context = ""
@@ -264,6 +396,63 @@ class S3Runner(BaseRunner):
                     )
 
             query_acc = sum(query_scores) / len(query_scores) if query_scores else 0.0
+
+            # ---- Held-out probe channel ----
+            # Sampled from strictly-earlier sessions, disjoint from in-channel
+            # query decision ids this session. Asked and scored, but the
+            # responses NEVER enter memory: the loop returns before
+            # ``interaction`` is built. This isolates substrate decay from the
+            # testing-effect rehearsal contributed by in-channel Q/A writes.
+            held_out_results: list[dict] = []
+            held_out_acc: Optional[float] = None
+            if self.held_out_probes_per_session > 0:
+                excluded_ids: set[str] = set()
+                for q in queries:
+                    excluded_ids.update(q.get("gold_decision_ids", []) or [])
+                ho_probes = self._build_held_out_probes(
+                    at_session=t,
+                    excluded_decision_ids=excluded_ids,
+                    seed=seed,
+                )
+                if ho_probes:
+                    _progress(
+                        f"session {t + 1}: held-out probes start ({len(ho_probes)})",
+                        session_t0,
+                    )
+                ho_scores: list[float] = []
+                for hp in ho_probes:
+                    hp_prompt = (
+                        f"{context}"
+                        f"A team member asks: {hp['question']}\n\n"
+                        f"Search your knowledge base if needed, then answer with specific details "
+                        f"(names, dates, dollar amounts, version numbers)."
+                    )
+                    hp_result = agent.run_session(hp_prompt, session_id=t)
+                    hp_response = hp_result["output"]
+                    # score_query expects a query dict with at least 'keywords'
+                    # and 'question'. _decision_to_probe_text produces a
+                    # compatible shape so we can reuse the canonical scorer.
+                    hp_score = score_query(hp_response, hp)
+                    ho_scores.append(hp_score)
+                    held_out_results.append({
+                        "session": t,
+                        "probe_id": hp["probe_id"],
+                        "question": hp["question"],
+                        "origin_session": hp.get("origin_session"),
+                        "lag": t - int(hp.get("origin_session", t)),
+                        "gold_decision_ids": hp["gold_decision_ids"],
+                        "keywords": hp["keywords"],
+                        "response_text": hp_response,
+                        "score": hp_score,
+                    })
+                    self.tracer.log(
+                        "held_out_probe_answered", parent_span_id=sess_span,
+                        session=t, probe_id=hp["probe_id"],
+                        origin_session=hp.get("origin_session"),
+                        score=hp_score, turns=hp_result.get("turns", 0),
+                    )
+                if ho_scores:
+                    held_out_acc = sum(ho_scores) / len(ho_scores)
 
             # ---- Forced-choice interference binding probes ----
             # Ask each injected confusable pair's binding probe at a few
@@ -402,6 +591,8 @@ class S3Runner(BaseRunner):
             bloat_raw.append((t, bloat))
             contradiction_raw.append((t, contradiction))
             query_acc_raw.append((t, query_acc))
+            if held_out_acc is not None:
+                held_out_acc_raw.append((t, held_out_acc))
             # Only seed the revision-aging curves with sessions that carry a
             # real signal — pre-first-revision sessions stay out of the series
             # so downstream slope/aging math doesn't anchor on structural zeros.
@@ -443,6 +634,10 @@ class S3Runner(BaseRunner):
                 "response_tokens_per_query": query_token_counts,
                 "response_tokens_max": max(valid_qt) if valid_qt else 0,
                 "memory_write_tokens": out_tok,
+                # Held-out probe channel results (empty list + None when
+                # held_out_probes_per_session == 0; populated otherwise).
+                "held_out_results": held_out_results,
+                "held_out_query_accuracy": held_out_acc,
             }
             session_results.append(sr)
 
@@ -500,6 +695,14 @@ class S3Runner(BaseRunner):
             scores=[r[1] for r in query_acc_raw],
             scenario=self.SCENARIO_ID, sut_id=self.sut_id,
         )
+        # Held-out query curve. Empty (zero-length) when the runner was
+        # configured with held_out_probes_per_session == 0; downstream metrics
+        # treat empty curves as N/A, not 0.
+        held_out_query_curve = AgingCurve(
+            exposures=[r[0] for r in held_out_acc_raw],
+            scores=[r[1] for r in held_out_acc_raw],
+            scenario=self.SCENARIO_ID, sut_id=self.sut_id,
+        )
 
         retrieval_precision_curve = AgingCurve(
             exposures=[r[0] for r in retrieval_precision_raw],
@@ -546,6 +749,7 @@ class S3Runner(BaseRunner):
             "bloat_curve": bloat_curve,
             "contradiction_curve": contradiction_curve,
             "query_curve": query_curve,
+            "held_out_query_curve": held_out_query_curve,
             "retrieval_precision_curve": retrieval_precision_curve,
             "retrieval_recall_curve": retrieval_recall_curve,
             "rev_excess_count_curve": rev_excess_count_curve,
@@ -554,9 +758,11 @@ class S3Runner(BaseRunner):
             "bloat_raw": bloat_raw,
             "contradiction_raw": contradiction_raw,
             "query_acc_raw": query_acc_raw,
+            "held_out_acc_raw": held_out_acc_raw,
             "retrieval_precision_raw": retrieval_precision_raw,
             "retrieval_recall_raw": retrieval_recall_raw,
             "rev_excess_count_raw": rev_excess_count_raw,
             "stale_residue_count_raw": stale_residue_count_raw,
             "session_results": session_results,
+            "held_out_probes_per_session": self.held_out_probes_per_session,
         }

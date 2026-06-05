@@ -1,7 +1,7 @@
 """
-agingbench/baselines/memory/base.py — MemoryPolicy abstract base class.
+agingbench/core/memory/base.py — MemoryPolicy abstract base class.
 
-Memory lifecycle from §2.3:
+Memory lifecycle:
   M_{t+1} = U(M_t, H_{t+1})   (update operator)
   C_t     = R(M_t, q_t)        (retrieval operator)
 
@@ -55,7 +55,7 @@ class MemoryPolicy(ABC):
         """Return the FULL contents of the memory store, bypassing any
         retrieval/ranking logic.
 
-        Used by P2 (oracle retrieval) diagnostic to measure what physically
+        Used by the P2 (oracle retrieval) diagnostic to measure what physically
         survived the write process W.  For single-blob policies (SummarizeStore,
         GrowingHistory) this is equivalent to read().  Override in retrieval-
         based policies (e.g. AppendOnly) to return ALL stored entries, not
@@ -122,12 +122,12 @@ def build_memory_policy(policy_cfg: dict, project_root: Optional[Path] = None) -
     Factory: instantiate a MemoryPolicy from a config dict.
 
     Expected keys:
-        type: "no_memory" | "append_only" | "summarize_store" | "observer"
+        type: "no_memory" | "append_only" | "summarize_store" |
+              "growing_history" | "lossy_episodic" | "custom"
         compaction_prompt: (optional) path to prompt template file. Loaded from
             the installed `agingbench/prompts/` package directory (by basename)
             when available; falls back to `project_root / compaction_prompt`
             for source-tree dev configs.
-        project_dir: (optional) for ObserverPolicy
 
     Parameters
     ----------
@@ -179,10 +179,6 @@ def build_memory_policy(policy_cfg: dict, project_root: Optional[Path] = None) -
         prompt_template = _resolve_prompt_template(
             policy_cfg.get("compaction_prompt"), project_root, COMPACT_MEDIUM)
         return LossyEpisodicPolicy(prompt_template=prompt_template)
-
-    if policy_type == "observer":
-        from .observer import ObserverPolicy
-        return ObserverPolicy(project_dir=policy_cfg.get("project_dir", "."))
 
     # Custom memory policy: type = "custom", class = "my_module:MyPolicy"
     if policy_type == "custom":

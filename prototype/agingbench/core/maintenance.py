@@ -45,9 +45,8 @@ class MaintenanceEvent:
         Returns a string that is either the `event_type` on success or
         ``"UNSUPPORTED:{event_type}"`` when the policy does not implement
         the matching method. Callers (runner) must record the return value
-        so downstream metrics can distinguish real shocks from silent no-ops.
-        Previously the no-op path only emitted `warnings.warn`, which was
-        invisible at analysis time and produced fake \u0394shock signals.
+        so downstream metrics can distinguish real shocks from unsupported
+        no-ops.
         """
         method_name = f"maintenance_{self.event_type}"
         method = getattr(memory_policy, method_name, None)

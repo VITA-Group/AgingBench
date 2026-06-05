@@ -1,5 +1,5 @@
 """
-agingbench/baselines/claude_code_adapter.py — Adapter for invoking Claude Code.
+agingbench/core/claude_code_adapter.py — Adapter for invoking Claude Code.
 
 Two modes:
   1. SDK mode (preferred): Uses claude-code-sdk Python package for programmatic control.
@@ -207,7 +207,7 @@ class ClaudeCodeAdapter:
 
         if self.bare_mode:
             # Disable auto-memory, hooks, plugin sync, keychain reads
-            # for reproducible benchmarking (P5: CLI agent reproducibility)
+            # for reproducible benchmarking
             cmd.append("--bare")
 
         if resume and self._session_id:

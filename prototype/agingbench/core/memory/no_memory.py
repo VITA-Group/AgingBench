@@ -1,5 +1,5 @@
 """
-agingbench/baselines/memory/no_memory.py — Control-group policy.
+agingbench/core/memory/no_memory.py — Control-group policy.
 
 The agent receives no persistent memory between sessions.
 Establishes m(0) performance ceiling in the experimental matrix.

@@ -1,5 +1,5 @@
 """
-agingbench/baselines/memory/summarize_store.py — Lossy consolidation policy.
+agingbench/core/memory/summarize_store.py — Lossy consolidation policy.
 
 Primary failure driver for S1 (cross-session drift) and S2 (recursive compression).
 After each write(), the current memory is replaced by a compressed version

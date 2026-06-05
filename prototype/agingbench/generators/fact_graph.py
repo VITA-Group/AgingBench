@@ -198,22 +198,30 @@ class FactGraph:
         """Get all facts that have been updated at least once (version > 1)."""
         return [f for f in self.facts.values() if f.version > 1]
 
-    def get_updatable_facts(self, before_session: int) -> list[Fact]:
-        """Get facts from before `session` that haven't been updated yet.
+    def get_updatable_facts(self, before_session: int,
+                            allow_deep: bool = False,
+                            max_version: Optional[int] = None) -> list[Fact]:
+        """Get the current head of each live fact chain eligible for revision.
 
-        Note: filters to ``version == 1`` only. As a consequence, the
-        random-sampling pool used by version_random_facts can never select
-        a v2 fact to make a v3, which CAPS revision-chain depth at 2 for
-        pressure-driven updates (even when pressure.max_chain_depth > 2).
-        Deeper chains can still be built by calling ``update_fact()``
-        directly with a v2 id (as S7's hand-curated generator does).
+        Default (``allow_deep=False``): only ORIGINAL (v1) facts are returned.
+        A v2 head is never re-selected, so pressure-driven revision chains cap
+        at depth 2. This preserves the unrevised-cohort baseline some metrics
+        subtract against, and keeps existing scenarios/results unchanged.
+
+        ``allow_deep=True``: return the latest head of any chain (v1, v2, …) so
+        version_random_facts can re-version the same fact repeatedly and drive
+        chains to depth 3+. ``max_version`` (typically ``max_chain_depth``) caps
+        growth — a head already at ``version >= max_version`` is excluded so it
+        stops advancing. (Deeper chains can also be built by calling
+        ``update_fact()`` directly, as S7's hand-curated generator does.)
         """
         return [
             f for f in self.facts.values()
             if f.session < before_session
-            and f.replaced_by is None
-            and f.invalidated_at is None
-            and f.version == 1  # only original versions
+            and f.replaced_by is None       # current head of its chain
+            and f.invalidated_at is None     # not retracted
+            and (allow_deep or f.version == 1)
+            and (max_version is None or f.version < max_version)
         ]
 
     def invalidate_fact(self, fact_id: str, session: int) -> Fact:

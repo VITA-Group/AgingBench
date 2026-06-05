@@ -1,5 +1,5 @@
 """
-agingbench/baselines/memory/growing_history.py — Growing history compaction.
+agingbench/core/memory/growing_history.py — Growing history compaction.
 
 The most realistic memory aging policy: maintains a raw log of ALL past
 interactions. Each write appends to the raw log, then compresses the

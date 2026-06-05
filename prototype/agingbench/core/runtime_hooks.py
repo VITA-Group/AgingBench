@@ -1,14 +1,15 @@
 """
-agingbench/core/runtime_hooks.py — Composable post-session hooks for E1 / E2.
+agingbench/core/runtime_hooks.py — Composable post-session runtime-intervention
+hooks (typed-state overlay + runtime controller).
 
 Hooks are registered onto runner._post_session_hooks (list, default empty).
 Each hook receives (runner, session_idx) and may inspect runner state, call
 methods on the memory policy, or update its own internal state.
 
 Drives:
-  * E1 typed-state overlay: initialize accumulator state at session 0; apply
+  * typed-state overlay: initialize accumulator state at session 0; apply
     per-session deltas after each session.
-  * E2 runtime controller: read per-session metrics from
+  * runtime controller: read per-session metrics from
     runner._latest_session_record and dispatch promote_to_typed_state /
     switch_compaction_policy actions when thresholds are crossed.
 
@@ -125,8 +126,8 @@ def make_typed_state_hook(generated_data: dict, verbose: bool = True):
     Session t (t >= 1): apply that session's accumulator deltas.
 
     No-op when memory_policy is not a TypedStateOverlay or overlay.enabled is
-    False. (For E2 the controller may flip enabled later; this hook keeps
-    state up to date so activation sees a current value, not stale.)
+    False. (The controller may flip enabled later; this hook keeps state up to
+    date so activation sees a current value, not stale.)
     """
     accumulators = _extract_accumulators(generated_data)
     if verbose:
@@ -366,7 +367,7 @@ def _retro_recompact_with_careful(runner, session_idx: int, careful_prompt: str,
 def make_aggressive_controller_hook(controller: ThresholdController, verbose: bool = True):
     """Hook that drives a controller whose typed-state-promote trigger ALSO
     fires a retroactive recompact action (re-summarize all prior sessions
-    under the careful prompt). Used for E2's A4c condition.
+    under the careful prompt) — the aggressive controller variant.
 
     Same observation pathway as make_controller_hook, but the
     promote_to_typed_state callback chains in a retro recompact pass that

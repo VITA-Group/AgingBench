@@ -240,7 +240,7 @@ class S1Runner(BaseRunner):
             _progress(f"cycle {cycle + 1}/{n_cycles + 1} start", cycle_t0)
 
             # ---- Longitudinal mode: add new paper batch ----
-            new_batch_text = ""  # set in the C1 branch below when applicable
+            new_batch_text = ""  # set below when a new paper batch is added
             if self.paper_batches and cycle < len(self.paper_batches):
                 batch = self.paper_batches[cycle]
                 new_content = f"\n\n--- {batch['title']} ---\n{batch['content']}"

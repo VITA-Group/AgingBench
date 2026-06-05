@@ -9,8 +9,8 @@ JSON state header to the inner policy's output so the model has the up-to-date
 accumulator value alongside the compressed narrative memory.
 
 Used by:
-  * E1 (typed-state intervention, always_enabled=True)
-  * E2 (runtime controller activates the overlay mid-run via set_enabled(True))
+  * the always-on typed-state intervention (always_enabled=True)
+  * the runtime controller, which activates the overlay mid-run via set_enabled(True)
 
 When enabled=False, the overlay is a transparent pass-through to the inner policy.
 Sentinels are stripped from the text passed to the inner policy in either case so
@@ -49,7 +49,7 @@ class TypedStateOverlay(MemoryPolicy):
         self.write_log: list[dict] = []
 
     def set_enabled(self, enabled: bool) -> None:
-        """Toggle overlay activation. Used by E2 controller mid-run."""
+        """Toggle overlay activation. Used by the runtime controller mid-run."""
         self.enabled = enabled
 
     def read(self, query: Optional[str] = None) -> str:

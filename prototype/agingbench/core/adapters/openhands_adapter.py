@@ -30,9 +30,6 @@ _BRIDGE_PY = Path(__file__).parent / "openhands_bridge.py"
 #   2. OPENHANDS_BRIDGE_PYTHON env var
 #   3. Auto-detect an `openhands` conda env on PATH (e.g. via `conda env list`)
 #   4. None → raise a clear error explaining the install path
-#
-# Previously this was hardcoded to a developer-machine path, which fails
-# silently on every other machine with a missing-file subprocess error.
 _DEFAULT_BRIDGE_PYTHON: Optional[str] = None
 
 

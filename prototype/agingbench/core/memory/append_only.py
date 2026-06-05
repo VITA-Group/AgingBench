@@ -1,5 +1,5 @@
 """
-agingbench/baselines/memory/append_only.py — Naive append-only episodic store.
+agingbench/core/memory/append_only.py — Naive append-only episodic store.
 
 Each session's output is appended as a new entry. On read, the top-k most
 relevant entries are returned via cosine similarity (or the last-k if no

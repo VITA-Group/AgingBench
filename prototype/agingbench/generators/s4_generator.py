@@ -174,18 +174,48 @@ class S4Generator(BaseGenerator, DependencyMixin):
             # Compute expected tests (before agent modification)
             tests_expected = self._compute_test_ids(test_path, entity, fields, pre_task=True)
 
-            # Generate task (add validation, utility, or refactor)
-            task_text, task_type = self._gen_task(entity, fields, t)
-
-            # Register design decisions in the FactGraph (use task_type as domain
-            # so facts span multiple domains and enable COMPARE dependency tasks)
+            # Generate task. In revisable_base_facts mode the validation limit
+            # IS the fact's numeric value (config_value), so revision is
+            # load-bearing: the agent must track the latest limit to validate
+            # correctly, and the trend probe tests that tracking.
             field_names = ", ".join(f[0] for f in fields)
-            graph.register_fact(
-                session=t,
-                domain=task_type,
-                content=f"{entity} model: {task_text[:100]}",
-                keywords=[entity, field_names],
-            )
+            if getattr(self.pressure, "revisable_base_facts", False):
+                # >=3 digits clears the scorer's short-numeric reject; the value
+                # sits in keywords[1] so the trend probe (eval on keywords[:2])
+                # scores the latest LIMIT, not the static entity name.
+                config_value = self.rng.randint(100, 9999)
+                if getattr(self.pressure, "revisable_neutral_quantity", False):
+                    # CLEAN revision: a neutral, identifier-like quantity (a
+                    # configuration revision code) instead of "max length".
+                    # "max length" invites reporting the MAXIMUM value found (a
+                    # limit->max conflation) that inflates apparent aging; an
+                    # identifier has no magnitude semantics, so the trend probe
+                    # measures pure recall of the CURRENT version. Task-relevance
+                    # was framing-only (never scored), so the normal coding task
+                    # is used here rather than the spec_value validation task.
+                    task_text, task_type = self._gen_task(entity, fields, t)
+                    graph.register_fact(
+                        session=t,
+                        domain=task_type,
+                        content=f"{entity} model: configuration revision code is {config_value}. {task_text[:60]}",
+                        keywords=[entity, str(config_value), field_names],
+                    )
+                else:
+                    task_text, task_type = self._gen_task(entity, fields, t, spec_value=config_value)
+                    graph.register_fact(
+                        session=t,
+                        domain=task_type,
+                        content=f"{entity} model: current max length is {config_value}. {task_text[:80]}",
+                        keywords=[entity, str(config_value), field_names],
+                    )
+            else:
+                task_text, task_type = self._gen_task(entity, fields, t)
+                graph.register_fact(
+                    session=t,
+                    domain=task_type,
+                    content=f"{entity} model: {task_text[:100]}",
+                    keywords=[entity, field_names],
+                )
 
             # Determine impact set (files affected by the task)
             impact_set = [model_path, test_path]
@@ -392,8 +422,25 @@ class S4Generator(BaseGenerator, DependencyMixin):
             body=body,
         )
 
-    def _gen_task(self, entity: str, fields: list[tuple[str, str]], session: int) -> tuple[str, str]:
-        """Generate a modification task."""
+    def _gen_task(self, entity: str, fields: list[tuple[str, str]], session: int,
+                  spec_value: int | None = None) -> tuple[str, str]:
+        """Generate a modification task.
+
+        When ``spec_value`` is given (revisable_base_facts mode), force a
+        validation task whose length limit IS ``spec_value``, so the revised
+        value is load-bearing: the agent must track the LATEST limit to validate
+        correctly, and a held-out probe can test that tracking — genuine
+        revision aging rather than recall of a synthetic number.
+        """
+        if spec_value is not None:
+            field_name = self.rng.choice(fields)[0]
+            text = (
+                f"Add input validation to the {entity} model in models/{entity.lower()}.py. "
+                f"Reject {field_name} values longer than {spec_value} characters "
+                f"(the current configured max length for {entity})."
+            )
+            return text, "validation"
+
         task_type = ["validation", "utility", "refactor"][session % 3]
 
         if task_type == "validation":

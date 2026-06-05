@@ -444,7 +444,8 @@ def _run_s2(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
 def _run_s3(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
             n_cycles: int,
             agent_class=None,
-            generated: bool = False, gen_sessions: int = 0) -> dict:
+            generated: bool = False, gen_sessions: int = 0,
+            held_out_probes_per_session: int = 2) -> dict:
     """Execute S3 scenario (Project Knowledge Base Agent) and return metrics dict.
 
     S3 is Tier-1 only: a ReferenceAgent over a controlled MemoryPolicy. S3's
@@ -486,12 +487,21 @@ def _run_s3(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
         llm = load_llm(sut_cfg["model"])
         memory_policy = build_memory_policy(sut_cfg["memory_policy"], PROJECT_ROOT)
         agent_cls_kwarg = {"agent_class": agent_class} if agent_class else {}
+        # Opt-in scenario-aware system prompt. Reads from SUT YAML; default
+        # ``legacy`` preserves the bit-for-bit behavior of REACT_SYSTEM. Set
+        # ``scenario_prompt_mode: scenario_aware`` in the SUT YAML to enable
+        # a per-scenario persona + PressureConfig-derived Layer-2 awareness.
+        _prompt_mode = sut_cfg.get("scenario_prompt_mode", "legacy")
+        _pressure = _resolve_pressure(sut_cfg, scenario_cfg) if generated else None
         runner = S3Runner(
             memory_policy=memory_policy,
             llm=llm,
             tracer=tracer,
             sut_id=sut_cfg["sut_id"],
             generated_data=generated_data,
+            scenario_prompt_mode=_prompt_mode,
+            pressure=_pressure,
+            held_out_probes_per_session=held_out_probes_per_session,
             **agent_cls_kwarg,
         )
         result = runner.run(
@@ -509,6 +519,8 @@ def _run_s3(sut_cfg: dict, scenario_cfg: dict, output_dir: Path,
     stats["bloat_raw"] = result["bloat_raw"]
     stats["contradiction_raw"] = result["contradiction_raw"]
     stats["query_acc_raw"] = result["query_acc_raw"]
+    stats["held_out_acc_raw"] = result.get("held_out_acc_raw", [])
+    stats["held_out_probes_per_session"] = result.get("held_out_probes_per_session", 0)
     stats["session_results"] = result["session_results"]
 
     if generated_data and "dependency_graph" in generated_data:

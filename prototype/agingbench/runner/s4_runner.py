@@ -545,6 +545,17 @@ class S4Runner(BaseRunner):
                 f"Tests: {sum(1 for v in tests_after.values() if v == 'pass')}/{len(tests_after)} passing\n"
                 f"Key decisions: {agent_output}\n"
             )
+            # Revision testability: by default S4 persists only the agent's own
+            # design notes, so an injected revised value (config_value) is shown
+            # in the prompt but never stored — a held-out recall probe then fails
+            # because the value was never in memory, not because the agent failed
+            # to track the revision. When revisable_base_facts is active (the
+            # dependency context carries a config_value), persist that context so
+            # memory holds the latest value and the probe genuinely tests revision
+            # tracking under append_only. Gated on the marker → standard S4 runs
+            # (no config_value) are unchanged.
+            if dep_context and "config_value" in dep_context:
+                design_notes += f"Current specs: {dep_context}\n"
             all_design_notes += design_notes + "\n"
 
 

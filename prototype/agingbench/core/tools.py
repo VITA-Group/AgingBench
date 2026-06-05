@@ -1,15 +1,12 @@
 """
-agingbench/baselines/tools.py — Portable tool contracts (PDF §6.1.3, §6.2).
+agingbench/core/tools.py — Portable tool contracts.
 
-§6.1.3 Portable tools: prefer MCP-style definitions so tool contracts are
-explicit and versionable. Each ToolSpec carries a JSON Schema for its
-parameters, a semantic version string, and a description. This makes tool
-contract changes (the P5 schema-change scenario) directly observable in the
-registry rather than implicit in Python dicts.
-
-§6.2 Tool connectivity: MCP servers are the long-term target. For the
-prototype, ToolSpec acts as the contract layer — the fn() callable can later
-be replaced by an MCP client call without changing agent code.
+MCP-style tool definitions so contracts are explicit and versionable. Each
+ToolSpec carries a JSON Schema for its parameters, a semantic version string,
+and a description — making tool-contract changes directly observable in the
+registry rather than implicit in Python dicts. ToolSpec is the contract layer:
+its fn() callable can later be replaced
+by an MCP client call without changing agent code.
 """
 
 from __future__ import annotations
@@ -64,7 +61,7 @@ class ToolSpec:
     ----------
     name        : Tool identifier used in ReAct Action lines.
     version     : Semantic version string. Changing this is the "life event"
-                  signal in P5 (tool schema change mid-lifetime).
+                  signal for a tool schema change mid-lifetime.
     description : Human-readable description injected into the agent prompt.
     parameters  : JSON Schema object describing accepted input fields.
                   Used for validation and as the MCP tool manifest.
@@ -106,7 +103,7 @@ class ToolRegistry:
     Ordered collection of ToolSpecs for one scenario.
 
     The registry tracks the active version of each tool, making schema changes
-    (P5 life event) a first-class operation: update_tool() bumps the version
+    a first-class operation: update_tool() bumps the version
     and records the change event for the trace.
     """
 
@@ -123,7 +120,7 @@ class ToolRegistry:
 
     def update_tool(self, name: str, new_spec: ToolSpec, reason: str = "") -> None:
         """
-        Replace a tool with a new version (the P5 life event).
+        Replace a tool with a new version (a tool-contract change).
         Records the change for trace logging.
         """
         old = self._tools.get(name)

@@ -1,8 +1,8 @@
 """
-agingbench/baselines/agent.py — Reference agent (PDF §9.1, §6.3 baselines/).
+agingbench/core/agent.py — Reference agent.
 
-Depends on BaseLLM (not a concrete provider) per §6.1.1.
-Uses ToolRegistry / ToolSpec (not plain dicts) per §6.1.3.
+Depends on BaseLLM (not a concrete provider) and uses ToolRegistry / ToolSpec
+(not plain dicts) so the agent stays portable across providers and tools.
 """
 
 import re
@@ -92,7 +92,7 @@ Your memory from previous sessions (may be empty):
 
 class ReferenceAgent(AgentInterface):
     """
-    Minimal ReAct-style reference agent (PDF §9.1).
+    Minimal ReAct-style reference agent.
 
     Session contract (memory.md pattern):
       session input  = system_prompt + memory.read() + task
@@ -113,11 +113,18 @@ class ReferenceAgent(AgentInterface):
         self.memory_policy = memory_policy
         self.tools: ToolRegistry = tools or ToolRegistry()
         self.max_turns = max_turns
+        # Optional opt-in scenario-aware system prompt template. When set, it
+        # replaces REACT_SYSTEM at run_session() time. Must still contain the
+        # ``{tool_descriptions}`` and ``{memory}`` placeholders. Runners that
+        # want scenario-aware prompts build the partially-formatted template
+        # via ``prompts.scenario_aware.build_system_template`` and assign it
+        # here. Default ``None`` preserves legacy behavior.
+        self.system_template: Optional[str] = None
 
-    # ---------------------------------------------------------- P2 entry point
+    # ---------------------------------------------------------- compression helper
 
     def compress(self, text: str) -> str:
-        """Single-call compression for P2. Returns compressed text."""
+        """Single-call compression. Returns compressed text."""
         from .memory.summarize_store import COMPACT_MEDIUM
         prompt = COMPACT_MEDIUM.format(text=text)
         return self.llm.chat([{"role": "user", "content": prompt}])
@@ -128,7 +135,10 @@ class ReferenceAgent(AgentInterface):
         """
         Execute one session. Returns {"output": str, "tool_calls": list, "turns": int}.
         """
-        system_msg = REACT_SYSTEM.format(
+        # Default: legacy REACT_SYSTEM. Opt-in: scenario-aware template set by
+        # the runner via ``self.system_template``.
+        _template = self.system_template or REACT_SYSTEM
+        system_msg = _template.format(
             tool_descriptions=self.tools.prompt_descriptions(),
             memory=self.memory_policy.read() or "(empty)",
         )

@@ -235,6 +235,14 @@ class S6Runner(BaseRunner, DiagnosticMixin):
                 tools=tool_registry,
                 max_turns=8,
             )
+            # S6 ReferenceAgent uses the same legacy REACT_SYSTEM as S1-S4 for
+            # cross-scenario consistency on the headline benchmark — no
+            # scenario-specific persona is injected here. The
+            # ``self.system_prompt_base`` field is still loaded by __init__
+            # (it remains available to callers that want it via
+            # ``runner.system_prompt_base``) but is intentionally NOT applied
+            # to the agent's system prompt; doing so would diverge S6 from
+            # S1-S4 framing.
 
             # ---- Build task prompt ----
             env_data = session_data.get("environment_data", "")

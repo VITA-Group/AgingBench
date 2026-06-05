@@ -1,8 +1,8 @@
 """
-agingbench/baselines/retriever.py — SQLite-backed retriever with cosine similarity.
+agingbench/core/retriever.py — SQLite-backed retriever with cosine similarity.
 
-Schema matches §6.3: used by append_only and (in P3) for KB-growth retrieval.
-For P2, only get_by_id / overwrite are used; cosine_search is exercised in P3.
+Used by append_only and (in P3) for KB-growth retrieval. For P2, only
+get_by_id / overwrite are used; cosine_search is exercised in P3.
 """
 
 import time

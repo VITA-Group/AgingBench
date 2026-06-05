@@ -53,6 +53,31 @@ class PressureConfig:
     dependency_density: float = 0.5
     update_rate: float = 0.15
     max_chain_depth: int = 3
+    # When True, pressure-driven revision re-versions the latest head of each
+    # chain (not just v1 originals), so chains can reach max_chain_depth (3+).
+    # Default False preserves the depth-2 cap and the unrevised-cohort baseline.
+    deep_version_chains: bool = False
+    # When True, S4 registers each base code-fact with a numeric `config_value`
+    # so version_random_facts (which only mutates numeric keywords) can revise
+    # it. This decouples revision from the confusable cohort — revision works
+    # with n_confusable_pairs=0. Default False keeps base facts text-only
+    # (current behavior: only confusable/numeric facts get versioned).
+    revisable_base_facts: bool = False
+    # When > 0, version_random_facts CONCENTRATES revisions on a fixed cohort of
+    # the `version_cohort_size` deepest fact-chains (re-versioning the same heads
+    # every session) instead of spreading a fraction across many facts. This
+    # drives a few chains to high per-fact depth (dense version stacks), which is
+    # the structural condition under which the tool-memory cite-latest "cliff"
+    # appears. Default 0 = spread (unchanged). Pair with a high max_chain_depth.
+    version_cohort_size: int = 0
+    # When True, S4's revisable fact uses a NEUTRAL identifier-like quantity
+    # ("configuration revision code") instead of "max length". "max length"
+    # invites the model to report the MAXIMUM value it finds (a limit->maximum
+    # semantic conflation), which inflates apparent revision aging independent
+    # of genuine version-tracking. A neutral identifier removes that confound so
+    # version_accuracy measures recall of the CURRENT version, not magnitude
+    # anchoring. Default False keeps the "max length" phrasing (byte-identical).
+    revisable_neutral_quantity: bool = False
     n_confusable_pairs: int = 3
     confusable_start_session: int = 5
     warmup_sessions: int = 3

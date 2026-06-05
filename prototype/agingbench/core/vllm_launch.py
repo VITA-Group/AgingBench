@@ -18,7 +18,7 @@ local_hf scoring path (which would break comparability of existing HF runs).
 
 CLI:
     python -m agingbench.core.vllm_launch serve  Qwen/Qwen3-8B
-    python -m agingbench.core.vllm_launch check          # table3_v2 matrix
+    python -m agingbench.core.vllm_launch check          # reference-model matrix
 """
 
 from dataclasses import dataclass, field
@@ -89,7 +89,7 @@ _PROFILES: list[tuple[str, VLLMProfile]] = [
              "<|channel> thought format, so run WITHOUT --reasoning-parser; the "
              "VLLMAdapter then falls back to model_config's channel-strip regex "
              "to clean the answer (thinking is captured client-side). RISKIEST "
-             "of the table3_v2 set — confirm the server starts before batch runs.",
+             "of the reference set — confirm the server starts before batch runs.",
     )),
     # ---- Llama 3 Instruct: not a reasoning model ----
     ("llama-3", VLLMProfile(
@@ -140,8 +140,8 @@ def build_serve_command(
     return " \\\n    ".join(parts)
 
 
-# table3_v2 model roster (kept here so `check` reports exactly the paper's set).
-TABLE3_V2_MODELS = [
+# Reference model roster (kept here so `check` reports exactly the evaluated set).
+REFERENCE_MODELS = [
     "meta-llama/Meta-Llama-3-8B-Instruct",
     "Qwen/Qwen3-8B",
     "Qwen/Qwen3-14B",
@@ -155,9 +155,9 @@ TABLE3_V2_MODELS = [
 
 def _check_cli() -> None:
     print("=" * 78)
-    print("vLLM compatibility — table3_v2 models")
+    print("vLLM compatibility — reference models")
     print("=" * 78)
-    for m in TABLE3_V2_MODELS:
+    for m in REFERENCE_MODELS:
         prof = get_vllm_profile(m)
         host = "API (litellm)" if prof.api_only else "vLLM"
         rp = prof.reasoning_parser or "(none)"

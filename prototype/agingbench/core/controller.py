@@ -6,10 +6,9 @@ A minimal between-session controller that observes per-session aging metrics
 actions (promote_to_typed_state, switch_compaction_policy) when thresholds
 are crossed.
 
-Implements one concrete realization of the runtime-control framing in §I of
-the paper: aging mitigation via closed-loop policy switching, with the
-benchmark's mechanism-level metrics serving as observation inputs and the
-memory architecture's hooks serving as control outputs.
+A concrete realization of runtime aging mitigation via closed-loop policy
+switching: the benchmark's mechanism-level metrics serve as observation
+inputs and the memory architecture's hooks serve as control outputs.
 
 Triggers are one-shot: once fired, the action persists for the remainder of
 the run. This is a deliberate simplification appropriate to the demonstration
